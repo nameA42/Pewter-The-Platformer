@@ -1,17 +1,19 @@
 import "./style.css";
 import { LoadingScene } from "./phaser/loadingScene.ts";
 import { GameScene } from "./phaser/gameScene.ts";
-import "./languageModel/chatBox.ts";
 import { GravityTool } from "./languageModel/tools/gravityTool.ts";
 import {
   initializeTools,
   registerTool,
 } from "./languageModel/modelConnector.ts";
 import { MoveTool } from "./languageModel/tools/moveTool.ts";
+import { sendSystemMessage } from "./languageModel/chatBox.ts";
+import { ZoomTool } from "./languageModel/tools/zoomTool.ts";
 
 const tools = {
   gravity: new GravityTool(getScene),
   direction: new MoveTool(getScene),
+  zoom: new ZoomTool(getScene),
 };
 
 Object.values(tools).forEach((generator) => {
@@ -21,6 +23,9 @@ Object.values(tools).forEach((generator) => {
 });
 
 initializeTools();
+
+// Tell the system to introduce itself and explain what it can do
+sendSystemMessage("Introduce yourself and explain what you can do. ");
 
 //Create Phaser game instance
 const gameInstance = new Phaser.Game({
@@ -48,37 +53,4 @@ export function getScene(): GameScene {
   if (!gameInstance) throw Error("Scene does not exist >:(");
   console.log(gameInstance.scene.getScene("GameScene"));
   return gameInstance.scene.getScene("GameScene") as GameScene;
-}
-
-function getRandEmoji(): string {
-  let emoji = [
-    ":)",
-    ":(",
-    ">:(",
-    ":D",
-    ">:D",
-    ":^D",
-    ":(",
-    ":D",
-    "O_O",
-    ":P",
-    "-_-",
-    "O_-",
-    "O_o",
-    "𓆉",
-    "ジ",
-    "⊂(◉‿◉)つ",
-    "	(｡◕‿‿◕｡)",
-    "(⌐■_■)",
-    "<|°_°|>",
-    "<|^.^|>",
-    ":P",
-    ":>",
-    ":C",
-    ":}",
-    ":/",
-    "ʕ ● ᴥ ●ʔ",
-    "(˶ᵔ ᵕ ᵔ˶)",
-  ];
-  return emoji[Math.floor(Math.random() * emoji.length)];
 }

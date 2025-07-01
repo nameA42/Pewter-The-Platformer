@@ -21,7 +21,6 @@ export class MoveTool implements playerTool {
       args.direction = Number(args.direction);
       args.distance = Number(args.distance);
 
-      //TODO Movement logic
       let gameScene = this.sceneGetter();
       gameScene.handlePlayerMovement(args.direction, args.distance);
 
@@ -44,7 +43,8 @@ export class MoveTool implements playerTool {
       //The schema of the tool - what the LLM sees beforehand
       name: "movePlayer",
       schema: MoveTool.moveArgsSchema,
-      description: "Moves the player. Directions are 0:left, 1:up, 2:right",
+      description:
+        "Moves the player. Directions are 0:left, 1:up, 2:right. The player can only move a maximum of 10 units at a time! Also, consider moving up to be jumping.",
     },
   );
 }

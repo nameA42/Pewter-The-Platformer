@@ -46,7 +46,7 @@ export function initializeTools() {
   console.log("Bound following tools to LLM: ", Object.keys(toolsByName));
 }
 
-export async function initilizeLLM(
+export async function initializeLLM(
   chatMessageHistory: BaseMessage[],
 ): Promise<void> {
   //inject sys prompt
@@ -110,7 +110,7 @@ export async function getChatResponse(
           new ToolMessage({
             name: toolCall.name,
             content: errorMessage,
-            tool_call_id: String(toolCall.id || ""),
+            tool_call_id: String(toolCall.id ?? ""),
           }),
         );
       }

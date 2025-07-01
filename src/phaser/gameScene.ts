@@ -15,7 +15,7 @@ export class GameScene extends Phaser.Scene {
   private readonly drag = 1100;
   private readonly jumpVelocity = -600;
   private readonly particleVelocity = 50;
-  private readonly gameScale = 2;
+  private gameScale = 2;
 
   private map!: Phaser.Tilemaps.Tilemap;
   private groundLayer!: Phaser.Tilemaps.TilemapLayer;
@@ -288,5 +288,12 @@ export class GameScene extends Phaser.Scene {
     this.physics.world.gravity.y *= -1;
     this.player.flipY = !this.player.flipY;
     this.isUpDown = !this.isUpDown;
+  }
+
+  zoomMap(zoomLevel: number) {
+    const clampedZoom = Phaser.Math.Clamp(zoomLevel, 0, 10);
+    this.gameScale = clampedZoom; // Store the zoom level
+    this.cameras.main.setZoom(clampedZoom);
+    return `Game is now zoomed to level ${clampedZoom}`;
   }
 }

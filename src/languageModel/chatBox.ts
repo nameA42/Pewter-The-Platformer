@@ -1,4 +1,4 @@
-import { getChatResponse, initilizeLLM } from "./modelConnector.ts";
+import { getChatResponse, initializeLLM } from "./modelConnector.ts";
 import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
 
 const chatHistoryList: Element = document.querySelector("#chat-history")!;
@@ -9,9 +9,8 @@ const chatSubmitButton: HTMLButtonElement =
 
 export const chatHistory: BaseMessage[] = [];
 
-initilizeLLM(chatHistory).then(() => {
+initializeLLM(chatHistory).then(() => {
   console.log(chatHistory);
-  console.log("herer");
 });
 
 document

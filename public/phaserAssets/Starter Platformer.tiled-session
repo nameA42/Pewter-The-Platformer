@@ -1,0 +1,48 @@
+{
+    "Map/SizeTest": {
+        "height": 4300,
+        "width": 2
+    },
+    "activeFile": "platformer-level-1.tmx",
+    "expandedProjectPaths": [
+        "."
+    ],
+    "fileStates": {
+        "": {
+            "scaleInEditor": 1
+        },
+        "platformer-level-1.tmx": {
+            "scale": 2.2559,
+            "selectedLayer": 1,
+            "viewCenter": {
+                "x": 123.67569484462965,
+                "y": 537.4794982047076
+            }
+        },
+        "platformer-level-1.tmx#kenny_tilemap_packed": {
+            "scaleInDock": 1.2706,
+            "scaleInEditor": 1
+        }
+    },
+    "frame.defaultDuration": 1000,
+    "last.exportedFilePath": "/Users/thomas/Documents/School Files/CMPM 120 - Game Dev Exp/projects/Game 3 final but real/assets",
+    "last.imagePath": "/Users/thomas/Documents/School Files/CMPM 120 - Game Dev Exp/projects/Game 3 final but real/assets",
+    "map.lastUsedExportFilter": "All Files (*)",
+    "map.lastUsedFormat": "tmx",
+    "map.tileHeight": 18,
+    "map.tileWidth": 18,
+    "map.width": 100,
+    "openFiles": [
+        "platformer-level-1.tmx"
+    ],
+    "project": "Starter Platformer.tiled-project",
+    "property.type": "bool",
+    "recentFiles": [
+        "platformer-level-1.tmx"
+    ],
+    "tileset.embedInMap": true,
+    "tileset.tileSize": {
+        "height": 18,
+        "width": 18
+    }
+}

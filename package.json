@@ -18,5 +18,8 @@
   },
   "lint-staged": {
     "**/*": "prettier --write --ignore-unknown"
+  },
+  "dependencies": {
+    "phaser": "^3.90.0"
   }
 }

@@ -1,35 +1,29 @@
 import "./style.css";
 import { LoadingScene } from "./phaser/loadingScene.ts";
 import { GameScene } from "./phaser/gameScene.ts";
+import "./languageModel/chatBox.ts";
+import { GravityTool } from "./languageModel/tools/gravityTool.ts";
+import {
+  initializeTools,
+  registerTool,
+} from "./languageModel/modelConnector.ts";
+import { MoveTool } from "./languageModel/tools/moveTool.ts";
 
-// Initialize the global 'my' object before game initialization
-(window as any).my = {
-  sprite: {},
-  vfx: {},
+const tools = {
+  gravity: new GravityTool(getScene),
+  direction: new MoveTool(getScene),
 };
 
-document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
-  <div class="container">
-    <div class="emoji-container">
-      <h1>${getRandEmoji()}</h1>
-    </div>
-    <div class="content-container">
-      <div id="phaser"></div>
-      <div id="llm-chat">
-        <div>
-          <ul id="chat-history"></ul>
-          <form id="llm-chat-form" autocomplete="off">
-            <input type="text" id="llm-chat-input" />
-            <button type="submit" id="llm-chat-submit">Send</button>
-          </form>
-        </div>
-      </div>
-    </div>
-  </div>
-`;
+Object.values(tools).forEach((generator) => {
+  if (generator.toolCall) {
+    registerTool(generator.toolCall);
+  }
+});
+
+initializeTools();
 
 //Create Phaser game instance
-const game = new Phaser.Game({
+const gameInstance = new Phaser.Game({
   type: Phaser.CANVAS,
   render: {
     pixelArt: true,
@@ -49,6 +43,12 @@ const game = new Phaser.Game({
   parent: document.getElementById("phaser"),
   scene: [LoadingScene, GameScene],
 });
+
+export function getScene(): GameScene {
+  if (!gameInstance) throw Error("Scene does not exist >:(");
+  console.log(gameInstance.scene.getScene("GameScene"));
+  return gameInstance.scene.getScene("GameScene") as GameScene;
+}
 
 function getRandEmoji(): string {
   let emoji = [

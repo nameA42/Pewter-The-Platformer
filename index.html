@@ -7,7 +7,25 @@
     <title>Langchain Tool Controller</title>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div class="container">
+        <div id="emoji" class="emoji-container">
+          <h1>${getRandEmoji()}</h1>
+        </div>
+        <div class="content-container">
+          <div id="phaser"></div>
+          <div id="llm-chat">
+            <div>
+              <ul id="chat-history"></ul>
+              <form id="llm-chat-form" autocomplete="off">
+                <input type="text" id="llm-chat-input" />
+                <button type="submit" id="llm-chat-submit">Send</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

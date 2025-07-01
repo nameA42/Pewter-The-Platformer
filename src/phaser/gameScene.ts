@@ -10,7 +10,7 @@ type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
 
 export class GameScene extends Phaser.Scene {
   private collectedItems = 0;
-  private isUpDown = false;
+  isUpDown = false;
   private readonly acceleration = 400;
   private readonly drag = 1100;
   private readonly jumpVelocity = -600;
@@ -20,7 +20,7 @@ export class GameScene extends Phaser.Scene {
   private map!: Phaser.Tilemaps.Tilemap;
   private groundLayer!: Phaser.Tilemaps.TilemapLayer;
   private coinGroup!: Phaser.GameObjects.Group;
-  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
+  //private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private partCountText!: Phaser.GameObjects.Text;
   private background!: Phaser.GameObjects.TileSprite;
   private midground!: Phaser.GameObjects.TileSprite;
@@ -92,20 +92,20 @@ export class GameScene extends Phaser.Scene {
     });
 
     //Debug Key bound to D
-    this.cursors = this.input.keyboard!.createCursorKeys();
-    this.input.keyboard!.on("keydown-D", () => {
-      this.physics.world.drawDebug = !this.physics.world.drawDebug;
-      this.physics.world.debugGraphic.clear();
-    });
+    //this.cursors = this.input.keyboard!.createCursorKeys();
+    //this.input.keyboard!.on("keydown-D", () => {
+    //  this.physics.world.drawDebug = !this.physics.world.drawDebug;
+    //  this.physics.world.debugGraphic.clear();
+    //});
     this.physics.world.drawDebug = false;
 
     //Gravity switch
-    this.input.keyboard!.on("keydown-G", () => this.toggleGravity(), this);
+    //this.input.keyboard!.on("keydown-G", () => this.toggleGravity(), this);
 
     //Dust particles while walking/Jumping
     this.vfx.walking = this.add.particles(0, 0, "kenny-particles", {
       frame: ["dirt_01.png"],
-      random: true,
+      //random: true,
       scale: { start: 0.03, end: 0.02 },
       maxAliveParticles: 8,
       lifespan: 350,
@@ -113,7 +113,7 @@ export class GameScene extends Phaser.Scene {
     });
     this.vfx.jump = this.add.particles(0, 0, "kenny-particles", {
       frame: ["dirt_02.png"],
-      random: true,
+      //random: true,
       scale: { start: 0.03, end: 0.2 },
       maxAliveParticles: 20,
       lifespan: 350,
@@ -162,16 +162,21 @@ export class GameScene extends Phaser.Scene {
       .setDepth(99)
       .setScrollFactor(1); //bad text that should be done better
 
+    /*
     this.add
       .text(20, 600, "Press 'G' to\n flip gravity", { fontSize: "12px" })
       .setDepth(99);
+    */
 
     this.cameras.main.on("cameraupdate", this.updateTextPosition, this);
     this.updateTextPosition();
   }
 
   update() {
-    this.handlePlayerMovement();
+    // Example: No movement by default. Replace with your own input system.
+    // For testing, you can call with hardcoded values, e.g. this.handlePlayerMovement(0, 200)
+    //this.handlePlayerMovement(undefined, undefined);
+
     if (this.player.y > this.map.heightInPixels || this.player.y < 20)
       this.scene.restart();
     if (this.collectedItems === 10) this.scene.restart();
@@ -186,45 +191,60 @@ export class GameScene extends Phaser.Scene {
     this.updateTextPosition();
   }
 
-  private handlePlayerMovement() {
-    const { left, right, up } = this.cursors;
+  /**
+   * Moves the player in a given direction with a given force.
+   * @param direction 0: left, 1: up (jump), 2: right
+   * @param force The force/distance to apply in the given direction
+   */
+  handlePlayerMovement(direction?: number, force?: number) {
     const p = this.player;
 
-    if (left.isDown) {
-      p.setAccelerationX(
-        p.body.velocity.x > 5 ? -this.acceleration * 5 : -this.acceleration,
-      );
-      p.setFlip(false, this.isUpDown);
-      p.anims.play("walk", true);
-      this.startWalkingVFX();
-    } else if (right.isDown) {
-      p.setAccelerationX(
-        p.body.velocity.x < 5 ? this.acceleration * 5 : this.acceleration,
-      );
-      p.setFlip(true, this.isUpDown);
-      p.anims.play("walk", true);
-      this.startWalkingVFX();
+    // Only act if direction and force are provided
+    if (typeof direction === "number" && typeof force === "number") {
+      let dx = 0,
+        dy = 0;
+      if (direction === 0)
+        dx = -force * 20; // left
+      else if (direction === 2)
+        dx = force * 20; // right
+      else if (direction === 1) dy = -force * 30; // up (jump)
+
+      // Stop any existing tweens on the player
+      this.tweens.killTweensOf(p);
+
+      if (direction === 0 || direction === 2) {
+        // Horizontal movement via tween for fixed distance
+        p.anims.play("walk", true);
+        p.setFlip(direction === 2, this.isUpDown);
+        this.startWalkingVFX();
+        this.tweens.add({
+          targets: p,
+          x: p.x + dx,
+          duration: 200,
+          onComplete: () => {
+            p.setVelocityX(0);
+            p.anims.play("idle");
+            this.vfx.walking?.stop();
+          },
+        });
+      } else if (direction === 1) {
+        // Jump (vertical movement)
+        if (p.body.blocked.down || p.body.blocked.up) {
+          p.setVelocityY(-Math.abs(force) * 60);
+          this.sound.play("jumpAudio");
+          this.startJumpVFX();
+        }
+      }
     } else {
-      p.setAccelerationX(0);
-      p.setDragX(this.drag);
+      // No movement input, play idle
       p.anims.play("idle");
       this.vfx.walking?.stop();
     }
 
+    // Handle jump/fall animation state
     if (!p.body.blocked.down && !p.body.blocked.up) {
       p.anims.play("jump");
       p.isFalling = true;
-    }
-
-    if (
-      (p.body.blocked.down || p.body.blocked.up) &&
-      Phaser.Input.Keyboard.JustDown(up)
-    ) {
-      p.body.setVelocityY(
-        p.body.blocked.down ? this.jumpVelocity : -this.jumpVelocity,
-      );
-      this.sound.play("jumpAudio");
-      this.startJumpVFX();
     }
   }
 
@@ -264,7 +284,7 @@ export class GameScene extends Phaser.Scene {
     this.partCountText.setFontSize(scaledFontSize);
   }
 
-  private toggleGravity() {
+  toggleGravity() {
     this.physics.world.gravity.y *= -1;
     this.player.flipY = !this.player.flipY;
     this.isUpDown = !this.isUpDown;

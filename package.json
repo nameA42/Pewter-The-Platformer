@@ -20,6 +20,7 @@
     "**/*": "prettier --write --ignore-unknown"
   },
   "dependencies": {
+    "@langchain/google-genai": "^0.2.14",
     "phaser": "^3.90.0"
   }
 }

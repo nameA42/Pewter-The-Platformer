@@ -1,8 +1,7 @@
 import { tool } from "@langchain/core/tools";
-import type { playerTool } from "./ITool.ts";
 import type { GameScene } from "../../phaser/gameScene.ts";
 
-export class GravityTool implements playerTool {
+export class GravityTool {
   sceneGetter: () => GameScene;
 
   constructor(sceneGetter: () => GameScene) {

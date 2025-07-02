@@ -1,9 +1,8 @@
 import { tool } from "@langchain/core/tools";
-import type { playerTool } from "./ITool.ts";
 import type { GameScene } from "../../phaser/gameScene.ts";
 import { z } from "zod";
 
-export class MoveTool implements playerTool {
+export class MoveTool {
   sceneGetter: () => GameScene;
 
   constructor(sceneGetter: () => GameScene) {

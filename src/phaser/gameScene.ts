@@ -11,9 +11,9 @@ type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
 export class GameScene extends Phaser.Scene {
   private collectedItems = 0;
   isUpDown = false;
-  private readonly acceleration = 400;
-  private readonly drag = 1100;
-  private readonly jumpVelocity = -600;
+  //private readonly acceleration = 400;
+  //private readonly drag = 1100;
+  //private readonly jumpVelocity = -600;
   private readonly particleVelocity = 50;
   private gameScale = 2;
 
@@ -129,7 +129,7 @@ export class GameScene extends Phaser.Scene {
       .setZoom(this.gameScale);
 
     if (!this.sound.get("bgm")?.isPlaying)
-      this.sound.play("bgm", { loop: true, volume: 0.3 });
+      this.sound.play("bgm", { loop: true, volume: 0.0 });
 
     //Parallax background
     this.background = this.add
@@ -173,10 +173,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   update() {
-    // Example: No movement by default. Replace with your own input system.
-    // For testing, you can call with hardcoded values, e.g. this.handlePlayerMovement(0, 200)
-    //this.handlePlayerMovement(undefined, undefined);
-
     if (this.player.y > this.map.heightInPixels || this.player.y < 20)
       this.scene.restart();
     if (this.collectedItems === 10) this.scene.restart();

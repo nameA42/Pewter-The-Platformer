@@ -11,6 +11,12 @@ export class EditorScene extends Phaser.Scene {
   private maxZoomLevel = 10;
   private zoomLevel = 2.25;
 
+
+  private minimap!: Phaser.Cameras.Scene2D.Camera;
+  private minimapZoom = 0.15;
+
+  private scrollDeadzone = 50; // pixels from the edge of the camera view to stop scrolling
+
   constructor() {
     super({ key: "editorScene" });
   }
@@ -45,6 +51,17 @@ export class EditorScene extends Phaser.Scene {
     );
     this.cameras.main.centerOn(0, 0);
     this.cameras.main.setZoom(this.zoomLevel);
+
+    // minimap
+    this.minimap = this.cameras.add(10, 10, this.map.widthInPixels * this.minimapZoom, this.map.heightInPixels * this.minimapZoom).setZoom(this.minimapZoom).setName("minimap");
+    this.minimap.setBackgroundColor(0x002244);
+    this.minimap.setBounds(
+      0,
+      0,
+      this.map.widthInPixels,
+      this.map.heightInPixels,
+    );
+    this.cameras.main.centerOn(0, 0);
 
     // grid
     this.gridGraphics = this.add.graphics();
@@ -95,6 +112,14 @@ export class EditorScene extends Phaser.Scene {
 
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
       if (!isDragging) return;
+      if (pointer.x >= this.cameras.main.width - this.scrollDeadzone 
+        || pointer.y >= this.cameras.main.height - this.scrollDeadzone 
+        || pointer.x <= this.scrollDeadzone 
+        || pointer.y <= this.scrollDeadzone) {
+        isDragging = false; // Stop dragging if pointer is outside the camera view
+        console.warn("Pointer moved outside camera view, stopping drag.");
+        return;
+      }
 
       const dragX = dragStartPoint.x - pointer.x;
       const dragY = dragStartPoint.y - pointer.y;
@@ -127,6 +152,11 @@ export class EditorScene extends Phaser.Scene {
     const dotSpacing = 4;
     const dotLength = 0.4;
     const dotWidth = 1.2;
+
+    const edgewidth = 2
+    // draw edge lines for minimap
+    this.gridGraphics.lineStyle(edgewidth, 0xf00000, 1); // color and alpha
+    this.gridGraphics.strokeRect(startX - edgewidth, startY - edgewidth, endX - startX + edgewidth, endY - startY + edgewidth);
 
     // Vertical dotted lines
     for (let x = startX; x <= endX; x += this.TILE_SIZE) {

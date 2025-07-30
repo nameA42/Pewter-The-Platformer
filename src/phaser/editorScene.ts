@@ -17,6 +17,11 @@ export class EditorScene extends Phaser.Scene {
 
   private scrollDeadzone = 50; // pixels from the edge of the camera view to stop scrolling
 
+  //Working code - Jason Cho
+  private blocks: string[] = [];
+  private currentBlock: string = "";
+  private buttons: Phaser.GameObjects.Text[] = [];
+
   constructor() {
     super({ key: "editorScene" });
   }
@@ -129,7 +134,78 @@ export class EditorScene extends Phaser.Scene {
 
       dragStartPoint.set(pointer.x, pointer.y);
     });
+
+    //Working Code - Jason Cho
+    
+    //Variables
+    this.blocks = ["block1", "block2", "block3"]; //Add more blocks to see capabilities
+    //Input
+    const keys = [
+    Phaser.Input.Keyboard.KeyCodes.ONE,
+    Phaser.Input.Keyboard.KeyCodes.TWO,
+    Phaser.Input.Keyboard.KeyCodes.THREE,
+    ];
+    
+    //Event Input
+    keys.forEach((code, index) => {
+      const key = this.input.keyboard!.addKey(code);
+      key.on('down', () => {
+        this.changeBlock(this.blocks[index]);
+      });
+    });
+
+    //Store reference for future use
+    this.buttons = [];
+
+    //Create buttons
+    this.blocks.forEach((block, index) => {
+      const btn = this.createButton(100, 100 + index * 40, `Set ${block}`, () => {
+        this.changeBlock(block);
+      });
+      this.buttons.push(btn); //Store reference
+    });
+    
+    //Button for placement
+    const placeBtn = this.createButton(300, 100, "Place Block", () => {
+      this.placeBlock();
+    });
   }
+
+  //Working Code - Jason Cho (Helper functions)
+
+  //Change currentBlock to block
+  private changeBlock(block: string) {
+    this.currentBlock = block;
+    console.log("CurrentBlock changed to:", this.currentBlock);
+  }
+
+  //Placeholder for placing a block
+  private placeBlock() {
+    console.log("Placing block:", this.currentBlock);
+    // Add actual placement logic here later
+  }
+
+  //Creates a button 
+  private createButton(
+    x: number,
+    y: number,
+    label: string,
+    callback: () => void
+  ): Phaser.GameObjects.Text {
+    const btn = this.add.text(x, y, label, {
+      fontSize: '12px',
+      color: '#000000',
+      backgroundColor: '#ffffff',
+      padding: { x: 20, y: 10 },
+      align: 'center'
+    })
+      .setOrigin(0.5)
+      .setInteractive();
+
+    btn.on('pointerdown', callback);
+    return btn;
+  }
+  
 
   drawGrid() {
     const cam = this.cameras.main;

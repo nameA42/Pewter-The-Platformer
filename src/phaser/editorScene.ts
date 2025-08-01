@@ -1,4 +1,6 @@
 import Phaser from "phaser";
+import { Slime } from "./EnemyClasses/Slime.ts";
+import { UltraSlime } from "./EnemyClasses/UltraSlime.ts";
 
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
@@ -11,11 +13,17 @@ export class EditorScene extends Phaser.Scene {
   private maxZoomLevel = 10;
   private zoomLevel = 2.25;
 
-
   private minimap!: Phaser.Cameras.Scene2D.Camera;
   private minimapZoom = 0.15;
 
   private scrollDeadzone = 50; // pixels from the edge of the camera view to stop scrolling
+
+  private enemies: (Slime | UltraSlime)[] = [];
+
+  private player!: Phaser.GameObjects.Sprite;
+
+  private damageKey!: Phaser.Input.Keyboard.Key;
+  private flipKey!: Phaser.Input.Keyboard.Key;
 
   constructor() {
     super({ key: "editorScene" });
@@ -53,7 +61,15 @@ export class EditorScene extends Phaser.Scene {
     this.cameras.main.setZoom(this.zoomLevel);
 
     // minimap
-    this.minimap = this.cameras.add(10, 10, this.map.widthInPixels * this.minimapZoom, this.map.heightInPixels * this.minimapZoom).setZoom(this.minimapZoom).setName("minimap");
+    this.minimap = this.cameras
+      .add(
+        10,
+        10,
+        this.map.widthInPixels * this.minimapZoom,
+        this.map.heightInPixels * this.minimapZoom,
+      )
+      .setZoom(this.minimapZoom)
+      .setName("minimap");
     this.minimap.setBackgroundColor(0x002244);
     this.minimap.setBounds(
       0,
@@ -112,10 +128,12 @@ export class EditorScene extends Phaser.Scene {
 
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
       if (!isDragging) return;
-      if (pointer.x >= this.cameras.main.width - this.scrollDeadzone 
-        || pointer.y >= this.cameras.main.height - this.scrollDeadzone 
-        || pointer.x <= this.scrollDeadzone 
-        || pointer.y <= this.scrollDeadzone) {
+      if (
+        pointer.x >= this.cameras.main.width - this.scrollDeadzone ||
+        pointer.y >= this.cameras.main.height - this.scrollDeadzone ||
+        pointer.x <= this.scrollDeadzone ||
+        pointer.y <= this.scrollDeadzone
+      ) {
         isDragging = false; // Stop dragging if pointer is outside the camera view
         console.warn("Pointer moved outside camera view, stopping drag.");
         return;
@@ -129,6 +147,20 @@ export class EditorScene extends Phaser.Scene {
 
       dragStartPoint.set(pointer.x, pointer.y);
     });
+
+    const slime1 = new Slime(this, 100, 100);
+    this.enemies.push(slime1);
+    const slime2 = new UltraSlime(this, 100, 200);
+    this.enemies.push(slime2);
+
+    this.player = this.add.sprite(0, 0, "spritesheet", 13);
+
+    this.damageKey = this.input.keyboard!.addKey(
+      Phaser.Input.Keyboard.KeyCodes.SPACE,
+    );
+    this.flipKey = this.input.keyboard!.addKey(
+      Phaser.Input.Keyboard.KeyCodes.F,
+    );
   }
 
   drawGrid() {
@@ -153,10 +185,15 @@ export class EditorScene extends Phaser.Scene {
     const dotLength = 0.4;
     const dotWidth = 1.2;
 
-    const edgewidth = 2
+    const edgewidth = 2;
     // draw edge lines for minimap
     this.gridGraphics.lineStyle(edgewidth, 0xf00000, 1); // color and alpha
-    this.gridGraphics.strokeRect(startX - edgewidth, startY - edgewidth, endX - startX + edgewidth, endY - startY + edgewidth);
+    this.gridGraphics.strokeRect(
+      startX - edgewidth,
+      startY - edgewidth,
+      endX - startX + edgewidth,
+      endY - startY + edgewidth,
+    );
 
     // Vertical dotted lines
     for (let x = startX; x <= endX; x += this.TILE_SIZE) {
@@ -185,5 +222,26 @@ export class EditorScene extends Phaser.Scene {
 
   update() {
     this.drawGrid();
+
+    this.enemies.forEach((enemy, index) => {
+      if (!enemy || !enemy.active) {
+        enemy.destroy();
+        if (index !== -1) {
+          this.enemies.splice(index, 1); // removes 1 item at that index
+        }
+
+        return;
+      }
+      enemy.update(this.player, 0);
+    });
+
+    if (Phaser.Input.Keyboard.JustDown(this.damageKey)) {
+      this.enemies[0].causeDamage(1);
+      console.log(this.enemies[0].getHealth());
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this.flipKey)) {
+      this.enemies[0].flip(true);
+    }
   }
 }

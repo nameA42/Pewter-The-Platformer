@@ -1,6 +1,10 @@
 import "./style.css";
 import { LoadingScene } from "./phaser/loadingScene.ts";
 import { EditorScene } from "./phaser/editorScene.ts";
+import { sendSystemMessage } from "./languageModel/chatBox.ts";
+import { initializeTools } from "./languageModel/modelConnector.ts";
+
+initializeTools();
 // import { GravityTool } from "./languageModel/tools/gravityTool.ts";
 // import {
 //   initializeTools,
@@ -52,6 +56,9 @@ const gameInstance = new Phaser.Game({
   height: 720,
   parent: document.getElementById("phaser"),
   scene: [LoadingScene, EditorScene],
+  dom: {
+    createContainer: true, //This line enables DOM support for chatbox
+  },
 });
 
 export function getScene(): EditorScene {
@@ -59,3 +66,4 @@ export function getScene(): EditorScene {
   console.log(gameInstance.scene.getScene("editorScene"));
   return gameInstance.scene.getScene("editorScene") as EditorScene;
 }
+sendSystemMessage("Introduce yourself and explain what you can do.");

@@ -2,6 +2,7 @@ import Phaser from "phaser";
 
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
+  private SCALE = 1.0;
   private map!: Phaser.Tilemaps.Tilemap;
   private groundLayer!: Phaser.Tilemaps.TilemapLayer;
   private backgroundLayer!: Phaser.Tilemaps.TilemapLayer;
@@ -18,6 +19,15 @@ export class EditorScene extends Phaser.Scene {
   private scrollSpeed = 10; // pixels per second
 
   private selectedTileIndex = 0; // index of the tile to place
+
+  private isPlacing: boolean = false; // Place tile flag
+
+  //Box Properties
+  private highlightBox!: Phaser.GameObjects.Graphics;
+  private selectionBox!: Phaser.GameObjects.Graphics;
+  public selectionStart!: Phaser.Math.Vector2;
+  public selectionEnd!: Phaser.Math.Vector2;
+  private isSelecting: boolean = false;
 
   // keyboard controls
   private keyA!: Phaser.Input.Keyboard.Key;
@@ -66,7 +76,15 @@ export class EditorScene extends Phaser.Scene {
     this.cameras.main.setZoom(this.zoomLevel);
 
     // minimap
-    this.minimap = this.cameras.add(10, 10, this.map.widthInPixels * this.minimapZoom, this.map.heightInPixels * this.minimapZoom).setZoom(this.minimapZoom).setName("minimap");
+    this.minimap = this.cameras
+      .add(
+        10,
+        10,
+        this.map.widthInPixels * this.minimapZoom,
+        this.map.heightInPixels * this.minimapZoom,
+      )
+      .setZoom(this.minimapZoom)
+      .setName("minimap");
     this.minimap.setBackgroundColor(0x002244);
     this.minimap.setBounds(
       0,
@@ -109,8 +127,7 @@ export class EditorScene extends Phaser.Scene {
       },
     );
 
-    if (this.input.mouse)
-    {
+    if (this.input.mouse) {
       this.input.mouse.disableContextMenu();
     }
 
@@ -118,32 +135,49 @@ export class EditorScene extends Phaser.Scene {
     let isDragging = false;
     let dragStartPoint = new Phaser.Math.Vector2();
 
+    // highlight box
+    this.highlightBox = this.add.graphics();
+    this.highlightBox.setDepth(101); // Ensure it's on top of everything
+
+    // selection box
+    this.selectionBox = this.add.graphics();
+    this.selectionBox.setDepth(100); // Slightly under highlight box
+    this.input.on("pointermove", this.updateSelection, this);
+    this.input.on("pointerup", this.endSelection, this);
+
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-      if (pointer.middleButtonDown()) 
-      {
+      if (pointer.middleButtonDown()) {
         isDragging = true;
         dragStartPoint.set(pointer.x, pointer.y);
-      }
-      else if (pointer.leftButtonDown()) {
-        const tileX = Math.floor(pointer.worldX / this.TILE_SIZE);
-        const tileY = Math.floor(pointer.worldY / this.TILE_SIZE);
-        this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
-      }
-      else if (pointer.rightButtonDown()) {
-        this.selectedTileIndex = this.groundLayer.getTileAtWorldXY(pointer.worldX, pointer.worldY)?.index || 0;
+      } else if (pointer.leftButtonDown()) {
+        this.isPlacing = true;
+      } else if (pointer.rightButtonDown()) {
+        // Setup selection box
+        console.log(`Starting selection`);
+        this.startSelection(pointer);
+
+        this.selectedTileIndex =
+          this.groundLayer.getTileAtWorldXY(pointer.worldX, pointer.worldY)
+            ?.index || 0;
       }
     });
 
     this.input.on("pointerup", () => {
       isDragging = false;
+      this.isPlacing = false;
     });
 
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
+      // Setup pointer movement
+      this.highlightTile(pointer);
+
       if (!isDragging) return;
-      if (pointer.x >= this.cameras.main.width - this.scrollDeadzone 
-        || pointer.y >= this.cameras.main.height - this.scrollDeadzone 
-        || pointer.x <= this.scrollDeadzone 
-        || pointer.y <= this.scrollDeadzone) {
+      if (
+        pointer.x >= this.cameras.main.width - this.scrollDeadzone ||
+        pointer.y >= this.cameras.main.height - this.scrollDeadzone ||
+        pointer.x <= this.scrollDeadzone ||
+        pointer.y <= this.scrollDeadzone
+      ) {
         isDragging = false; // Stop dragging if pointer is outside the camera view
         console.warn("Pointer moved outside camera view, stopping drag.");
         return;
@@ -158,13 +192,19 @@ export class EditorScene extends Phaser.Scene {
       dragStartPoint.set(pointer.x, pointer.y);
     });
 
-    if(this.input.keyboard) {
+    if (this.input.keyboard) {
       this.keyA = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
       this.keyS = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
       this.keyD = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
       this.keyW = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
-      this.keyShift = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+      this.keyShift = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.SHIFT,
+      );
     }
+
+    //highlight box
+    this.highlightBox = this.add.graphics();
+    this.highlightBox.setDepth(101); // Ensure it's on top of everything
   }
 
   cameraMotion() {
@@ -209,10 +249,15 @@ export class EditorScene extends Phaser.Scene {
     const dotLength = 0.4;
     const dotWidth = 1.2;
 
-    const edgewidth = 2
+    const edgewidth = 2;
     // draw edge lines for minimap
     this.gridGraphics.lineStyle(edgewidth, 0xf00000, 1); // color and alpha
-    this.gridGraphics.strokeRect(startX - edgewidth, startY - edgewidth, endX - startX + edgewidth, endY - startY + edgewidth);
+    this.gridGraphics.strokeRect(
+      startX - edgewidth,
+      startY - edgewidth,
+      endX - startX + edgewidth,
+      endY - startY + edgewidth,
+    );
 
     // Vertical dotted lines
     for (let x = startX; x <= endX; x += this.TILE_SIZE) {
@@ -239,8 +284,17 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
-  placeTile(layer: Phaser.Tilemaps.TilemapLayer, x: number, y: number, tileIndex: number) {
-    tileIndex = Phaser.Math.Clamp(tileIndex, 1, layer.tilemap.tilesets[0].total - 1);
+  placeTile(
+    layer: Phaser.Tilemaps.TilemapLayer,
+    x: number,
+    y: number,
+    tileIndex: number,
+  ) {
+    tileIndex = Phaser.Math.Clamp(
+      tileIndex,
+      1,
+      layer.tilemap.tilesets[0].total - 1,
+    );
     console.log(`Placing tile at (${x}, ${y}) with index ${tileIndex}`);
     layer.putTileAt(tileIndex, x, y);
   }
@@ -248,5 +302,179 @@ export class EditorScene extends Phaser.Scene {
   update() {
     this.drawGrid();
     this.cameraMotion();
+
+    if (this.isPlacing) {
+      const pointer = this.input.activePointer;
+      const tileX = Math.floor(pointer.worldX / this.TILE_SIZE);
+      const tileY = Math.floor(pointer.worldY / this.TILE_SIZE);
+      this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
+    }
+  }
+
+  highlightTile(pointer: Phaser.Input.Pointer): void {
+    // Convert screen coordinates to tile coordinates
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const x: number = Math.floor(worldPoint.x / (16 * this.SCALE));
+    const y: number = Math.floor(worldPoint.y / (16 * this.SCALE));
+
+    // Only highlight if within map bounds
+    if (x >= 0 && x < 36 && y >= 0 && y < 20) {
+      this.drawHighlightBox(x, y, 0xff0000); // Red outline
+    } else {
+      // Clear highlight if out of bounds
+      this.highlightBox.clear();
+    }
+  }
+
+  drawHighlightBox(x: number, y: number, color: number): void {
+    // Clear any previous highlights
+    this.highlightBox.clear();
+
+    // Set the style for the highlight (e.g., semi-transparent yellow)
+    this.highlightBox.fillStyle(color, 0.5);
+    this.highlightBox.lineStyle(2, color, 1);
+
+    // Draw a rectangle around the hovered tile
+    this.highlightBox.strokeRect(
+      x * 16 * this.SCALE,
+      y * 16 * this.SCALE,
+      16 * this.SCALE,
+      16 * this.SCALE,
+    );
+
+    // Optionally, you can fill the tile with a semi-transparent color to highlight it
+    this.highlightBox.fillRect(
+      x * 16 * this.SCALE,
+      y * 16 * this.SCALE,
+      16 * this.SCALE,
+      16 * this.SCALE,
+    );
+  }
+
+  startSelection(pointer: Phaser.Input.Pointer): void {
+    // Convert screen coordinates to tile coordinates
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const x: number = Math.floor(worldPoint.x / (16 * this.SCALE));
+    const y: number = Math.floor(worldPoint.y / (16 * this.SCALE));
+
+    // Begin the selection
+    this.isSelecting = true;
+    this.selectionStart = new Phaser.Math.Vector2(x, y);
+    this.selectionEnd = new Phaser.Math.Vector2(x, y);
+    this.drawSelectionBox();
+  }
+
+  drawSelectionBox() {
+    this.selectionBox.clear();
+
+    if (!this.isSelecting) return;
+
+    // Calculate the bounds of the selection
+    const startX = Math.min(this.selectionStart.x, this.selectionEnd.x);
+    const startY = Math.min(this.selectionStart.y, this.selectionEnd.y);
+    const endX = Math.max(this.selectionStart.x, this.selectionEnd.x);
+    const endY = Math.max(this.selectionStart.y, this.selectionEnd.y);
+
+    const width = endX - startX + 1;
+    const height = endY - startY + 1;
+
+    // Draw a semi-transparent rectangle
+    this.selectionBox.fillStyle(0xff5555, 0.3);
+    this.selectionBox.fillRect(
+      startX * 16 * this.SCALE,
+      startY * 16 * this.SCALE,
+      (endX - startX + 1) * 16 * this.SCALE,
+      (endY - startY + 1) * 16 * this.SCALE,
+    );
+
+    // Draw a dashed border
+    this.selectionBox.lineStyle(2, 0xff5555, 1);
+    this.selectionBox.beginPath();
+    const dashLength = 8; // Length of each dash
+    const gapLength = 4; // Length of each gap
+
+    // Top border
+    for (let i = 0; i < width * 16 * this.SCALE; i += dashLength + gapLength) {
+      this.selectionBox.moveTo(
+        startX * 16 * this.SCALE + i,
+        startY * 16 * this.SCALE,
+      );
+      this.selectionBox.lineTo(
+        Math.min(
+          startX * 16 * this.SCALE + i + dashLength,
+          endX * 16 * this.SCALE + 16 * this.SCALE,
+        ),
+        startY * 16 * this.SCALE,
+      );
+    }
+
+    // Bottom border
+    for (let i = 0; i < width * 16 * this.SCALE; i += dashLength + gapLength) {
+      this.selectionBox.moveTo(
+        startX * 16 * this.SCALE + i,
+        endY * 16 * this.SCALE + 16 * this.SCALE,
+      );
+      this.selectionBox.lineTo(
+        Math.min(
+          startX * 16 * this.SCALE + i + dashLength,
+          endX * 16 * this.SCALE + 16 * this.SCALE,
+        ),
+        endY * 16 * this.SCALE + 16 * this.SCALE,
+      );
+    }
+
+    // Left border
+    for (let i = 0; i < height * 16 * this.SCALE; i += dashLength + gapLength) {
+      this.selectionBox.moveTo(
+        startX * 16 * this.SCALE,
+        startY * 16 * this.SCALE + i,
+      );
+      this.selectionBox.lineTo(
+        startX * 16 * this.SCALE,
+        Math.min(
+          startY * 16 * this.SCALE + i + dashLength,
+          endY * 16 * this.SCALE + 16 * this.SCALE,
+        ),
+      );
+    }
+
+    // Right border
+    for (let i = 0; i < height * 16 * this.SCALE; i += dashLength + gapLength) {
+      this.selectionBox.moveTo(
+        endX * 16 * this.SCALE + 16 * this.SCALE,
+        startY * 16 * this.SCALE + i,
+      );
+      this.selectionBox.lineTo(
+        endX * 16 * this.SCALE + 16 * this.SCALE,
+        Math.min(
+          startY * 16 * this.SCALE + i + dashLength,
+          endY * 16 * this.SCALE + 16 * this.SCALE,
+        ),
+      );
+    }
+
+    this.selectionBox.strokePath();
+  }
+
+  updateSelection(pointer: Phaser.Input.Pointer): void {
+    if (!this.isSelecting) return;
+
+    // Convert screen coordinates to tile coordinates
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const x: number = Math.floor(worldPoint.x / (16 * this.SCALE));
+    const y: number = Math.floor(worldPoint.y / (16 * this.SCALE));
+
+    // Clamp to map bounds
+    let clampedX: number = Phaser.Math.Clamp(x, 0, 36 - 1);
+    let clampedY: number = Phaser.Math.Clamp(y, 0, 20 - 1);
+
+    this.selectionEnd.set(clampedX, clampedY);
+    this.drawSelectionBox();
+  }
+
+  endSelection() {
+    if (!this.isSelecting) return;
+
+    this.isSelecting = false;
   }
 }

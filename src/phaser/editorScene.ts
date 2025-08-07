@@ -26,6 +26,7 @@ export class EditorScene extends Phaser.Scene {
   private keyW!: Phaser.Input.Keyboard.Key;
   private keyS!: Phaser.Input.Keyboard.Key;
   private keyShift!: Phaser.Input.Keyboard.Key;
+  private keyR!: Phaser.Input.Keyboard.Key;
 
   //Working code - Jason Cho
   private blocks: string[] = [];
@@ -171,26 +172,6 @@ export class EditorScene extends Phaser.Scene {
       this.keyW = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
       this.keyShift = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
     }
-  }
-
-  cameraMotion() {
-    const cam = this.cameras.main;
-    let scrollSpeed = this.scrollSpeed;
-    if (this.keyShift.isDown) {
-      scrollSpeed *= 4;
-    }
-    if (this.keyA.isDown) {
-      cam.scrollX -= scrollSpeed / cam.zoom;
-    }
-    if (this.keyD.isDown) {
-      cam.scrollX += scrollSpeed / cam.zoom;
-    }
-    if (this.keyW.isDown) {
-      cam.scrollY -= scrollSpeed / cam.zoom;
-    }
-    if (this.keyS.isDown) {
-      cam.scrollY += scrollSpeed / cam.zoom;
-    }
 
     //Working Code - Jason Cho
     
@@ -226,6 +207,39 @@ export class EditorScene extends Phaser.Scene {
     const placeBtn = this.createButton(300, 100, "Place Block", () => {
       this.placeBlock();
     });
+
+
+
+    //Temporary inputs
+    if (this.input.keyboard)
+    {
+      this.keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+    }
+    
+    this.keyR.on('down', () => {
+      console.log("placeTileRectangle()");
+      this.placeTileRectangle(this.groundLayer, 10, 3, 5, 8, 2);
+    })
+  }
+
+  cameraMotion() {
+    const cam = this.cameras.main;
+    let scrollSpeed = this.scrollSpeed;
+    if (this.keyShift.isDown) {
+      scrollSpeed *= 4;
+    }
+    if (this.keyA.isDown) {
+      cam.scrollX -= scrollSpeed / cam.zoom;
+    }
+    if (this.keyD.isDown) {
+      cam.scrollX += scrollSpeed / cam.zoom;
+    }
+    if (this.keyW.isDown) {
+      cam.scrollY -= scrollSpeed / cam.zoom;
+    }
+    if (this.keyS.isDown) {
+      cam.scrollY += scrollSpeed / cam.zoom;
+    }
   }
 
   //Working Code - Jason Cho (Helper functions)
@@ -320,6 +334,19 @@ export class EditorScene extends Phaser.Scene {
     tileIndex = Phaser.Math.Clamp(tileIndex, 1, layer.tilemap.tilesets[0].total - 1);
     console.log(`Placing tile at (${x}, ${y}) with index ${tileIndex}`);
     layer.putTileAt(tileIndex, x, y);
+  }
+
+  placeTileRectangle(layer: Phaser.Tilemaps.TilemapLayer, startX: number, startY: number, rows:number, columns:number, tileIndex: number) {
+    //temp variables
+    //tileIndex = 2;
+    //layer = this.groundLayer;
+
+
+    for (let i = 0; i < startX; i ++) {
+      for (let j = 0; j < startY; j ++) {
+        this.placeTile(layer, rows + i, columns + j, tileIndex);
+      }
+    }
   }
 
   update() {

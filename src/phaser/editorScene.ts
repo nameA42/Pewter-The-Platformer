@@ -22,6 +22,8 @@ export class EditorScene extends Phaser.Scene {
 
   private isPlacing: boolean = false; // Place tile flag
 
+  private selectedTiles: number[][] = []; // Selected Tiles
+
   //Box Properties
   private highlightBox!: Phaser.GameObjects.Graphics;
   private selectionBox!: Phaser.GameObjects.Graphics;
@@ -149,8 +151,23 @@ export class EditorScene extends Phaser.Scene {
       if (pointer.middleButtonDown()) {
         isDragging = true;
         dragStartPoint.set(pointer.x, pointer.y);
-      } else if (pointer.leftButtonDown()) {
+      } else if (pointer.leftButtonDown() && this.selectedTiles.length > 0) {
         this.isPlacing = true;
+        const worldPoint = this.cameras.main.getWorldPoint(
+          pointer.x,
+          pointer.y,
+        );
+        const pasteX = Math.floor(worldPoint.x / (16 * this.SCALE));
+        const pasteY = Math.floor(worldPoint.y / (16 * this.SCALE));
+
+        for (let y = 0; y < this.selectedTiles.length; y++) {
+          for (let x = 0; x < this.selectedTiles[y].length; x++) {
+            const tileIndex = this.selectedTiles[y][x];
+            if (tileIndex === -1) continue;
+
+            this.placeTile(this.groundLayer, pasteX + x, pasteY + y, tileIndex);
+          }
+        }
       } else if (pointer.rightButtonDown()) {
         // Setup selection box
         console.log(`Starting selection`);
@@ -476,5 +493,22 @@ export class EditorScene extends Phaser.Scene {
     if (!this.isSelecting) return;
 
     this.isSelecting = false;
+    this.selectedTiles = [];
+
+    const startX = Math.min(this.selectionStart.x, this.selectionEnd.x);
+    const startY = Math.min(this.selectionStart.y, this.selectionEnd.y);
+    const endX = Math.max(this.selectionStart.x, this.selectionEnd.x);
+    const endY = Math.max(this.selectionStart.y, this.selectionEnd.y);
+
+    for (let y = startY; y <= endY; y++) {
+      const row: number[] = [];
+      for (let x = startX; x <= endX; x++) {
+        const tile = this.groundLayer.getTileAt(x, y);
+        row.push(tile ? tile.index : -1);
+      }
+      this.selectedTiles.push(row);
+    }
+
+    console.log("Copied selection:", this.selectedTiles);
   }
 }

@@ -125,26 +125,6 @@ export class EditorScene extends Phaser.Scene {
     {
       this.input.mouse.disableContextMenu();
     }
-
-    // scrolling
-    let isDragging = false;
-    let dragStartPoint = new Phaser.Math.Vector2();
-
-    this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-      if (pointer.middleButtonDown()) 
-      {
-        isDragging = true;
-        dragStartPoint.set(pointer.x, pointer.y);
-      }
-      else if (pointer.leftButtonDown()) {
-        const tileX = Math.floor(pointer.worldX / this.TILE_SIZE);
-        const tileY = Math.floor(pointer.worldY / this.TILE_SIZE);
-        this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
-      }
-      else if (pointer.rightButtonDown()) {
-        this.selectedTileIndex = this.groundLayer.getTileAtWorldXY(pointer.worldX, pointer.worldY)?.index || 0;
-      }
-    });
     // scrolling + tile placement
     this.setupInput();
     // How to use it is to first press e which turns on the edit mode,
@@ -331,6 +311,11 @@ export class EditorScene extends Phaser.Scene {
       }
 
       if (pointer.leftButtonDown()) {
+        isDragging = true;
+        hasDragged = false;
+        dragStartPoint.set(pointer.x, pointer.y);
+      }
+      if (pointer.middleButtonDown()) {
         isDragging = true;
         hasDragged = false;
         dragStartPoint.set(pointer.x, pointer.y);

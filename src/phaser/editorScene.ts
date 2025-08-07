@@ -9,7 +9,7 @@ export class EditorScene extends Phaser.Scene {
 
   private minZoomLevel = 2.25;
   private maxZoomLevel = 10;
-  private zoomLevel = 2.25;
+  private zoomLevel = 2.25; 
 
 
   private minimap!: Phaser.Cameras.Scene2D.Camera;

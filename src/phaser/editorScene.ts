@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { placeTile } from "./placeTile.ts";
 
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
@@ -11,11 +12,16 @@ export class EditorScene extends Phaser.Scene {
   private maxZoomLevel = 10;
   private zoomLevel = 2.25;
 
-
   private minimap!: Phaser.Cameras.Scene2D.Camera;
   private minimapZoom = 0.15;
 
   private scrollDeadzone = 50; // pixels from the edge of the camera view to stop scrolling
+
+  private currentTileID = 1;
+
+  private placeTileKeys!: { [key: string]: Phaser.Input.Keyboard.Key };
+
+  private ghostTile!: Phaser.GameObjects.Image;
 
   constructor() {
     super({ key: "editorScene" });
@@ -53,7 +59,15 @@ export class EditorScene extends Phaser.Scene {
     this.cameras.main.setZoom(this.zoomLevel);
 
     // minimap
-    this.minimap = this.cameras.add(10, 10, this.map.widthInPixels * this.minimapZoom, this.map.heightInPixels * this.minimapZoom).setZoom(this.minimapZoom).setName("minimap");
+    this.minimap = this.cameras
+      .add(
+        10,
+        10,
+        this.map.widthInPixels * this.minimapZoom,
+        this.map.heightInPixels * this.minimapZoom,
+      )
+      .setZoom(this.minimapZoom)
+      .setName("minimap");
     this.minimap.setBackgroundColor(0x002244);
     this.minimap.setBounds(
       0,
@@ -112,10 +126,12 @@ export class EditorScene extends Phaser.Scene {
 
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
       if (!isDragging) return;
-      if (pointer.x >= this.cameras.main.width - this.scrollDeadzone 
-        || pointer.y >= this.cameras.main.height - this.scrollDeadzone 
-        || pointer.x <= this.scrollDeadzone 
-        || pointer.y <= this.scrollDeadzone) {
+      if (
+        pointer.x >= this.cameras.main.width - this.scrollDeadzone ||
+        pointer.y >= this.cameras.main.height - this.scrollDeadzone ||
+        pointer.x <= this.scrollDeadzone ||
+        pointer.y <= this.scrollDeadzone
+      ) {
         isDragging = false; // Stop dragging if pointer is outside the camera view
         console.warn("Pointer moved outside camera view, stopping drag.");
         return;
@@ -129,6 +145,23 @@ export class EditorScene extends Phaser.Scene {
 
       dragStartPoint.set(pointer.x, pointer.y);
     });
+
+    this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      placeTile(this.map, this.groundLayer, this.currentTileID, pointer);
+    });
+
+    this.placeTileKeys = this.input.keyboard!.addKeys({
+      erase: Phaser.Input.Keyboard.KeyCodes.ONE,
+      dirtBlock: Phaser.Input.Keyboard.KeyCodes.TWO,
+      platformBlock: Phaser.Input.Keyboard.KeyCodes.THREE,
+      itemBlock: Phaser.Input.Keyboard.KeyCodes.FOUR,
+    }) as { [key: string]: Phaser.Input.Keyboard.Key };
+
+    this.ghostTile = this.add
+      .image(0, 0, "spriteSheet", this.currentTileID)
+      .setAlpha(0.5)
+      .setOrigin(0)
+      .setDepth(40);
   }
 
   drawGrid() {
@@ -153,10 +186,15 @@ export class EditorScene extends Phaser.Scene {
     const dotLength = 0.4;
     const dotWidth = 1.2;
 
-    const edgewidth = 2
+    const edgewidth = 2;
     // draw edge lines for minimap
     this.gridGraphics.lineStyle(edgewidth, 0xf00000, 1); // color and alpha
-    this.gridGraphics.strokeRect(startX - edgewidth, startY - edgewidth, endX - startX + edgewidth, endY - startY + edgewidth);
+    this.gridGraphics.strokeRect(
+      startX - edgewidth,
+      startY - edgewidth,
+      endX - startX + edgewidth,
+      endY - startY + edgewidth,
+    );
 
     // Vertical dotted lines
     for (let x = startX; x <= endX; x += this.TILE_SIZE) {
@@ -185,5 +223,30 @@ export class EditorScene extends Phaser.Scene {
 
   update() {
     this.drawGrid();
+
+    if (this.placeTileKeys.erase.isDown) {
+      this.currentTileID = 1;
+    } else if (this.placeTileKeys.dirtBlock.isDown) {
+      this.currentTileID = 5;
+    } else if (this.placeTileKeys.platformBlock.isDown) {
+      this.currentTileID = 4;
+    } else if (this.placeTileKeys.itemBlock.isDown) {
+      this.currentTileID = 6;
+    }
+
+    let pointer = this.input.activePointer;
+
+    let tileX = this.map.worldToTileX(pointer.worldX);
+    let tileY = this.map.worldToTileY(pointer.worldY);
+
+    let worldX = this.map.tileToWorldX(tileX!);
+    let worldY = this.map.tileToWorldY(tileY!);
+
+    this.ghostTile.setPosition(worldX!, worldY!);
+
+    // Update the frame if the tile ID changes
+    if (Number(this.ghostTile.frame.name) !== this.currentTileID - 1) {
+      this.ghostTile.setFrame(this.currentTileID - 1);
+    }
   }
 }

@@ -30,6 +30,12 @@ export class EditorScene extends Phaser.Scene {
   public selectionStart!: Phaser.Math.Vector2;
   public selectionEnd!: Phaser.Math.Vector2;
   private isSelecting: boolean = false;
+  private selectionBounds: {
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+  } | null = null;
 
   // keyboard controls
   private keyA!: Phaser.Input.Keyboard.Key;
@@ -37,6 +43,9 @@ export class EditorScene extends Phaser.Scene {
   private keyW!: Phaser.Input.Keyboard.Key;
   private keyS!: Phaser.Input.Keyboard.Key;
   private keyShift!: Phaser.Input.Keyboard.Key;
+  private keyC!: Phaser.Input.Keyboard.Key;
+  private keyX!: Phaser.Input.Keyboard.Key;
+  private keyV!: Phaser.Input.Keyboard.Key;
 
   constructor() {
     super({ key: "editorScene" });
@@ -151,23 +160,18 @@ export class EditorScene extends Phaser.Scene {
       if (pointer.middleButtonDown()) {
         isDragging = true;
         dragStartPoint.set(pointer.x, pointer.y);
-      } else if (pointer.leftButtonDown() && this.selectedTiles.length > 0) {
+      } else if (pointer.leftButtonDown()) {
         this.isPlacing = true;
+        // Pasting the recently selected area of tiles
         const worldPoint = this.cameras.main.getWorldPoint(
           pointer.x,
           pointer.y,
         );
-        const pasteX = Math.floor(worldPoint.x / (16 * this.SCALE));
-        const pasteY = Math.floor(worldPoint.y / (16 * this.SCALE));
+        const tileX = Math.floor(worldPoint.x / (16 * this.SCALE));
+        const tileY = Math.floor(worldPoint.y / (16 * this.SCALE));
 
-        for (let y = 0; y < this.selectedTiles.length; y++) {
-          for (let x = 0; x < this.selectedTiles[y].length; x++) {
-            const tileIndex = this.selectedTiles[y][x];
-            if (tileIndex === -1) continue;
-
-            this.placeTile(this.groundLayer, pasteX + x, pasteY + y, tileIndex);
-          }
-        }
+        // Place the currently selected brush tile
+        this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
       } else if (pointer.rightButtonDown()) {
         // Setup selection box
         console.log(`Starting selection`);
@@ -217,6 +221,9 @@ export class EditorScene extends Phaser.Scene {
       this.keyShift = this.input.keyboard.addKey(
         Phaser.Input.Keyboard.KeyCodes.SHIFT,
       );
+      this.keyC = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.C);
+      this.keyX = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
+      this.keyV = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.V);
     }
 
     //highlight box
@@ -320,11 +327,24 @@ export class EditorScene extends Phaser.Scene {
     this.drawGrid();
     this.cameraMotion();
 
+    // Continuous Block Placement
     if (this.isPlacing) {
       const pointer = this.input.activePointer;
       const tileX = Math.floor(pointer.worldX / this.TILE_SIZE);
       const tileY = Math.floor(pointer.worldY / this.TILE_SIZE);
       this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this.keyC)) {
+      this.copySelection();
+      console.log("Copied selection");
+    } else if (Phaser.Input.Keyboard.JustDown(this.keyX)) {
+      this.cutSelection();
+      console.log("Cut selection");
+    } else if (Phaser.Input.Keyboard.JustDown(this.keyV)) {
+      const pointer = this.input.activePointer;
+      this.pasteSelection(pointer);
+      console.log("Pasted selection");
     }
   }
 
@@ -495,10 +515,21 @@ export class EditorScene extends Phaser.Scene {
     this.isSelecting = false;
     this.selectedTiles = [];
 
-    const startX = Math.min(this.selectionStart.x, this.selectionEnd.x);
-    const startY = Math.min(this.selectionStart.y, this.selectionEnd.y);
-    const endX = Math.max(this.selectionStart.x, this.selectionEnd.x);
-    const endY = Math.max(this.selectionStart.y, this.selectionEnd.y);
+    // Copying tiles from the selected region
+    this.selectionBounds = {
+      startX: Math.min(this.selectionStart.x, this.selectionEnd.x),
+      startY: Math.min(this.selectionStart.y, this.selectionEnd.y),
+      endX: Math.max(this.selectionStart.x, this.selectionEnd.x),
+      endY: Math.max(this.selectionStart.y, this.selectionEnd.y),
+    };
+  }
+
+  // Copy selection of tiles function
+  copySelection() {
+    if (!this.selectionBounds) return;
+
+    const { startX, startY, endX, endY } = this.selectionBounds;
+    this.selectedTiles = [];
 
     for (let y = startY; y <= endY; y++) {
       const row: number[] = [];
@@ -510,5 +541,37 @@ export class EditorScene extends Phaser.Scene {
     }
 
     console.log("Copied selection:", this.selectedTiles);
+  }
+
+  // Cutting selection of tiles function
+  cutSelection() {
+    this.copySelection();
+
+    if (!this.selectionBounds) return;
+    const { startX, startY, endX, endY } = this.selectionBounds;
+
+    for (let y = startY; y <= endY; y++) {
+      for (let x = startX; x <= endX; x++) {
+        this.placeTile(this.groundLayer, x, y, -1); // Remove tile
+      }
+    }
+  }
+
+  // Pasting selection of tiles function
+  pasteSelection(pointer: Phaser.Input.Pointer) {
+    if (this.selectedTiles.length === 0) return; // Nothing to paste
+
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const pasteX = Math.floor(worldPoint.x / (16 * this.SCALE));
+    const pasteY = Math.floor(worldPoint.y / (16 * this.SCALE));
+
+    for (let y = 0; y < this.selectedTiles.length; y++) {
+      for (let x = 0; x < this.selectedTiles[y].length; x++) {
+        const tileIndex = this.selectedTiles[y][x];
+        if (tileIndex === -1) continue; // Skip empty spots
+
+        this.placeTile(this.groundLayer, pasteX + x, pasteY + y, tileIndex);
+      }
+    }
   }
 }

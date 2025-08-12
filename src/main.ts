@@ -1,6 +1,12 @@
 import "./style.css";
 import { LoadingScene } from "./phaser/loadingScene.ts";
 import { EditorScene } from "./phaser/editorScene.ts";
+import {
+  initializeTools,
+  registerTool,
+} from "./languageModel/modelConnector.ts";
+import { WorldFactsTool } from "./languageModel/tools/worldFactsTools.ts";
+
 // import { GravityTool } from "./languageModel/tools/gravityTool.ts";
 // import {
 //   initializeTools,
@@ -23,6 +29,16 @@ import { EditorScene } from "./phaser/editorScene.ts";
 //     registerTool(generator.toolCall);
 //   }
 // });
+
+// === Initialize LLM tools ===
+try {
+  const worldFactsTool = new WorldFactsTool();
+  registerTool(worldFactsTool.toolCall);
+  initializeTools();
+  console.log("World Facts tool registered and tools initialized.");
+} catch (e) {
+  console.error("Failed to register/initialize tools:", e);
+}
 
 //Now that all tools are registered, we can send them to the LLM.
 // initializeTools();
@@ -53,6 +69,16 @@ const gameInstance = new Phaser.Game({
   parent: document.getElementById("phaser"),
   scene: [LoadingScene, EditorScene],
 });
+
+// === Initialize LLM tools ===
+try {
+  const worldFactsTool = new WorldFactsTool();
+  registerTool(worldFactsTool.toolCall);
+  initializeTools();
+  console.log("World Facts tool registered and tools initialized.");
+} catch (e) {
+  console.error("Failed to register/initialize tools:", e);
+}
 
 export function getScene(): EditorScene {
   if (!gameInstance) throw Error("Scene does not exist >:(");

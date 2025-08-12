@@ -1,5 +1,39 @@
-import { getChatResponse, initializeLLM } from "./modelConnector.ts";
+import {
+  getChatResponse,
+  initializeLLM,
+} from "../languageModel/modelConnector.ts";
+import { worldFacts } from "../worldFacts.ts";
 import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
+
+function processWorldFactsFromText(text: string): string[] {
+  // Matches: FACT: key = value
+  const regex = /^(?:\s*)FACT:\s*([A-Za-z0-9_\-\.]+)\s*=\s*(.+)$/gim;
+  let match: RegExpExecArray | null;
+  const saved: string[] = [];
+
+  while ((match = regex.exec(text)) !== null) {
+    const key = match[1];
+    const rawVal = match[2].trim();
+
+    // Try JSON first, then number, otherwise keep string
+    let value: unknown = rawVal;
+    try {
+      value = JSON.parse(rawVal);
+    } catch {
+      if (/^\d+(\.\d+)?$/.test(rawVal)) value = Number(rawVal);
+      else if (/^(true|false)$/i.test(rawVal)) value = /^true$/i.test(rawVal);
+      else if (/^".*"$/.test(rawVal) || /^'.*'$/.test(rawVal))
+        value = rawVal.slice(1, -1);
+    }
+
+    worldFacts.setFact(key, value);
+    saved.push(
+      `${key} = ${typeof value === "string" ? `"${value}"` : JSON.stringify(value)}`,
+    );
+  }
+
+  return saved;
+}
 
 const chatHistoryList: Element = document.querySelector("#chat-history")!;
 const chatInputField: HTMLInputElement =
@@ -39,6 +73,7 @@ document
           ),
         );
       } else {
+        processWorldFactsFromText(botResponseEntry);
         addChatMessage(new AIMessage(botResponseEntry));
       }
     } catch (exception) {
@@ -114,6 +149,7 @@ export async function sendSystemMessage(message: string): Promise<void> {
         ),
       );
     } else {
+      processWorldFactsFromText(botResponseEntry);
       addChatMessage(new AIMessage(botResponseEntry));
     }
   } catch (exception) {

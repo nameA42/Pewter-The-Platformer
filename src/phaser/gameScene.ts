@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { worldFacts } from "../worldFacts.ts";
 
 type VFX = {
   walking?: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -62,6 +63,16 @@ export class GameScene extends Phaser.Scene {
       this.map.heightInPixels,
     );
     this.physics.world.gravity.y = 1500;
+
+    // Apply world fact overrides if present
+    const gFact = worldFacts.getFact("gravity_y");
+    if (gFact && typeof (gFact as { value?: unknown }).value === "number") {
+      this.physics.world.gravity.y = (gFact as { value: number }).value;
+      console.log(
+        "Applied world fact gravity_y:",
+        (gFact as { value: number }).value,
+      );
+    }
 
     //Not actually coins but whatever
     const coins = this.map.createFromObjects("Objects", {
@@ -290,6 +301,8 @@ export class GameScene extends Phaser.Scene {
     const clampedZoom = Phaser.Math.Clamp(zoomLevel, 0, 10);
     this.gameScale = clampedZoom; // Store the zoom level
     this.cameras.main.setZoom(clampedZoom);
+    // Persist chosen zoom level as a fact for recall
+    worldFacts.setFact("zoom_level", clampedZoom, "Current camera zoom");
     return `Game is now zoomed to level ${clampedZoom}`;
   }
 }

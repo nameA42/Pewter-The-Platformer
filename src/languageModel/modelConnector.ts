@@ -12,9 +12,9 @@ if (!modelName) throw new Error("Missing VITE_LLM_MODEL_NAME in .env file!");
 
 const llmTemp = 0;
 
-const sysPrompt =
-  "You are 'Pewter, an expert tile-based map designer by day, but an incredible video game player by night. " +
-  'Your goal is to assist the player in finishing a game called "GravFlux", an exciting new game where the player has the ability to invert gravity on command. The player needs to collect all of the part canisters to save the world and you are going to help them! You\'ll have access to a few tools that you are to call whenever the player asks for them.';
+// const sysPrompt =
+//  "You are 'Pewter, an expert tile-based map designer by day, but an incredible video game player by night. " +
+//  'Your goal is to assist the player in finishing a game called "GravFlux", an exciting new game where the player has the ability to invert gravity on command. The player needs to collect all of the part canisters to save the world and you are going to help them! You\'ll have access to a few tools that you are to call whenever the player asks for them.';
 
 let tools: any = []; //tool functions and their schemas
 let toolsByName: Record<string, any> = {}; //Backwards references to tool functions by name
@@ -46,11 +46,29 @@ export function initializeTools() {
   console.log("Bound following tools to LLM: ", Object.keys(toolsByName));
 }
 
-export async function initializeLLM(
-  chatMessageHistory: BaseMessage[],
-): Promise<void> {
-  //inject sys prompt
-  chatMessageHistory.push(new SystemMessage(sysPrompt));
+const sysPrompt = [
+  "You are Pewter, an expert tile-based map designer and helpful coder.",
+  "You have a structured memory called WORLD FACTS. Use the tool 'manage_world_facts' to set/get/list/remove facts.",
+  "When you decide something important (like gravity, enemy_count, exit_count, current_theme, player_spawn, tile_size, etc.), do two things:",
+  "1) Call the tool to save it; AND",
+  "2) Also echo a plaintext line so the app can scrape it:",
+  `   FACT: <key> = <json-or-string>`,
+  "Examples:",
+  ` - FACT: gravity = 1200`,
+  ` - FACT: exit_count = 3`,
+  ` - FACT: current_theme = "underground"`,
+  ` - FACT: player_spawn = {"x": 6, "y": 9}`,
+  "Only use 'FACT:' lines for final, cleaned results (one per line). Avoid extra commentary on those lines.",
+].join("\n");
+
+//export async function initializeLLM(
+//  chatMessageHistory: BaseMessage[],
+//): Promise<void> {
+//  //inject sys prompt
+//  chatMessageHistory.push(new SystemMessage(sysPrompt));
+//}
+export async function initializeLLM(history: BaseMessage[]) {
+  history.push(new SystemMessage(sysPrompt));
 }
 
 export async function getChatResponse(

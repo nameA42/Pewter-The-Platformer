@@ -1,0 +1,162 @@
+import Phaser from "phaser";
+
+export class UIScene extends Phaser.Scene {
+
+  constructor() {
+    super({key : "UIScene"}); 
+  }
+
+  //Variables
+
+  //Data
+  private currentBlock: string = "";
+  private blocks: string[] = ["block1", "block2", "block3"]; 
+  //Registry (Global variables)
+  private setPointerOverUI = (v: boolean) => this.registry.set("uiPointerOver", v);
+
+  //UI
+  private panel!: Phaser.GameObjects.Container;
+  private buttons: Phaser.GameObjects.Text[] = [];
+
+  //Inputs
+  private keyR!: Phaser.Input.Keyboard.Key;
+
+  create() {
+    // Transparent background
+    //this.cameras.main.setBackgroundColor("rgba(0,0,0,0.3)");
+
+    // Build UI panel container
+    this.panel = this.add.container(160, 50);
+    this.panel.setDepth(1000);
+
+    //Variables
+    this.blocks = ["block1", "block2", "block3"]; //Add more blocks to see capabilities
+
+    //Input
+    const keys = [
+    Phaser.Input.Keyboard.KeyCodes.ONE,
+    Phaser.Input.Keyboard.KeyCodes.TWO,
+    Phaser.Input.Keyboard.KeyCodes.THREE,
+    ];
+    
+    //Event Input
+    keys.forEach((code, index) => {
+      const key = this.input.keyboard!.addKey(code);
+      key.on('down', () => {
+        this.changeBlock(this.blocks[index]);
+      });
+    });
+
+    // Buttons
+    const startX = 0;
+    const startY = 550;
+    const gap = 175;
+    this.buttons = [];
+
+    this.blocks.forEach((block, i) => {
+      const btn = this.createButton(startX + i * (24 + gap), startY, `Set ${block}`, () => this.emitSelect(block));
+      this.panel.add(btn);
+      this.buttons.push(btn);
+    });
+    
+    // Place Block button
+    const placeX = startX + this.blocks.length * (24 + gap) + gap;
+    const placeY = startY;
+    const placeBtn = this.createButton(placeX, placeY, "Place Block", () => this.game.events.emit("ui:placeRequested"));
+    this.panel.add(placeBtn);
+  }
+
+  //Working Code - Jason Cho (Helper functions)
+
+  //Change currentBlock to block
+  private changeBlock(block: string) {
+    this.currentBlock = block;
+    console.log("CurrentBlock changed to:", this.currentBlock);
+  }
+
+  //Placeholder for placing a block
+  private placeBlock() {
+    console.log("Placing block:", this.currentBlock);
+    // Add actual placement logic here later
+  }
+
+  // Return a Container [bg + label], but attach interactivity to the bg rectangle.
+  private createButton(
+    x: number,
+    y: number,
+    label: string,
+    onClick: () => void,
+    opts?: {
+      paddingX?: number; paddingY?: number;
+      strokeWidth?: number; stroke?: number;
+      fill?: number; hoverFill?: number; downFill?: number;
+      textColor?: string; fontSize?: number;
+      fixedWidth?: number; minHeight?: number;
+    }
+  ): Phaser.GameObjects.Container {
+    const paddingX  = opts?.paddingX  ?? 14;
+    const paddingY  = opts?.paddingY  ?? 8;
+    const strokeW   = opts?.strokeWidth ?? 2;
+    const stroke    = opts?.stroke    ?? 0x000000;
+    const fill      = opts?.fill      ?? 0xffffff;
+    const hoverFill = opts?.hoverFill ?? 0xeeeeee;
+    const downFill  = opts?.downFill  ?? 0xdddddd;
+    const fontSize  = opts?.fontSize  ?? 25;
+    const textColor = opts?.textColor ?? "#111111";
+
+    // Label
+    const txt = this.add.text(0, 0, label, {
+      fontSize: `${fontSize}px`,
+      color: textColor,
+    }).setOrigin(0.5);
+
+    // Size
+    const w = Math.max(opts?.fixedWidth ?? (Math.ceil(txt.width) + paddingX * 2), 48);
+    const h = Math.max(opts?.minHeight ?? (Math.ceil(txt.height) + paddingY * 2), 28);
+
+    // Background with real border — make THIS the interactive thing
+    const bg = this.add.rectangle(0, 0, w, h, fill)
+      .setOrigin(0.5)
+      .setStrokeStyle(strokeW, stroke)
+      .setInteractive({ useHandCursor: true }); // attach events to bg
+
+    // Container groups them (so you can add to panel)
+    const btn = this.add.container(x, y, [bg, txt])
+      .setSize(w, h);
+
+    // ----- States -----
+    bg.on("pointerover", () => {
+      bg.setFillStyle(hoverFill);
+      this.setPointerOverUI?.(true);     // if you added this helper
+    });
+
+    bg.on("pointerout", () => {
+      bg.setFillStyle(fill);
+      this.setPointerOverUI?.(false);
+    });
+
+    bg.on("pointerdown", () => {
+      bg.setFillStyle(downFill);
+    });
+
+    // Fire only on release *inside*; also handle outside release to reset color
+    bg.on("pointerup", () => {
+      bg.setFillStyle(hoverFill);
+      onClick();
+    });
+
+    bg.on("pointerupoutside", () => {
+      // released outside: revert to normal, don't click
+      bg.setFillStyle(fill);
+    });
+
+    return btn;
+  }
+
+
+  
+  private emitSelect(block: string) {
+    this.game.events.emit("ui:selectBlock", block);
+  }
+
+}

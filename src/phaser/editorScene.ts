@@ -1,3 +1,24 @@
+/* Jason Cho Changelog
+
+TODO:
+1. Make a UIScene that runs parallel to the editorScene 
+  - UI will follow camera scrolling
+  1.1: Make editor and uiScene communicate
+  1.2: Handle anchoring
+  1.3: Created a registry variable 'uiPointerOver'
+
+2. Make buttons look nice
+  2.1: Buttons have borders and are the interactive element
+  2.2: Buttons detect if they are hovered over 
+
+3. Make buttons work with placeTile
+
+
+
+*/
+
+
+
 import Phaser from "phaser";
 
 export class EditorScene extends Phaser.Scene {
@@ -26,12 +47,6 @@ export class EditorScene extends Phaser.Scene {
   private keyW!: Phaser.Input.Keyboard.Key;
   private keyS!: Phaser.Input.Keyboard.Key;
   private keyShift!: Phaser.Input.Keyboard.Key;
-  private keyR!: Phaser.Input.Keyboard.Key;
-
-  //Working code - Jason Cho
-  private blocks: string[] = [];
-  private currentBlock: string = "";
-  private buttons: Phaser.GameObjects.Text[] = [];
 
   constructor() {
     super({ key: "editorScene" });
@@ -175,51 +190,12 @@ export class EditorScene extends Phaser.Scene {
 
     //Working Code - Jason Cho
     
-    //Variables
-    this.blocks = ["block1", "block2", "block3"]; //Add more blocks to see capabilities
-    //Input
-    const keys = [
-    Phaser.Input.Keyboard.KeyCodes.ONE,
-    Phaser.Input.Keyboard.KeyCodes.TWO,
-    Phaser.Input.Keyboard.KeyCodes.THREE,
-    ];
+    //UI Scene setup
+    this.scene.launch("UIScene");
+    this.scene.bringToTop("UIScene");
+
+    //TODO: handle UI -> Editor communication
     
-    //Event Input
-    keys.forEach((code, index) => {
-      const key = this.input.keyboard!.addKey(code);
-      key.on('down', () => {
-        this.changeBlock(this.blocks[index]);
-      });
-    });
-
-    //Store reference for future use
-    this.buttons = [];
-
-    //Create buttons
-    this.blocks.forEach((block, index) => {
-      const btn = this.createButton(100, 100 + index * 40, `Set ${block}`, () => {
-        this.changeBlock(block);
-      });
-      this.buttons.push(btn); //Store reference
-    });
-    
-    //Button for placement
-    const placeBtn = this.createButton(300, 100, "Place Block", () => {
-      this.placeBlock();
-    });
-
-
-
-    //Temporary inputs
-    if (this.input.keyboard)
-    {
-      this.keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
-    }
-    
-    this.keyR.on('down', () => {
-      console.log("placeTileRectangle()");
-      this.placeTileRectangle(this.groundLayer, 10, 3, 5, 8, 2);
-    })
   }
 
   cameraMotion() {
@@ -242,40 +218,6 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
-  //Working Code - Jason Cho (Helper functions)
-
-  //Change currentBlock to block
-  private changeBlock(block: string) {
-    this.currentBlock = block;
-    console.log("CurrentBlock changed to:", this.currentBlock);
-  }
-
-  //Placeholder for placing a block
-  private placeBlock() {
-    console.log("Placing block:", this.currentBlock);
-    // Add actual placement logic here later
-  }
-
-  //Creates a button 
-  private createButton(
-    x: number,
-    y: number,
-    label: string,
-    callback: () => void
-  ): Phaser.GameObjects.Text {
-    const btn = this.add.text(x, y, label, {
-      fontSize: '12px',
-      color: '#000000',
-      backgroundColor: '#ffffff',
-      padding: { x: 20, y: 10 },
-      align: 'center'
-    })
-      .setOrigin(0.5)
-      .setInteractive();
-
-    btn.on('pointerdown', callback);
-    return btn;
-  }
   
 
   drawGrid() {
@@ -336,18 +278,6 @@ export class EditorScene extends Phaser.Scene {
     layer.putTileAt(tileIndex, x, y);
   }
 
-  placeTileRectangle(layer: Phaser.Tilemaps.TilemapLayer, startX: number, startY: number, rows:number, columns:number, tileIndex: number) {
-    //temp variables
-    //tileIndex = 2;
-    //layer = this.groundLayer;
-
-
-    for (let i = 0; i < startX; i ++) {
-      for (let j = 0; j < startY; j ++) {
-        this.placeTile(layer, rows + i, columns + j, tileIndex);
-      }
-    }
-  }
 
   update() {
     this.drawGrid();

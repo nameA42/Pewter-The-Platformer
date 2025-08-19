@@ -1,6 +1,8 @@
 import "./style.css";
 import { LoadingScene } from "./phaser/loadingScene.ts";
 import { EditorScene } from "./phaser/editorScene.ts";
+import { UIScene } from './phaser/uiScene.ts';
+
 // import { GravityTool } from "./languageModel/tools/gravityTool.ts";
 // import {
 //   initializeTools,
@@ -51,7 +53,7 @@ const gameInstance = new Phaser.Game({
   width: 1280,
   height: 720,
   parent: document.getElementById("phaser"),
-  scene: [LoadingScene, EditorScene],
+  scene: [LoadingScene, EditorScene, UIScene],
 });
 
 export function getScene(): EditorScene {

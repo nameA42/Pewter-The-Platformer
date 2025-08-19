@@ -29,6 +29,14 @@ export class GameScene extends Phaser.Scene {
   private player!: PlayerSprite;
   private editorButton!: Phaser.GameObjects.Text;
 
+  private readonly PLAYER_SPEED = 400;   // Player run speed
+  private readonly JUMP_VELOCITY = -550; // Player jump height
+  private readonly ACCELERATION = 1500;  // Rate the player gets to max speed
+  private readonly FRICTION = 1200;      // Rate the player slows down
+  private readonly AIR_CONTROL = 0.8;    // % of ground control while in the air
+
+  private isJumpPressed = false;
+
   constructor() {
     super({ key: "GameScene" });
   }
@@ -156,6 +164,9 @@ export class GameScene extends Phaser.Scene {
     this.player.setCollideWorldBounds(false);
     this.player.isFalling = false;
 
+    this.player.setDrag(0, 0);
+    this.player.setMaxVelocity(this.PLAYER_SPEED * 1.2, 800);
+
     // this.cameras.main.centerOn(this.player.x, this.player.y);
     console.log('Player created at:', this.player.x, this.player.y);
     console.log('Player visible:', this.player.visible);
@@ -280,30 +291,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   update() {
-    /* background
-    if (this.player.y > this.map.heightInPixels || this.player.y < 20)
-      this.scene.restart();
-    if (this.collectedItems === 10) this.scene.restart();
-
-    if (this.player.body.blocked.down && this.player.isFalling) {
-      this.sound.play("landAudio");
-      this.player.isFalling = false;
-    }
-    */
-   
-    // updating background and midground
-    // this.background.tilePositionX = this.cameras.main.scrollX * 0.01;
-    // this.midground.tilePositionX = this.cameras.main.scrollX * 0.05;
-    if (this.cursors.left.isDown || this.wasd.A.isDown) {
-        this.handlePlayerMovement(0, 5); // Move left
-    } else if (this.cursors.right.isDown || this.wasd.D.isDown) {
-        this.handlePlayerMovement(2, 5); // Move right
-    } else if (this.cursors.up.isDown || this.wasd.W.isDown) {
-        this.handlePlayerMovement(1, 10); // Jump
-    } else {
-        this.handlePlayerMovement(); // Idle
-    }
-    
+    this.handlePlayerMovement();
     this.updateTextPosition();
 
     // update the edit button's position to the camera
@@ -315,62 +303,106 @@ export class GameScene extends Phaser.Scene {
   }
   
 
-  /**
-   * Moves the player in a given direction with a given force.
-   * @param direction 0: left, 1: up (jump), 2: right
-   * @param force The force/distance to apply in the given direction
-   */
-  handlePlayerMovement(direction?: number, force?: number) {
-    const p = this.player;
 
-    // Only act if direction and force are provided
-    if (typeof direction === "number" && typeof force === "number") {
-      let dx = 0,
-        dy = 0;
-      if (direction === 0)
-        dx = -force * 20; // left
-      else if (direction === 2)
-        dx = force * 20; // right
-      else if (direction === 1) dy = -force * 30; // up (jump)
+  
+  private handlePlayerMovement() {
+    const player = this.player;
+    const body = player.body;
+    const onGround = body.blocked.down;
 
-      // Stop any existing tweens on the player
-      this.tweens.killTweensOf(p);
+    let velocityX = body.velocity.x;
+    let velocityY = body.velocity.y;
 
-      if (direction === 0 || direction === 2) {
-        // Horizontal movement via tween for fixed distance
-        // p.anims.play("walk", true);
-        p.setFlip(direction === 2, this.isUpDown);
-        // this.startWalkingVFX();
-        this.tweens.add({
-          targets: p,
-          x: p.x + dx,
-          duration: 200,
-          onComplete: () => {
-            p.setVelocityX(0);
-            // p.anims.play("idle");
-            // this.vfx.walking?.stop();
-          },
-        });
-      } else if (direction === 1) {
-        // Jump (vertical movement)
-        if (p.body.blocked.down || p.body.blocked.up) {
-          p.setVelocityY(-Math.abs(force) * 60);
-          // this.sound.play("jumpAudio");
-          // this.startJumpVFX();
+    let moveInput = 0;
+
+    if (this.cursors.left.isDown || this.wasd.A.isDown) {
+      moveInput = -1;
+      player.setFlipX(true);
+    } else if (this.cursors.right.isDown || this.wasd.D.isDown) {
+      moveInput = 1;
+      player.setFlipX(false);
+    }
+
+    if (moveInput !== 0) {
+      const acceleration = onGround ? this.ACCELERATION : this.ACCELERATION * this.AIR_CONTROL;
+      const targetVelocity = moveInput * this.PLAYER_SPEED;
+
+      if (Math.abs(velocityX - targetVelocity) > 5) {
+        velocityX += (targetVelocity - velocityX) * (acceleration / 1000) * (1/60);
+        velocityX = Phaser.Math.Clamp(velocityX, -this.PLAYER_SPEED, this.PLAYER_SPEED);
+      } else {
+        velocityX = targetVelocity;
+      }
+      
+      // Walking effects
+      if (onGround) {
+        this.startWalkingVFX();
+      }
+
+    } else {
+      // No horizontal input - apply friction
+      if (onGround) {
+        // Strong friction on ground
+        const frictionForce = this.FRICTION * (1/60); // 60fps assumption
+        if (Math.abs(velocityX) > frictionForce) {
+          velocityX -= Math.sign(velocityX) * frictionForce;
+        } else {
+          velocityX = 0; // Stop completely when velocity is small
+        }
+      } else {
+        // Less friction in air
+        const airFriction = this.FRICTION * 0.3 * (1/60);
+        if (Math.abs(velocityX) > airFriction) {
+          velocityX -= Math.sign(velocityX) * airFriction;
+        } else {
+          velocityX = 0;
         }
       }
-    } else {
-      // No movement input, play idle
-      // p.anims.play("idle");
-      // this.vfx.walking?.stop();
+      
+      // Stop walking effects
+      if (this.vfx.walking) {
+        this.vfx.walking.stop();
+      }
+    
+    }
+    const jumpPressed = this.cursors.up.isDown || this.wasd.W.isDown;
+    
+    if (jumpPressed && !this.isJumpPressed && onGround) {
+      // Start jump
+      velocityY = this.JUMP_VELOCITY;
+      this.isJumpPressed = true;
+      player.isFalling = false;
+      
+      this.startJumpVFX();
+    } else if (!jumpPressed && this.isJumpPressed && velocityY < -50) {
+      // Jump button released early - cut jump short
+      velocityY *= 0.4;
+    }
+    
+    // Track jump button state
+    if (!jumpPressed) {
+      this.isJumpPressed = false;
     }
 
-    // Handle jump/fall animation state
-    if (!p.body.blocked.down && !p.body.blocked.up) {
-      // p.anims.play("jump");
-      p.isFalling = true;
+    // === APPLY VELOCITIES ===
+    player.setVelocity(velocityX, velocityY);
+
+    // === HANDLE LANDING ===
+    if (onGround && player.isFalling) {
+      player.isFalling = false;
+    } else if (!onGround && velocityY > 0) {
+      player.isFalling = true;
+    }
+
+    // === RESET IF FALLEN OFF WORLD ===
+    if (player.y > this.map.heightInPixels + 100) {
+      // Reset player position or restart scene
+      player.setPosition(100, 150);
+      player.setVelocity(0, 0);
     }
   }
+
+  
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: any;
@@ -380,8 +412,11 @@ export class GameScene extends Phaser.Scene {
     const { x, y } = this.getPlayerFootPos();
     this.vfx.walking.startFollow(this.player, x, y, false);
     this.vfx.walking.setParticleSpeed(this.particleVelocity, 0);
-    if (this.player.body.blocked.down || this.player.body.blocked.up)
+
+    if (this.player.body.blocked.down) {
       this.vfx.walking.start();
+    }
+    
   }
 
   private startJumpVFX() {

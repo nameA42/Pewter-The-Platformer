@@ -189,6 +189,13 @@ export class EditorScene extends Phaser.Scene {
         this.chatBox.setVisible(isChatVisible);
       }
     });
+
+    
+    // scrolling
+    let isDragging = false;
+    let dragStartPoint = new Phaser.Math.Vector2();
+
+
     // highlight box
     this.highlightBox = this.add.graphics();
     this.highlightBox.setDepth(101); // Ensure it's on top of everything

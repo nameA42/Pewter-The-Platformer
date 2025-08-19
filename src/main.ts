@@ -3,6 +3,7 @@ import { LoadingScene } from "./phaser/loadingScene.ts";
 import { EditorScene } from "./phaser/editorScene.ts";
 import { sendSystemMessage } from "./languageModel/chatBox.ts";
 import { initializeTools } from "./languageModel/modelConnector.ts";
+import { GameScene } from "./phaser/gameScene.ts";
 
 initializeTools();
 // import { GravityTool } from "./languageModel/tools/gravityTool.ts";
@@ -55,7 +56,7 @@ const gameInstance = new Phaser.Game({
   width: 1280,
   height: 720,
   parent: document.getElementById("phaser"),
-  scene: [LoadingScene, EditorScene],
+  scene: [LoadingScene, EditorScene, GameScene],
   dom: {
     createContainer: true, //This line enables DOM support for chatbox
   },

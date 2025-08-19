@@ -6,6 +6,8 @@ export class EditorScene extends Phaser.Scene {
   private groundLayer!: Phaser.Tilemaps.TilemapLayer;
   private backgroundLayer!: Phaser.Tilemaps.TilemapLayer;
   private gridGraphics!: Phaser.GameObjects.Graphics;
+  private playButton!: Phaser.GameObjects.Text;
+
   private minZoomLevel = 2.25;
   private maxZoomLevel = 10;
   private zoomLevel = 2.25;
@@ -176,6 +178,7 @@ export class EditorScene extends Phaser.Scene {
       this.keyW = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
       this.keyShift = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
     }
+    this.createPlayButton();
   }
 
   cameraMotion() {
@@ -222,6 +225,8 @@ export class EditorScene extends Phaser.Scene {
     this.chatBox.setVisible(true);
     const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
     input.focus();
+    // play button
+
   }
 
   drawGrid() {
@@ -280,16 +285,48 @@ export class EditorScene extends Phaser.Scene {
       }
     }
   }
-
+  
   placeTile(layer: Phaser.Tilemaps.TilemapLayer, x: number, y: number, tileIndex: number) {
     tileIndex = Phaser.Math.Clamp(tileIndex, 1, layer.tilemap.tilesets[0].total - 1);
     console.log(`Placing tile at (${x}, ${y}) with index ${tileIndex}`);
     layer.putTileAt(tileIndex, x, y);
   }
 
+  // play button
+  private createPlayButton() {
+
+    const button = this.add.text(100, 100, 'Play', {
+      fontSize:'24px',
+      color: '#ffffff',
+      backgroundColor: '#1a1a1a',
+      padding: { x: 15, y: 10 },
+    })
+    .setDepth(100)
+    .setInteractive()
+    .on('pointerdown', () => {
+      console.log('Play button clicked!');
+      this.scene.start('GameScene');
+    })
+    .on('pointerover', () => {
+      button.setStyle({ backgroundColor: '#127803' });
+    })
+    .on('pointerout', () => {
+      button.setStyle({ backgroundColor: '#1a1a1a' });
+    });
+    
+    this.minimap.ignore(button); // stops the button from apearing in the mini map
+    this.playButton = button;
+  }
+
   update() {
     this.drawGrid();
     this.cameraMotion();
+        // update the play button's position to the camera
+    if (this.playButton) {
+      const cam = this.cameras.main;
+      this.playButton.x = cam.worldView.x + cam.worldView.width - 550;
+      this.playButton.y = cam.worldView.y + 250;
+    }
   }
   setupInput() {
     // Keep your existing zoom functionality unchanged

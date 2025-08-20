@@ -355,7 +355,7 @@ export class EditorScene extends Phaser.Scene {
     const y: number = Math.floor(worldPoint.y / (16 * this.SCALE));
 
     // Only highlight if within map bounds
-    if (x >= 0 && x < 36 && y >= 0 && y < 20) {
+    if (x >= 0 && x < this.map.width && y >= 0 && y < this.map.height) {
       this.drawHighlightBox(x, y, 0xff0000); // Red outline
     } else {
       // Clear highlight if out of bounds
@@ -502,8 +502,11 @@ export class EditorScene extends Phaser.Scene {
     const y: number = Math.floor(worldPoint.y / (16 * this.SCALE));
 
     // Clamp to map bounds
-    let clampedX: number = Phaser.Math.Clamp(x, 0, 36 - 1);
-    let clampedY: number = Phaser.Math.Clamp(y, 0, 20 - 1);
+    const mapWidth = this.map.width; // tiles across
+    const mapHeight = this.map.height; // tiles down
+
+    let clampedX: number = Phaser.Math.Clamp(x, 0, mapWidth - 1);
+    let clampedY: number = Phaser.Math.Clamp(y, 0, mapHeight - 1);
 
     this.selectionEnd.set(clampedX, clampedY);
     this.drawSelectionBox();

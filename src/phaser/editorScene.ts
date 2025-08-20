@@ -20,7 +20,7 @@ export class EditorScene extends Phaser.Scene {
   private scrollSpeed = 10; // pixels per second
 
   private selectedTileIndex = 0; // index of the tile to place
-
+  private isTyping = false;
   // keyboard controls
   private keyA!: Phaser.Input.Keyboard.Key;
   private keyD!: Phaser.Input.Keyboard.Key;
@@ -134,7 +134,7 @@ export class EditorScene extends Phaser.Scene {
     // make sure to not be moving the mouse too fast or it will not register and not place the tile.
 
     // Create hidden chatbox
-    this.chatBox = this.add.dom(1600, 1400).createFromHTML(`
+this.chatBox = this.add.dom(1600, 1400).createFromHTML(`
   <div id="chatbox" style="
     width: 1400px;
     height: 1420px;
@@ -149,7 +149,20 @@ export class EditorScene extends Phaser.Scene {
     justify-content: space-between;
     box-shadow: 0 0 8px rgba(0,0,0,0.6);
   ">
+    <div id="chat-header" style="
+      height: 100px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      font-size: 60px;
+      opacity: 0.8;
+      cursor: move;
+      user-select: none;
+      -webkit-user-select: none;
+    ">☰ Drag</div>
+
     <div id="chat-log" style="flex-grow: 1; overflow-y: auto; font-size: 70px; line-height: 1.5;"></div>
+
     <input id="chat-input" type="text" placeholder="Type a command..." style="
       margin-top: 16px;
       padding: 14px;
@@ -159,59 +172,156 @@ export class EditorScene extends Phaser.Scene {
     " />
   </div>
 `);
-    this.chatBox.setVisible(true);
-    let isChatVisible = true;
 
-    window.addEventListener("keydown", (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === "c") {
-        isChatVisible = !isChatVisible;
-        this.chatBox.setVisible(isChatVisible);
-      }
-    });
+this.chatBox.setVisible(true);
+let isChatVisible = true;
 
-    if(this.input.keyboard) {
-      this.keyA = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
-      this.keyS = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
-      this.keyD = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
-      this.keyW = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
-      this.keyShift = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
-    }
+const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
+const log = this.chatBox.getChildByID("chat-log") as HTMLDivElement;
+
+this.chatBox.setScrollFactor(0).setDepth(10000).setOrigin(0, 0);
+
+const header = (this.chatBox.getChildByID("chat-header") as HTMLElement);
+const root   = this.chatBox.node as HTMLElement;
+
+// Drag state
+let dragging = false;
+let startCssX = 0, startCssY = 0;
+let startBoxX = this.chatBox.x, startBoxY = this.chatBox.y;
+let convX = 1, convY = 1;
+// Convert CSS px → game units using actual canvas scale
+const cssToGame = () => {
+  const rect = this.game.canvas.getBoundingClientRect();
+  const sx = rect.width  / this.scale.width  || 1;
+  const sy = rect.height / this.scale.height || 1;
+  return { sx, sy };
+};
+
+const onDragStart = (ev: MouseEvent | TouchEvent) => {
+  // Only start when clicking the header
+  dragging = true;
+  const p = ev instanceof TouchEvent ? (ev.touches[0] ?? ev.changedTouches[0]) : (ev as MouseEvent);
+  startCssX = p.clientX;
+  startCssY = p.clientY;
+  startBoxX = this.chatBox.x;
+  startBoxY = this.chatBox.y;
+
+  // Cache CSS->game conversion once per drag (accounts for canvas CSS scale)
+  const rect = this.game.canvas.getBoundingClientRect();
+  convX = (this.scale.width  / rect.width)  || 1; // multiply CSS delta by this
+  convY = (this.scale.height / rect.height) || 1;
+
+  root.style.userSelect = "none";
+  ev.stopPropagation();
+  ev.preventDefault();
+};
+
+const onDragMove = (ev: MouseEvent | TouchEvent) => {
+  if (!dragging) return;
+  const p = ev instanceof TouchEvent ? (ev.touches[0] ?? ev.changedTouches[0]) : (ev as MouseEvent);
+
+  // Tune to taste (1.5–3.0 feels good)
+  const DRAG_MULTIPLIER = 6;
+  const boost = (p instanceof MouseEvent && p.shiftKey) ? 2.5 : 1; // optional Shift turbo
+
+  // Use cached conversion + multiplier
+  const dx = (p.clientX - startCssX) * convX * DRAG_MULTIPLIER * boost;
+  const dy = (p.clientY - startCssY) * convY * DRAG_MULTIPLIER * boost;
+
+  this.chatBox.setPosition(startBoxX + dx, startBoxY + dy);
+  ev.stopPropagation();
+  ev.preventDefault();
+};
+
+const onDragEnd = () => {
+  if (!dragging) return;
+  dragging = false;
+  root.style.userSelect = "";
+};
+
+header.addEventListener("mousedown", onDragStart);
+window.addEventListener("mousemove", onDragMove);
+window.addEventListener("mouseup", onDragEnd);
+
+header.addEventListener("touchstart", onDragStart, { passive: false });
+window.addEventListener("touchmove", onDragMove, { passive: false });
+window.addEventListener("touchend", onDragEnd);
+
+// Track focus to mute game controls while typing
+input.addEventListener("focus", () => {
+  this.isTyping = true;
+  if (this.input.keyboard) this.input.keyboard.enabled = false;
+});
+input.addEventListener("blur", () => {
+  this.isTyping = false;
+  if (this.input.keyboard) this.input.keyboard.enabled = true;
+});
+// Handle typing in the chatbox only once
+input.addEventListener("keydown", async (e: KeyboardEvent) => {
+  // Escape toggles chat when focused
+  if (e.key === "Escape" || e.key === "Esc") {
+    isChatVisible = !isChatVisible;
+    this.chatBox.setVisible(isChatVisible);
+    if (isChatVisible) setTimeout(() => input.focus(), 0);
+    else input.blur();
+    e.stopPropagation();
+    e.preventDefault(); // only prevent default for Escape
+    return;
   }
 
-  cameraMotion() {
-    const cam = this.cameras.main;
-    let scrollSpeed = this.scrollSpeed;
-    if (this.keyShift.isDown) {
-      scrollSpeed *= 4;
-    }
-    if (this.keyA.isDown) {
-      cam.scrollX -= scrollSpeed / cam.zoom;
-    }
-    if (this.keyD.isDown) {
-      cam.scrollX += scrollSpeed / cam.zoom;
-    }
-    if (this.keyW.isDown) {
-      cam.scrollY -= scrollSpeed / cam.zoom;
-    }
-    if (this.keyS.isDown) {
-      cam.scrollY += scrollSpeed / cam.zoom;
-    }
-    const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
-    const log = this.chatBox.getChildByID("chat-log") as HTMLDivElement;
+  // Enter sends the message
+  if (e.key === "Enter") {
+    const msg = input.value.trim();
+    if (!msg) { e.stopPropagation(); e.preventDefault(); return; }
 
-    input.addEventListener("keydown", async (e: KeyboardEvent) => {
-      if (e.key === "Enter") {
-        const msg = input.value.trim();
-        if (!msg) return;
+    input.value = "";
+    log.innerHTML += `<p><strong>You:</strong> ${msg}</p>`;
+    const reply = await this.sendToGemini(msg);
+    log.innerHTML += `<p><strong>Pewter:</strong> ${reply}</p>`;
+    log.scrollTop = log.scrollHeight;
 
-        input.value = "";
-        log.innerHTML += `<p><strong>You:</strong> ${msg}</p>`;
-        const reply = await this.sendToGemini(msg);
-        log.innerHTML += `<p><strong>Pewter:</strong> ${reply}</p>`;
-        log.scrollTop = log.scrollHeight;
-      }
-    });
+    e.stopPropagation();
+    e.preventDefault(); // only prevent default for Enter
+    return;
   }
+
+  // Allow normal typing for all other keys, just stop bubbling to Phaser
+  e.stopPropagation();
+  // do not call e.preventDefault() here
+});
+
+// Global Escape toggle when input is not focused
+this.input.keyboard?.addCapture([Phaser.Input.Keyboard.KeyCodes.ESC]);
+this.input.keyboard?.on("keydown-ESC", () => {
+  if (document.activeElement === input) return; // input handler already handled it
+  isChatVisible = !isChatVisible;
+  this.chatBox.setVisible(isChatVisible);
+  if (isChatVisible) setTimeout(() => input.focus(), 0);
+  else input.blur();
+});
+
+// Set up movement keys once, not inside any listener
+if (this.input.keyboard) {
+  this.keyA = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
+  this.keyS = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
+  this.keyD = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
+  this.keyW = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
+  this.keyShift = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+}
+  }
+
+cameraMotion() {
+  if (this.isTyping) return; // do nothing while typing
+
+  const cam = this.cameras.main;
+  let scrollSpeed = this.scrollSpeed;
+  if (this.keyShift.isDown) scrollSpeed *= 4;
+
+  if (this.keyA.isDown) cam.scrollX -= scrollSpeed / cam.zoom;
+  if (this.keyD.isDown) cam.scrollX += scrollSpeed / cam.zoom;
+  if (this.keyW.isDown) cam.scrollY -= scrollSpeed / cam.zoom;
+  if (this.keyS.isDown) cam.scrollY += scrollSpeed / cam.zoom;
+}
 
   private async sendToGemini(prompt: string): Promise<string> {
     return await sendUserPrompt(prompt);
@@ -293,7 +403,6 @@ export class EditorScene extends Phaser.Scene {
   }
   setupInput() {
     // Keep your existing zoom functionality unchanged
-
     // Scrolling and tile placement combined
     let isDragging = false;
     let dragStartPoint = new Phaser.Math.Vector2();
@@ -379,6 +488,7 @@ export class EditorScene extends Phaser.Scene {
 
     // Keyboard shortcuts
     this.input.keyboard!.on("keydown", (event: KeyboardEvent) => {
+      if (this.isTyping) return;
       switch (event.key.toLowerCase()) {
         case "e":
           this.isEditMode = !this.isEditMode;

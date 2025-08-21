@@ -1,6 +1,7 @@
 import Phaser from "phaser";
+import { Pathfinding } from "./Pathfinding";
 
-export class UltraSlime extends Phaser.GameObjects.Sprite {
+export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
   // health
   private health: number = 20;
 
@@ -16,10 +17,45 @@ export class UltraSlime extends Phaser.GameObjects.Sprite {
 
   // flipped left or right
   private isFlipped = false;
+  private pathfinder: Pathfinding;
+  private reachedPoint: boolean = true; // whether patrol point is reached
+  private patrolPoints: { x: number; y: number }[] = [];
+  private currentPatrolIndex: number = 0;
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
+  private speed: number = 35;
+
+  private patrolLength: number = 5;
+
+  constructor(
+    scene: Phaser.Scene,
+    x: number,
+    y: number,
+    map: Phaser.Tilemaps.Tilemap,
+  ) {
     super(scene, x, y, "spritesheet", 6);
+
     scene.add.existing(this);
+    scene.physics.add.existing(this);
+    //this.setCollideWorldBounds(true);
+
+    this.pathfinder = new Pathfinding(
+      scene,
+      map,
+      this,
+      "Ground_Layer",
+      this.speed,
+    );
+
+    // define two patrol points: 3 tiles left, back to original position
+    const tileSize = map.tileWidth;
+    const startTile = {
+      x: Math.floor(x / tileSize),
+      y: Math.floor(y / tileSize),
+    };
+    this.patrolPoints = [
+      { x: startTile.x - this.patrolLength, y: startTile.y }, // left
+      { x: startTile.x, y: startTile.y }, // back to start
+    ];
   }
 
   update(player: Phaser.GameObjects.Sprite, playerHealth: number) {
@@ -51,6 +87,29 @@ export class UltraSlime extends Phaser.GameObjects.Sprite {
       });
       return playerHealth;
     });
+
+    // --- PATROL LOGIC ---
+    if (this.reachedPoint) {
+      // reached a patrol point → set up next path
+      const start = this.patrolPoints[this.currentPatrolIndex == 1 ? 0 : 1];
+      const target = this.patrolPoints[this.currentPatrolIndex];
+
+      this.pathfinder.findPath(start.x, start.y, target.x, target.y);
+      this.reachedPoint = false;
+
+      // next target in sequence
+      this.currentPatrolIndex++;
+      this.currentPatrolIndex = this.currentPatrolIndex % 2;
+    } else {
+      // continue pathfinding
+      this.reachedPoint = this.pathfinder.pathfind();
+    }
+
+    if (this.currentPatrolIndex == 0) {
+      this.flip(false);
+    } else if (this.currentPatrolIndex == 1) {
+      this.flip(true);
+    }
   }
 
   private shootPellet() {

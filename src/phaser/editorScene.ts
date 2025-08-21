@@ -148,9 +148,9 @@ export class EditorScene extends Phaser.Scene {
       dragStartPoint.set(pointer.x, pointer.y);
     });
 
-    const slime1 = new Slime(this, 100, 100);
+    const slime1 = new Slime(this, 5 * 16 + 8, 14 * 16 + 8, this.map);
     this.enemies.push(slime1);
-    const slime2 = new UltraSlime(this, 100, 200);
+    const slime2 = new UltraSlime(this, 15 * 16 + 8, 14 * 16 + 8, this.map);
     this.enemies.push(slime2);
 
     this.player = this.add.sprite(0, 0, "spritesheet", 13);

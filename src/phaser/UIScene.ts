@@ -7,7 +7,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   //Variables
-
+  
   //Data
   private currentBlock: string = "";
   private blocks: string[] = ["block1", "block2", "block3"]; 
@@ -53,6 +53,7 @@ export class UIScene extends Phaser.Scene {
     const gap = 175;
     this.buttons = [];
 
+    // Build the buttons
     this.blocks.forEach((block, i) => {
       const btn = this.createButton(startX + i * (24 + gap), startY, `Set ${block}`, () => this.emitSelect(block));
       this.panel.add(btn);

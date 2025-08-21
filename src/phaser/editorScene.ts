@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import { sendUserPrompt } from "../languageModel/chatBox";
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
-  private map!: Phaser.Tilemaps.Tilemap;
+  map!: Phaser.Tilemaps.Tilemap;
   private groundLayer!: Phaser.Tilemaps.TilemapLayer;
   private backgroundLayer!: Phaser.Tilemaps.TilemapLayer;
   private gridGraphics!: Phaser.GameObjects.Graphics;
@@ -121,8 +121,7 @@ export class EditorScene extends Phaser.Scene {
       },
     );
 
-    if (this.input.mouse)
-    {
+    if (this.input.mouse) {
       this.input.mouse.disableContextMenu();
     }
     // scrolling + tile placement
@@ -169,12 +168,14 @@ export class EditorScene extends Phaser.Scene {
       }
     });
 
-    if(this.input.keyboard) {
+    if (this.input.keyboard) {
       this.keyA = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
       this.keyS = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
       this.keyD = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
       this.keyW = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
-      this.keyShift = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+      this.keyShift = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.SHIFT,
+      );
     }
   }
 
@@ -281,8 +282,17 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
-  placeTile(layer: Phaser.Tilemaps.TilemapLayer, x: number, y: number, tileIndex: number) {
-    tileIndex = Phaser.Math.Clamp(tileIndex, 1, layer.tilemap.tilesets[0].total - 1);
+  placeTile(
+    layer: Phaser.Tilemaps.TilemapLayer,
+    x: number,
+    y: number,
+    tileIndex: number,
+  ) {
+    tileIndex = Phaser.Math.Clamp(
+      tileIndex,
+      1,
+      layer.tilemap.tilesets[0].total - 1,
+    );
     console.log(`Placing tile at (${x}, ${y}) with index ${tileIndex}`);
     layer.putTileAt(tileIndex, x, y);
   }

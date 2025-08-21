@@ -7,6 +7,7 @@ export class EditorScene extends Phaser.Scene {
   private groundLayer!: Phaser.Tilemaps.TilemapLayer;
   private backgroundLayer!: Phaser.Tilemaps.TilemapLayer;
   private gridGraphics!: Phaser.GameObjects.Graphics;
+  private previewBox!: Phaser.GameObjects.Graphics;
 
   private minZoomLevel = 2.25;
   private maxZoomLevel = 10;
@@ -110,6 +111,10 @@ export class EditorScene extends Phaser.Scene {
     this.gridGraphics.setDepth(10);
     this.drawGrid();
 
+    // preview box
+    this.previewBox = this.add.graphics();
+    this.previewBox.setDepth(200); // draw above everything else
+
     // zoom in & zoom out
     this.input.on(
       "wheel",
@@ -183,11 +188,13 @@ export class EditorScene extends Phaser.Scene {
       }
     });
 
+    // Finish up continous placement of tiles
     this.input.on("pointerup", () => {
       isDragging = false;
       this.isPlacing = false;
     });
 
+    // Highlight the current tile the cursor is on
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
       // Setup pointer movement
       this.highlightTile(pointer);
@@ -251,6 +258,7 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
+  // Draws an overlay grid on the top of the map
   drawGrid() {
     const cam = this.cameras.main;
 
@@ -335,6 +343,7 @@ export class EditorScene extends Phaser.Scene {
       this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
     }
 
+    // Is able to either cut, copy, or paste
     if (Phaser.Input.Keyboard.JustDown(this.keyC)) {
       this.copySelection();
       console.log("Copied selection");
@@ -348,6 +357,7 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
+  // Highlights the current tile the cursor is currently on
   highlightTile(pointer: Phaser.Input.Pointer): void {
     // Convert screen coordinates to tile coordinates
     const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
@@ -363,6 +373,7 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
+  // Helper function: Filling the box with a certain color
   drawHighlightBox(x: number, y: number, color: number): void {
     // Clear any previous highlights
     this.highlightBox.clear();
@@ -388,6 +399,13 @@ export class EditorScene extends Phaser.Scene {
     );
   }
 
+  /*
+   Starts a new tile selection when the user clicks.
+   * Converts the pointer's screen position into tilemap coordinates
+   * Clamps the starting tile to stay within map bounds
+   * Initializes both start and end of the selection to this tile
+   * Flags that a selection is in progress
+  */
   startSelection(pointer: Phaser.Input.Pointer): void {
     // Convert screen coordinates to tile coordinates
     const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
@@ -493,6 +511,11 @@ export class EditorScene extends Phaser.Scene {
     this.selectionBox.strokePath();
   }
 
+  /*
+   Updates the selection box as the user drags the mouse.
+   * Continuously converts the pointer's current screen position into tilemap coordinates
+   * Updates the selection’s end position and redraws the highlight box
+   */
   updateSelection(pointer: Phaser.Input.Pointer): void {
     if (!this.isSelecting) return;
 
@@ -502,8 +525,8 @@ export class EditorScene extends Phaser.Scene {
     const y: number = Math.floor(worldPoint.y / (16 * this.SCALE));
 
     // Clamp to map bounds
-    const mapWidth = this.map.width; // tiles across
-    const mapHeight = this.map.height; // tiles down
+    const mapWidth = this.map.width;
+    const mapHeight = this.map.height;
 
     let clampedX: number = Phaser.Math.Clamp(x, 0, mapWidth - 1);
     let clampedY: number = Phaser.Math.Clamp(y, 0, mapHeight - 1);
@@ -512,6 +535,13 @@ export class EditorScene extends Phaser.Scene {
     this.drawSelectionBox();
   }
 
+  /*
+   Finalizes the selection when the user releases the mouse.
+   * Unflags the selection state
+   * Computes the rectangular area between the start and end positions
+   * Loops through all tiles in the area, storing their indices into 'selectedTiles`
+   * Makes the selected tiles available for copy, cut, or paste
+   */
   endSelection() {
     if (!this.isSelecting) return;
 

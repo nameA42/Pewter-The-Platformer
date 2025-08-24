@@ -7,7 +7,7 @@ export class EditorScene extends Phaser.Scene {
   private groundLayer!: Phaser.Tilemaps.TilemapLayer;
   private backgroundLayer!: Phaser.Tilemaps.TilemapLayer;
   private gridGraphics!: Phaser.GameObjects.Graphics;
-  private previewBox!: Phaser.GameObjects.Graphics;
+  private previewTiles!: Phaser.GameObjects.RenderTexture;
 
   private minZoomLevel = 2.25;
   private maxZoomLevel = 10;
@@ -22,6 +22,8 @@ export class EditorScene extends Phaser.Scene {
   private selectedTileIndex = 0; // index of the tile to place
 
   private isPlacing: boolean = false; // Place tile flag
+
+  private isPreviewing: boolean = false; // Preview tile flag
 
   private selectedTiles: number[][] = []; // Selected Tiles
 
@@ -47,6 +49,7 @@ export class EditorScene extends Phaser.Scene {
   private keyC!: Phaser.Input.Keyboard.Key;
   private keyX!: Phaser.Input.Keyboard.Key;
   private keyV!: Phaser.Input.Keyboard.Key;
+  private keyP!: Phaser.Input.Keyboard.Key;
 
   constructor() {
     super({ key: "editorScene" });
@@ -111,9 +114,15 @@ export class EditorScene extends Phaser.Scene {
     this.gridGraphics.setDepth(10);
     this.drawGrid();
 
-    // preview box
-    this.previewBox = this.add.graphics();
-    this.previewBox.setDepth(200); // draw above everything else
+    // preview tiles
+    this.previewTiles = this.add.renderTexture(
+      0,
+      0,
+      this.scale.width,
+      this.scale.height,
+    );
+    this.previewTiles.setDepth(200);
+    this.previewTiles.setAlpha(0.5); // make it semi-transparent
 
     // zoom in & zoom out
     this.input.on(
@@ -231,6 +240,7 @@ export class EditorScene extends Phaser.Scene {
       this.keyC = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.C);
       this.keyX = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
       this.keyV = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.V);
+      this.keyP = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.P);
     }
 
     //highlight box
@@ -334,14 +344,16 @@ export class EditorScene extends Phaser.Scene {
   update() {
     this.drawGrid();
     this.cameraMotion();
+    const pointer = this.input.activePointer;
 
     // Continuous Block Placement
     if (this.isPlacing) {
-      const pointer = this.input.activePointer;
       const tileX = Math.floor(pointer.worldX / this.TILE_SIZE);
       const tileY = Math.floor(pointer.worldY / this.TILE_SIZE);
       this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
     }
+
+    this.updatePreview(pointer);
 
     // Is able to either cut, copy, or paste
     if (Phaser.Input.Keyboard.JustDown(this.keyC)) {
@@ -354,6 +366,9 @@ export class EditorScene extends Phaser.Scene {
       const pointer = this.input.activePointer;
       this.pasteSelection(pointer);
       console.log("Pasted selection");
+    } else if (Phaser.Input.Keyboard.JustDown(this.keyP)) {
+      this.showPreview();
+      console.log("Toggled Preview");
     }
   }
 
@@ -573,6 +588,8 @@ export class EditorScene extends Phaser.Scene {
       this.selectedTiles.push(row);
     }
 
+    this.isPreviewing = true;
+
     console.log("Copied selection:", this.selectedTiles);
   }
 
@@ -604,6 +621,43 @@ export class EditorScene extends Phaser.Scene {
         if (tileIndex === -1) continue; // Skip empty spots
 
         this.placeTile(this.groundLayer, pasteX + x, pasteY + y, tileIndex);
+      }
+    }
+  }
+
+  // Call this to toggle preview mode on/off
+  showPreview() {
+    this.isPreviewing = !this.isPreviewing;
+
+    if (!this.isPreviewing) {
+      this.previewTiles.clear();
+    }
+  }
+
+  updatePreview(pointer: Phaser.Input.Pointer) {
+    if (!this.isPreviewing || this.selectedTiles.length === 0) return;
+
+    // Clear old preview
+    this.previewTiles.clear();
+
+    // Converting coordinates
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const pasteX = Math.floor(worldPoint.x / (16 * this.SCALE));
+    const pasteY = Math.floor(worldPoint.y / (16 * this.SCALE));
+
+    // Loop through selected tiles and showing its previewed paste
+    for (let y = 0; y < this.selectedTiles.length; y++) {
+      for (let x = 0; x < this.selectedTiles[y].length; x++) {
+        const tileIndex = this.selectedTiles[y][x];
+        if (tileIndex === -1) continue;
+
+        const frame = tileIndex;
+        this.previewTiles.drawFrame(
+          "tileset",
+          frame,
+          (pasteX + x) * (16 * this.SCALE),
+          (pasteY + y) * (16 * this.SCALE),
+        );
       }
     }
   }

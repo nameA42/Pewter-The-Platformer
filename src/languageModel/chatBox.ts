@@ -1,57 +1,23 @@
 import { getChatResponse, initializeLLM } from "./modelConnector.ts";
 import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
 
-const chatHistoryList: Element = document.querySelector("#chat-history")!;
-const chatInputField: HTMLInputElement =
-  document.querySelector("#llm-chat-input")!;
-const chatSubmitButton: HTMLButtonElement =
-  document.querySelector("#llm-chat-submit")!;
-
+// Persistent history of all chat messages exchanged
 export const chatHistory: BaseMessage[] = [];
 
+// Track bot typing state to prevent overlapping responses
+let botResponding = false;
+
+// Initialize system prompt on load
 initializeLLM(chatHistory).then(() => {
-  console.log(chatHistory);
+  console.log("System prompt injected into chat history.");
 });
 
-document
-  .querySelector("#llm-chat-form")!
-  .addEventListener("submit", async function (event) {
-    event.preventDefault();
-
-    const userInputField: HTMLInputElement =
-      document.querySelector("#llm-chat-input")!;
-    var userMessage = userInputField.value.trim();
-    if (!userMessage) return;
-    userInputField.value = "";
-
-    addChatMessage(new HumanMessage(userMessage));
-
-    document.dispatchEvent(new CustomEvent("chatResponseStart"));
-    let botResponseEntry: string;
-
-    try {
-      botResponseEntry = await getChatResponse(chatHistory);
-      if (botResponseEntry.startsWith("Error:")) {
-        addChatMessage(
-          new AIMessage(
-            "Oops, there was a problem" +
-              botResponseEntry.replace(/^Error:\s*/, ""),
-          ),
-        );
-      } else {
-        addChatMessage(new AIMessage(botResponseEntry));
-      }
-    } catch (exception) {
-      const errorMessage =
-        exception instanceof Error ? exception.message : "Unknown error";
-      addChatMessage(new AIMessage("Error: " + errorMessage));
-    } finally {
-      document.dispatchEvent(new CustomEvent("chatResponseEnd"));
-    }
-  });
-
-export function addChatMessage(chatMessage: BaseMessage): HTMLLIElement {
-  //Add message to history
+/**
+ * Add a new chat message to the conversation history.
+ * Handles both user and AI messages.
+ * Safely stringifies objects to prevent UI crashes.
+ */
+export function addChatMessage(chatMessage: BaseMessage): string {
   chatHistory.push(chatMessage);
 
   // Prepare safe message content for display.
@@ -61,72 +27,78 @@ export function addChatMessage(chatMessage: BaseMessage): HTMLLIElement {
     displayContent = JSON.stringify(displayContent);
   }
 
-  //display message in chat box
-  const messageItem = document.createElement("li");
-  messageItem.innerHTML = `<strong>${chatMessage.getType().toString().toLocaleUpperCase()}:</strong> ${displayContent}`;
-  messageItem.style.marginBottom = "10px";
-  chatHistoryList.appendChild(messageItem);
-  return messageItem;
+  const sender = chatMessage._getType().toUpperCase(); // "HUMAN" or "AI"
+  return `<strong>${sender}:</strong> ${displayContent}`;
 }
 
-//Detect if something modified the chat box and scroll to the bottom
-const observer = new MutationObserver(() => {
-  chatHistoryList.scrollTop = chatHistoryList.scrollHeight;
-});
+/**
+ * Set internal flag to track if bot is generating a response.
+ * You can use this to disable input in your Phaser chatbox.
+ */
+export function setBotResponding(value: boolean) {
+  botResponding = value;
+}
 
-observer.observe(chatHistoryList, {
-  childList: true,
-  subtree: true,
-  attributes: true,
-  characterData: true,
-});
+/**
+ * Check if the bot is currently processing a prompt.
+ */
+export function isBotResponding(): boolean {
+  return botResponding;
+}
 
-// don't allow users to send messages while the bot is responding
-document.addEventListener("chatResponseStart", () => {
-  chatInputField.disabled = true;
-  chatSubmitButton.disabled = true;
-  chatInputField.value = "Thinking...";
-});
+/**
+ * Send a user message to the LLM and get Pewter's response.
+ * Handles error formatting and message history updates.
+ */
+export async function sendUserPrompt(message: string): Promise<string> {
+  const userMessage = new HumanMessage(message);
+  chatHistory.push(userMessage);
 
-document.addEventListener("chatResponseEnd", () => {
-  chatInputField.disabled = false;
-  chatSubmitButton.disabled = false;
-  chatInputField.value = "";
-  chatInputField.focus();
-});
-
-export async function sendSystemMessage(message: string): Promise<void> {
-  const systemMessage = new HumanMessage(message);
-
-  document.dispatchEvent(new CustomEvent("chatResponseStart"));
+  setBotResponding(true);
 
   try {
-    const botResponseEntry = await getChatResponse([
-      ...chatHistory,
-      systemMessage,
-    ]);
-
-    if (botResponseEntry.startsWith("Error:")) {
-      addChatMessage(
-        new AIMessage(
-          "Oops, there was a problem: " +
-            botResponseEntry.replace(/^Error:\s*/, ""),
-        ),
-      );
-    } else {
-      addChatMessage(new AIMessage(botResponseEntry));
-    }
-  } catch (exception) {
-    const errorMessage =
-      exception instanceof Error ? exception.message : "Unknown error";
-    addChatMessage(new AIMessage("Error: " + errorMessage));
+    const reply = await getChatResponse(chatHistory);
+    const aiMessage = new AIMessage(reply);
+    chatHistory.push(aiMessage);
+    return reply;
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    const fallback = new AIMessage("Error: " + errorMessage);
+    chatHistory.push(fallback);
+    return fallback.content as string;
   } finally {
-    document.dispatchEvent(new CustomEvent("chatResponseEnd"));
+    setBotResponding(false);
   }
 }
 
+/**
+ * Send a system-level message to the LLM (e.g., instructions or context).
+ */
+export async function sendSystemMessage(message: string): Promise<string> {
+  const systemMessage = new HumanMessage(message);
+  chatHistory.push(systemMessage);
+
+  setBotResponding(true);
+
+  try {
+    const reply = await getChatResponse(chatHistory);
+    const aiMessage = new AIMessage(reply);
+    chatHistory.push(aiMessage);
+    return reply;
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    const fallback = new AIMessage("Error: " + errorMessage);
+    chatHistory.push(fallback);
+    return fallback.content as string;
+  } finally {
+    setBotResponding(false);
+  }
+}
+
+/**
+ * Clear chat history and start fresh (except for system prompt if reinitialized).
+ */
 export function clearChatHistory(): void {
-  chatHistoryList.innerHTML = "";
-  chatHistory.length = 1; // Clear the chat history array
-  console.log(chatHistory);
+  chatHistory.length = 0;
+  console.log("Chat history cleared.");
 }

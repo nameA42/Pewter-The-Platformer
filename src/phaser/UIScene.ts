@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { sendUserPrompt } from "../languageModel/chatBox";
 
 export class UIScene extends Phaser.Scene {
 
@@ -21,6 +22,10 @@ export class UIScene extends Phaser.Scene {
   //Inputs
   private keyR!: Phaser.Input.Keyboard.Key;
 
+  //Chat LLM 
+  private chatBox!: Phaser.GameObjects.DOMElement;
+  //private selectedTileIndex = 0; // index of the tile to place
+
   create() {
     // Transparent background
     //this.cameras.main.setBackgroundColor("rgba(0,0,0,0.3)");
@@ -40,12 +45,12 @@ export class UIScene extends Phaser.Scene {
     ];
     
     //Event Input
-    keys.forEach((code, index) => {
-      const key = this.input.keyboard!.addKey(code);
-      key.on('down', () => {
-        this.changeBlock(this.blocks[index]);
-      });
-    });
+    // keys.forEach((code, index) => {
+    //   const key = this.input.keyboard!.addKey(code);
+    //   key.on('down', () => {
+    //     this.changeBlock(this.blocks[index]);
+    //   });
+    // });
 
     // Buttons
     const startX = 0;
@@ -57,7 +62,7 @@ export class UIScene extends Phaser.Scene {
     this.blocks.forEach((block, i) => {
       const btn = this.createButton(startX + i * (24 + gap), startY, `Set ${block}`, () => this.emitSelect(block));
       this.panel.add(btn);
-      this.buttons.push(btn);
+      //this.buttons.push(btn);
     });
     
     // Place Block button
@@ -65,6 +70,59 @@ export class UIScene extends Phaser.Scene {
     const placeY = startY;
     const placeBtn = this.createButton(placeX, placeY, "Place Block", () => this.game.events.emit("ui:placeRequested"));
     this.panel.add(placeBtn);
+
+    //Working Code - Manvir
+
+    // Create hidden chatbox
+    this.chatBox = this.add.dom(1100, 350).createFromHTML(`
+      <div id="chatbox" style="
+        width: 300px;
+        height: 650px;
+        background: rgba(0, 0, 0, 0.85);
+        color: white;
+        font-family: sans-serif;
+        font-size: 15px;
+        padding: 20px;
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        box-shadow: 0 0 8px rgba(0,0,0,0.6);
+      ">
+        <div id="chat-log" style="flex-grow: 1; overflow-y: auto; font-size: 15px; line-height: 1.5;"></div>
+        <input id="chat-input" type="text" placeholder="Type a command..." style="
+          margin-top: 16px;
+          padding: 14px;
+          font-size: 15px;
+          border: none;
+          border-radius: 4px;
+        " />
+      </div>
+    `);
+    this.chatBox.setVisible(true);
+    let isChatVisible = true;
+
+    window.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === "c") {
+        isChatVisible = !isChatVisible;
+        this.chatBox.setVisible(isChatVisible);
+      }
+    });
+    const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
+    const log = this.chatBox.getChildByID("chat-log") as HTMLDivElement;
+
+    input.addEventListener("keydown", async (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        const msg = input.value.trim();
+        if (!msg) return;
+
+        input.value = "";
+        log.innerHTML += `<p><strong>You:</strong> ${msg}</p>`;
+        const reply = await this.sendToGemini(msg);
+        log.innerHTML += `<p><strong>Pewter:</strong> ${reply}</p>`;
+        log.scrollTop = log.scrollHeight;
+      }
+    });
   }
 
   //Working Code - Jason Cho (Helper functions)
@@ -160,4 +218,15 @@ export class UIScene extends Phaser.Scene {
     this.game.events.emit("ui:selectBlock", block);
   }
 
+  //Working Code - Manvir (Helper Functions)
+  private async sendToGemini(prompt: string): Promise<string> {
+    return await sendUserPrompt(prompt);
+  }
+
+  public showChatboxAt(x: number, y: number): void {
+    this.chatBox.setPosition(x, y);
+    this.chatBox.setVisible(true);
+    const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
+    input.focus();
+  }
 }

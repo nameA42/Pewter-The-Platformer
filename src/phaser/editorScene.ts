@@ -20,7 +20,7 @@ TODO:
 
 
 import Phaser from "phaser";
-import { sendUserPrompt } from "../languageModel/chatBox";
+
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
   private map!: Phaser.Tilemaps.Tilemap;
@@ -39,10 +39,9 @@ export class EditorScene extends Phaser.Scene {
 
   private scrollDeadzone = 50; // pixels from the edge of the camera view to stop scrolling
 
-  private chatBox!: Phaser.GameObjects.DOMElement;
+  
   private scrollSpeed = 10; // pixels per second
 
-  private selectedTileIndex = 0; // index of the tile to place
 
   // keyboard controls
   private keyA!: Phaser.Input.Keyboard.Key;
@@ -155,68 +154,16 @@ export class EditorScene extends Phaser.Scene {
     // you can move the3 camera still by dragging the mouse around when in edit mode.
     // make sure to not be moving the mouse too fast or it will not register and not place the tile.
 
-    // Create hidden chatbox
-    this.chatBox = this.add.dom(1600, 1400).createFromHTML(`
-  <div id="chatbox" style="
-    width: 1400px;
-    height: 1420px;
-    background: rgba(0, 0, 0, 0.85);
-    color: white;
-    font-family: sans-serif;
-    font-size: 70px;
-    padding: 20px;
-    border-radius: 8px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    box-shadow: 0 0 8px rgba(0,0,0,0.6);
-  ">
-    <div id="chat-log" style="flex-grow: 1; overflow-y: auto; font-size: 70px; line-height: 1.5;"></div>
-    <input id="chat-input" type="text" placeholder="Type a command..." style="
-      margin-top: 16px;
-      padding: 14px;
-      font-size: 70px;
-      border: none;
-      border-radius: 4px;
-    " />
-  </div>
-`);
-    this.chatBox.setVisible(true);
-    let isChatVisible = true;
+    
 
-    window.addEventListener("keydown", (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === "c") {
-        isChatVisible = !isChatVisible;
-        this.chatBox.setVisible(isChatVisible);
-      }
-    });
-    const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
-    const log = this.chatBox.getChildByID("chat-log") as HTMLDivElement;
+    //UI Scene setup
+    this.scene.launch("UIScene");
+    this.scene.bringToTop("UIScene");
 
-    input.addEventListener("keydown", async (e: KeyboardEvent) => {
-      if (e.key === "Enter") {
-        const msg = input.value.trim();
-        if (!msg) return;
-
-        input.value = "";
-        log.innerHTML += `<p><strong>You:</strong> ${msg}</p>`;
-        const reply = await this.sendToGemini(msg);
-        log.innerHTML += `<p><strong>Pewter:</strong> ${reply}</p>`;
-        log.scrollTop = log.scrollHeight;
-      }
-    });
+    //TODO: handle UI -> Editor communication
   }
 
-  private async sendToGemini(prompt: string): Promise<string> {
-    return await sendUserPrompt(prompt);
-  }
-
-  public showChatboxAt(x: number, y: number): void {
-    this.chatBox.setPosition(x, y);
-    this.chatBox.setVisible(true);
-    const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
-    input.focus();
-  }
+  
 
   drawGrid() {
     const cam = this.cameras.main;
@@ -286,6 +233,7 @@ export class EditorScene extends Phaser.Scene {
     this.drawGrid();
     this.cameraMotion();
   }
+
   setupInput() {
     // Keep your existing zoom functionality unchanged
 
@@ -401,7 +349,7 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
-    cameraMotion() {
+  cameraMotion() {
     const cam = this.cameras.main;
     let scrollSpeed = this.scrollSpeed;
     if (this.keyShift.isDown) {

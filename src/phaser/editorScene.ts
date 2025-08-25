@@ -392,4 +392,24 @@ export class EditorScene extends Phaser.Scene {
       }
     });
   }
+
+    cameraMotion() {
+    const cam = this.cameras.main;
+    let scrollSpeed = this.scrollSpeed;
+    if (this.keyShift.isDown) {
+      scrollSpeed *= 4;
+    }
+    if (this.keyA.isDown) {
+      cam.scrollX -= scrollSpeed / cam.zoom;
+    }
+    if (this.keyD.isDown) {
+      cam.scrollX += scrollSpeed / cam.zoom;
+    }
+    if (this.keyW.isDown) {
+      cam.scrollY -= scrollSpeed / cam.zoom;
+    }
+    if (this.keyS.isDown) {
+      cam.scrollY += scrollSpeed / cam.zoom;
+    }
+  }
 }

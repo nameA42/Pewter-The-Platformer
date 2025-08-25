@@ -2,6 +2,7 @@ import "./style.css";
 import { LoadingScene } from "./phaser/loadingScene.ts";
 import { EditorScene } from "./phaser/editorScene.ts";
 import { UIScene } from './phaser/uiScene.ts';
+import { GameScene } from "./phaser/gameScene.ts";
 
 // import { GravityTool } from "./languageModel/tools/gravityTool.ts";
 // import {
@@ -53,7 +54,7 @@ const gameInstance = new Phaser.Game({
   width: 1280,
   height: 720,
   parent: document.getElementById("phaser"),
-  scene: [LoadingScene, EditorScene, UIScene],
+  scene: [LoadingScene, EditorScene, UIScene, GameScene],
 });
 
 export function getScene(): EditorScene {

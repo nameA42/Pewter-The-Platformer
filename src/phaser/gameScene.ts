@@ -36,6 +36,25 @@ export class GameScene extends Phaser.Scene {
     this.isUpDown = false;
   }
 
+  preload(){
+    this.load.setPath("phaserAssets/");
+    //this.load.image("tilemap_tiles", "tilemap_packed.png");
+    
+    // Load as spritesheet, not image
+    this.load.spritesheet("tilemap_tiles", "tilemap_packed.png", {
+        frameWidth: 18,  // width of each tile
+        frameHeight: 18  // height of each tile
+    });
+
+    // Load the character atlas (PNG + JSON)
+    this.load.atlas("platformer_characters", "tilemap-characters-packed.png", "tilemap-characters-packed.json");
+
+    // Add audio loading
+    this.load.audio("bgm", "audio/bgm.wav");
+
+    this.load.tilemapTiledJSON("platformer-level-1", "platformer-level-1.tmj");
+  }
+
   create() {
     this.map = this.make.tilemap({
       key: "platformer-level-1",
@@ -66,8 +85,8 @@ export class GameScene extends Phaser.Scene {
     //Not actually coins but whatever
     const coins = this.map.createFromObjects("Objects", {
       name: "coin",
-      key: "tilemap_sheet",
-      frame: 190,
+      key: "tilemap_tiles",
+      frame: 151,
     });
     this.physics.world.enable(coins, Phaser.Physics.Arcade.STATIC_BODY);
     this.coinGroup = this.add.group(coins);

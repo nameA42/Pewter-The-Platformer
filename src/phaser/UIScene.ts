@@ -18,6 +18,7 @@ export class UIScene extends Phaser.Scene {
   //UI
   private panel!: Phaser.GameObjects.Container;
   private buttons: Phaser.GameObjects.Text[] = [];
+  private playButton!: Phaser.GameObjects.Container;
 
   //Inputs
   private keyR!: Phaser.Input.Keyboard.Key;
@@ -123,6 +124,9 @@ export class UIScene extends Phaser.Scene {
         log.scrollTop = log.scrollHeight;
       }
     });
+
+    // Play mode button - Shawn
+    this.createPlayButton();
   }
 
   //Working Code - Jason Cho (Helper functions)
@@ -229,4 +233,29 @@ export class UIScene extends Phaser.Scene {
     const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
     input.focus();
   }
+  // Create the play button - Shawn K
+  private createPlayButton() {
+    this.playButton = this.createButton(
+      100, // 100 pixels from left of screen
+      this.cameras.main.height - 50, // 100 pixels from bottom of screen
+      'Play',
+      () => {
+        console.log('Play button clicked!');
+        this.scene.start('GameScene');
+      },
+      {
+        fill: 0x1a1a1a,        // Dark background
+        hoverFill: 0x127803,   // Green hover
+        downFill: 0x0f5f02,    // Darker green
+        textColor: '#ffffff',   // White text
+        fontSize: 24,
+        paddingX: 15,
+        paddingY: 10
+      }
+    );
+
+    // Set high depth so it appears above other UI elements
+    this.playButton.setDepth(1001);
+  }
+
 }

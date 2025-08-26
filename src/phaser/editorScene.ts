@@ -190,11 +190,9 @@ export class EditorScene extends Phaser.Scene {
       }
     });
 
-    
     // scrolling
     let isDragging = false;
     let dragStartPoint = new Phaser.Math.Vector2();
-
 
     // highlight box
     this.highlightBox = this.add.graphics();
@@ -327,7 +325,6 @@ export class EditorScene extends Phaser.Scene {
     const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
     input.focus();
     // play button
-
   }
 
   drawGrid() {
@@ -404,26 +401,26 @@ export class EditorScene extends Phaser.Scene {
 
   // play button
   private createPlayButton() {
+    const button = this.add
+      .text(100, 100, "Play", {
+        fontSize: "24px",
+        color: "#ffffff",
+        backgroundColor: "#1a1a1a",
+        padding: { x: 15, y: 10 },
+      })
+      .setDepth(100)
+      .setInteractive()
+      .on("pointerdown", () => {
+        console.log("Play button clicked!");
+        this.scene.start("GameScene");
+      })
+      .on("pointerover", () => {
+        button.setStyle({ backgroundColor: "#127803" });
+      })
+      .on("pointerout", () => {
+        button.setStyle({ backgroundColor: "#1a1a1a" });
+      });
 
-    const button = this.add.text(100, 100, 'Play', {
-      fontSize:'24px',
-      color: '#ffffff',
-      backgroundColor: '#1a1a1a',
-      padding: { x: 15, y: 10 },
-    })
-    .setDepth(100)
-    .setInteractive()
-    .on('pointerdown', () => {
-      console.log('Play button clicked!');
-      this.scene.start('GameScene');
-    })
-    .on('pointerover', () => {
-      button.setStyle({ backgroundColor: '#127803' });
-    })
-    .on('pointerout', () => {
-      button.setStyle({ backgroundColor: '#1a1a1a' });
-    });
-    
     this.minimap.ignore(button); // stops the button from apearing in the mini map
     this.playButton = button;
   }
@@ -431,13 +428,13 @@ export class EditorScene extends Phaser.Scene {
   update() {
     this.drawGrid();
     this.cameraMotion();
-        // update the play button's position to the camera
+    // update the play button's position to the camera
     if (this.playButton) {
       const cam = this.cameras.main;
       this.playButton.x = cam.worldView.x + cam.worldView.width - 550;
       this.playButton.y = cam.worldView.y + 250;
     }
-    
+
     // Continuous Block Placement
     if (this.isPlacing) {
       const pointer = this.input.activePointer;
@@ -620,19 +617,60 @@ export class EditorScene extends Phaser.Scene {
     this.drawSelectionBox();
   }
 
-  endSelection() {
+  async endSelection() {
     if (!this.isSelecting) return;
 
     this.isSelecting = false;
     this.selectedTiles = [];
 
+    const sX = Math.min(this.selectionStart.x, this.selectionEnd.x);
+    const sY = Math.min(this.selectionStart.y, this.selectionEnd.y);
+    const eX = Math.max(this.selectionStart.x, this.selectionEnd.x);
+    const eY = Math.max(this.selectionStart.y, this.selectionEnd.y);
+
     // Copying tiles from the selected region
     this.selectionBounds = {
-      startX: Math.min(this.selectionStart.x, this.selectionEnd.x),
-      startY: Math.min(this.selectionStart.y, this.selectionEnd.y),
-      endX: Math.max(this.selectionStart.x, this.selectionEnd.x),
-      endY: Math.max(this.selectionStart.y, this.selectionEnd.y),
+      startX: sX,
+      startY: sY,
+      endX: eX,
+      endY: eY,
     };
+
+    // These define the height and width of the selection box
+    const selectionWidth = eX - sX + 1;
+    const selectionHeight = eY - sY + 1;
+
+    // Helper to convert any global (x, y) to selection-local coordinates
+    const toSelectionCoordinates = (x: number, y: number) => {
+      return {
+        x: x - sX,
+        y: eY - y,
+      };
+    };
+
+    let msg: string;
+
+    if (sX === eX && sY === eY) {
+      const { x: localX, y: localY } = toSelectionCoordinates(sX, sY);
+      msg = `User has selected a single tile at (${localX}, ${localY}) relative to the bottom-left of the selection box.`;
+    } else {
+      msg =
+        `User has selected a rectangular region that is this size: ${selectionWidth}x${selectionHeight}. Here are the global coordinates for the selection box: [${sX}, ${sY}] to [${eX}, ${eY}].` +
+        `There are no notable points of interest in this selection` +
+        `Be sure to re-explain what is in the selection box. If there are objects in the selection, specify the characteristics of the object. ` +
+        `If no objects are inside the selection, then do not mention anything else.`;
+      console.log(msg);
+    }
+
+    const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
+    const log = this.chatBox.getChildByID("chat-log") as HTMLDivElement;
+
+    input.value = "";
+    log.innerHTML += `<p><strong>You:</strong> Got Selection</p>`;
+    const reply = await this.sendToGemini(msg);
+    console.log(reply);
+    log.innerHTML += `<p><strong>Pewter:</strong> ${reply}</p>`;
+    log.scrollTop = log.scrollHeight;
   }
 
   // Copy selection of tiles function

@@ -33,6 +33,7 @@ export class PlaceSingleTile {
         return `Tool Failed: layer '${layerName}' not found.`;
       }
 
+      console.log(`Placing tile ${tileIndex} at (${x}, ${y}) on layer '${layerName}'`);
       map.putTileAt(tileIndex, x, y, true, layer);
       return `Placed tile ${tileIndex} at (${x}, ${y}) on layer '${layerName}'.`;
     },

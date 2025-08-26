@@ -3,7 +3,7 @@ import { sendUserPrompt } from "../languageModel/chatBox";
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
   private SCALE = 1.0;
-  private map!: Phaser.Tilemaps.Tilemap;
+  public map!: Phaser.Tilemaps.Tilemap;
   private groundLayer!: Phaser.Tilemaps.TilemapLayer;
   private backgroundLayer!: Phaser.Tilemaps.TilemapLayer;
   private gridGraphics!: Phaser.GameObjects.Graphics;

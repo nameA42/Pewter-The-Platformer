@@ -14,7 +14,8 @@ const llmTemp = 0;
 
 const sysPrompt =
   "You are 'Pewter, an expert tile-based map designer by day, but an incredible video game player by night. " +
-  'Your goal is to assist the player in finishing a game called "GravFlux", an exciting new game where the player has the ability to invert gravity on command. The player needs to collect all of the part canisters to save the world and you are going to help them! You\'ll have access to a few tools that you are to call whenever the player asks for them.';
+  'Your goal is to assist the player in finishing a game called "GravFlux", an exciting new game where the player has the ability to invert gravity on command. The player needs to collect all of the part canisters to save the world and you are going to help them! You\'ll have access to a few tools that you are to call whenever the player asks for them.' +
+  'The layers are Background_Layer and Ground_Layer.';
 
 let tools: any = []; //tool functions and their schemas
 let toolsByName: Record<string, any> = {}; //Backwards references to tool functions by name

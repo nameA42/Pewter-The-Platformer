@@ -8,6 +8,8 @@ export class EditorScene extends Phaser.Scene {
   private backgroundLayer!: Phaser.Tilemaps.TilemapLayer;
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private playButton!: Phaser.GameObjects.Text;
+  private mapHistory: Phaser.Tilemaps.Tilemap[] = [];
+  private currentMapIteration: number = 0;
 
   private minZoomLevel = 2.25;
   private maxZoomLevel = 10;
@@ -50,6 +52,9 @@ export class EditorScene extends Phaser.Scene {
   private keyC!: Phaser.Input.Keyboard.Key;
   private keyX!: Phaser.Input.Keyboard.Key;
   private keyV!: Phaser.Input.Keyboard.Key;
+  private keyU!: Phaser.Input.Keyboard.Key;
+  private keyR!: Phaser.Input.Keyboard.Key;
+  private keyN!: Phaser.Input.Keyboard.Key;
 
   private chatBox!: Phaser.GameObjects.DOMElement;
 
@@ -272,6 +277,9 @@ export class EditorScene extends Phaser.Scene {
       this.keyC = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.C);
       this.keyX = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
       this.keyV = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.V);
+      this.keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+      this.keyU = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.U);
+      this.keyN = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.N);
     }
     this.createPlayButton();
 
@@ -454,6 +462,45 @@ export class EditorScene extends Phaser.Scene {
       this.pasteSelection(pointer);
       console.log("Pasted selection");
     }
+    else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
+      this.bindMapHistory();
+      console.log("Saved map state");
+    }
+    else if (Phaser.Input.Keyboard.JustDown(this.keyU)) {
+      this.undoLastAction();
+      console.log("Undid last action");
+    }
+    else if (Phaser.Input.Keyboard.JustDown(this.keyR)) {
+      this.redoLastAction();
+      console.log("Redid last action");
+    }
+  }
+
+  undoLastAction(): void {
+    if (this.currentMapIteration > 0) {
+      this.currentMapIteration--;
+      this.map = this.mapHistory[this.currentMapIteration];
+      console.log("Undid last action");
+    } else {
+      console.log("No action to undo");
+    }
+  }
+
+  redoLastAction(): void {
+    if (this.currentMapIteration < this.mapHistory.length - 1) {
+      this.currentMapIteration++;
+      this.map = this.mapHistory[this.currentMapIteration];
+      console.log("Redid last action");
+    } else {
+      console.log("No action to redo");
+    }
+  }
+
+  bindMapHistory(): void {
+    // Only keep history up to the current iteration
+    this.mapHistory = this.mapHistory.slice(0, this.currentMapIteration + 1);
+    this.mapHistory.push(this.map);
+    this.currentMapIteration = this.mapHistory.length - 1;
   }
 
   highlightTile(pointer: Phaser.Input.Pointer): void {

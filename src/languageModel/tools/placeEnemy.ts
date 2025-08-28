@@ -11,11 +11,13 @@ export class PlaceEnemy {
     this.sceneGetter = sceneGetter;
   }
 
-  // New schema: enemy type + coordinates
+  // Improved schema: restricts enemyType to known classes
   static argsSchema = z.object({
-    enemyType: z.string(),
-    x: z.number().int().min(0),
-    y: z.number().int().min(0),
+    enemyType: z
+      .enum(["Slime", "UltraSlime"])
+      .describe("Type of enemy to place. Valid values: 'Slime', 'UltraSlime'."),
+    x: z.number().int().min(0).describe("X coordinate in the scene."),
+    y: z.number().int().min(0).describe("Y coordinate in the scene."),
   });
 
   toolCall = tool(
@@ -23,29 +25,41 @@ export class PlaceEnemy {
       const scene = this.sceneGetter();
       if (!scene) {
         console.log("getSceneFailed");
-        return "Tool Failed: no reference to scene.";
+        return "❌ Tool Failed: no reference to scene.";
       }
 
       const { enemyType, x, y } = args;
-
       const enemies = scene.enemies;
 
-      if (enemyType == "Slime") {
-        const slime = new Slime(scene, x, y);
-        enemies.push(slime);
-        return `Placed Slime Enemy at (${x}, ${y})'.`;
-      } else if (enemyType == "UltraSlime") {
-        const ultraSlime = new UltraSlime(scene, x, y);
-        enemies.push(ultraSlime);
-        return `Placed Ultra Slime Enemy at (${x}, ${y})'.`;
-      } else {
-        return "Tool Failed: not a valid enemy type";
+      try {
+        if (enemyType === "Slime") {
+          const slime = new Slime(scene, x, y);
+          enemies.push(slime);
+          return `✅ Placed Slime at (${x}, ${y}).`;
+        } else if (enemyType === "UltraSlime") {
+          const ultraSlime = new UltraSlime(scene, x, y);
+          enemies.push(ultraSlime);
+          return `✅ Placed UltraSlime at (${x}, ${y}).`;
+        }
+      } catch (e) {
+        console.error("Enemy placement failed:", e);
+        return "❌ Tool Failed: error while placing enemy.";
       }
     },
     {
       name: "placeEnemy",
       schema: PlaceEnemy.argsSchema,
-      description: "Places an enemy at a coordinate (x, y) in the scene.",
+      description: `
+Places an enemy at the given (x, y) coordinates in the scene.
+
+- enemyType: must be one of ["Slime", "UltraSlime"].
+- x, y: integer coordinates (starting at 0).
+- The enemy will be added to the scene's active enemies list.
+
+Examples:
+  { "enemyType": "Slime", "x": 10, "y": 5 }
+  { "enemyType": "UltraSlime", "x": 15, "y": 8 }
+`,
     },
   );
 }

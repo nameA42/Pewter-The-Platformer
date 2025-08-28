@@ -9,12 +9,30 @@ export class PlaceSingleTile {
     this.sceneGetter = sceneGetter;
   }
 
-  // New schema: tile index + coordinates + layer name
+  // Improved schema: strong typing, descriptions, defaults
   static argsSchema = z.object({
-    tileIndex: z.number().int().min(0),
-    x: z.number().int().min(0),
-    y: z.number().int().min(0),
-    layerName: z.string(),
+    tileIndex: z
+      .number()
+      .int()
+      .min(0)
+      .describe("The numeric index of the tile to place (e.g., 0, 5, 12)."),
+
+    x: z
+      .number()
+      .int()
+      .min(0)
+      .describe("Tile X coordinate (column index, starting at 0)."),
+
+    y: z
+      .number()
+      .int()
+      .min(0)
+      .describe("Tile Y coordinate (row index, starting at 0)."),
+
+    layerName: z
+      .string()
+      .min(1)
+      .describe("The name of the map layer where the tile should be placed."),
   });
 
   toolCall = tool(
@@ -34,13 +52,22 @@ export class PlaceSingleTile {
       }
 
       map.putTileAt(tileIndex, x, y, true, layer);
-      return `Placed tile ${tileIndex} at (${x}, ${y}) on layer '${layerName}'.`;
+      return `✅ Placed tile ${tileIndex} at (${x}, ${y}) on layer '${layerName}'.`;
     },
     {
       name: "placeSingleTile",
       schema: PlaceSingleTile.argsSchema,
-      description:
-        "Places a tile at given tile coordinates (x, y) on the given layer in the map.",
+      description: `
+Places a single tile at the given tile coordinates (x, y) on the specified map layer.
+
+- tileIndex: numeric ID of the tile to place.
+- x, y: integer tile coordinates (not pixels).
+- layerName: the name of the target map layer.
+
+Examples:
+  { "tileIndex": 3, "x": 5, "y": 7, "layerName": "Ground" }
+  { "tileIndex": 12, "x": 0, "y": 0, "layerName": "Walls" }
+`,
     },
   );
 }

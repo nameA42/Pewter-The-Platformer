@@ -22,6 +22,7 @@
   "dependencies": {
     "20": "^1.0.0",
     "@langchain/google-genai": "^0.2.14",
+    "easystarjs": "^0.4.4",
     "node": "^20.19.4",
     "phaser": "^3.90.0"
   }

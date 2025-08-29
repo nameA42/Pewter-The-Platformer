@@ -1,5 +1,8 @@
 import Phaser from "phaser";
 import { sendUserPrompt } from "../languageModel/chatBox";
+import { Slime } from "./EnemyClasses/Slime.ts";
+import { UltraSlime } from "./EnemyClasses/UltraSlime.ts";
+
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
   private SCALE = 1.0;
@@ -14,9 +17,6 @@ export class EditorScene extends Phaser.Scene {
   private minZoomLevel = 2.25;
   private maxZoomLevel = 10;
   private zoomLevel = 2.25;
-
-  private currentTileId = 1; // What tile to place
-  private isEditMode = false; // Toggle between drag mode and edit mode
 
   private minimap!: Phaser.Cameras.Scene2D.Camera;
   private minimapZoom = 0.15;
@@ -57,6 +57,13 @@ export class EditorScene extends Phaser.Scene {
   private keyN!: Phaser.Input.Keyboard.Key;
 
   private chatBox!: Phaser.GameObjects.DOMElement;
+
+  public enemies: (Slime | UltraSlime)[] = [];
+
+  private player!: Phaser.GameObjects.Sprite;
+
+  private damageKey!: Phaser.Input.Keyboard.Key;
+  private flipKey!: Phaser.Input.Keyboard.Key;
 
   constructor() {
     super({ key: "editorScene" });
@@ -333,6 +340,19 @@ export class EditorScene extends Phaser.Scene {
     const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
     input.focus();
     // play button
+    const slime1 = new Slime(this, 5 * 16 + 8, 14 * 16 + 8, this.map);
+    this.enemies.push(slime1);
+    const slime2 = new UltraSlime(this, 15 * 16 + 8, 14 * 16 + 8, this.map);
+    this.enemies.push(slime2);
+
+    this.player = this.add.sprite(0, 0, "spritesheet", 13);
+
+    this.damageKey = this.input.keyboard!.addKey(
+      Phaser.Input.Keyboard.KeyCodes.SPACE,
+    );
+    this.flipKey = this.input.keyboard!.addKey(
+      Phaser.Input.Keyboard.KeyCodes.F,
+    );
   }
 
   drawGrid() {
@@ -461,16 +481,13 @@ export class EditorScene extends Phaser.Scene {
       const pointer = this.input.activePointer;
       this.pasteSelection(pointer);
       console.log("Pasted selection");
-    }
-    else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
+    } else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
       this.bindMapHistory();
       console.log("Saved map state");
-    }
-    else if (Phaser.Input.Keyboard.JustDown(this.keyU)) {
+    } else if (Phaser.Input.Keyboard.JustDown(this.keyU)) {
       this.undoLastAction();
       console.log("Undid last action");
-    }
-    else if (Phaser.Input.Keyboard.JustDown(this.keyR)) {
+    } else if (Phaser.Input.Keyboard.JustDown(this.keyR)) {
       this.redoLastAction();
       console.log("Redid last action");
     }
@@ -768,6 +785,27 @@ export class EditorScene extends Phaser.Scene {
 
         this.placeTile(this.groundLayer, pasteX + x, pasteY + y, tileIndex);
       }
+    }
+
+    this.enemies.forEach((enemy, index) => {
+      if (!enemy || !enemy.active) {
+        enemy.destroy();
+        if (index !== -1) {
+          this.enemies.splice(index, 1); // removes 1 item at that index
+        }
+
+        return;
+      }
+      enemy.update(this.player, 0);
+    });
+
+    if (Phaser.Input.Keyboard.JustDown(this.damageKey)) {
+      this.enemies[0].causeDamage(1);
+      console.log(this.enemies[0].getHealth());
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this.flipKey)) {
+      this.enemies[0].flip(true);
     }
   }
 }

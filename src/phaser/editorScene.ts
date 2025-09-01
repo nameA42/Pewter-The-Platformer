@@ -21,6 +21,10 @@ TODO:
 
 import Phaser from "phaser";
 
+type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
+  isFalling?: boolean;
+};
+
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
   private map!: Phaser.Tilemaps.Tilemap;
@@ -42,7 +46,9 @@ export class EditorScene extends Phaser.Scene {
   private editorButton!: Phaser.GameObjects.Container;
   private scrollSpeed = 10; // pixels per second
 
+    /// Game Variables.
   private gameActive = false;
+  private player!: PlayerSprite;
 
   // keyboard controls
   private keyA!: Phaser.Input.Keyboard.Key;
@@ -58,12 +64,27 @@ export class EditorScene extends Phaser.Scene {
   }
 
   
-  preload() {}
+  preload() {
+
+    this.load.setPath("phaserAssets/");
+    //this.load.image("tilemap_tiles", "tilemap_packed.png");
+    
+    // Load as spritesheet, not image
+    this.load.spritesheet("tilemap_tiles", "tilemap_packed.png", {
+        frameWidth: 18,  // width of each tile
+        frameHeight: 18  // height of each tile
+    });
+
+    // Load the character atlas (PNG + JSON)
+    this.load.atlas("platformer_characters", "tilemap-characters-packed.png", "tilemap-characters-packed.json");
+
+  }
 
   startGame() {
     this.gameActive = true;
     this.cameras.remove(this.minimap);
     this.createEditorButton();
+    this.setupPlayer();
   }
 
   create() {
@@ -173,7 +194,39 @@ export class EditorScene extends Phaser.Scene {
     //TODO: handle UI -> Editor communication
   }
 
-  
+  setupPlayer()
+  {
+    this.player = this.add.sprite(
+      100,
+      200,
+      "platformer_characters",
+      "tile_0000.png",
+    ) as PlayerSprite;
+    
+    /*
+    //setup physics:
+    this.groundLayer.setCollisionByProperty({ collides: true });
+    this.physics.world.setBounds(
+      0,
+      0,
+      this.map.widthInPixels,
+      this.map.heightInPixels,
+    );
+    this.physics.world.gravity.y = 1500;
+
+    this.player = this.physics.add.sprite(
+      100,
+      100,
+      "platformer_characters",
+      "tile_0000.png",
+    ) as PlayerSprite;
+
+    this.player.setCollideWorldBounds(false);
+    this.player.isFalling = false;
+    this.physics.add.collider(this.player, this.groundLayer);
+    */
+
+  }
 
   drawGrid() {
     const cam = this.cameras.main;

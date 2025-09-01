@@ -438,6 +438,10 @@ export class EditorScene extends Phaser.Scene {
   // Create the editor button - Shawn K
   private createEditorButton() {
     
+    // some help text
+    this.add.rectangle(30, 310, 500, 20, 0x1a1a1a);
+    this.add.text(20, 300, "Press Q to quit play mode.");
+
     /* Someone help me! I can't get this button to draw.
     var UIScene = this.scene.get("UIScene");
     

@@ -61,7 +61,7 @@ export class UIScene extends Phaser.Scene {
 
     // Build the buttons
     this.blocks.forEach((block, i) => {
-      const btn = this.createButton(startX + i * (24 + gap), startY, `Set ${block}`, () => this.emitSelect(block));
+      const btn = this.createButton(this, startX + i * (24 + gap), startY, `Set ${block}`, () => this.emitSelect(block));
       this.panel.add(btn);
       //this.buttons.push(btn);
     });
@@ -69,7 +69,7 @@ export class UIScene extends Phaser.Scene {
     // Place Block button
     const placeX = startX + this.blocks.length * (24 + gap) + gap;
     const placeY = startY;
-    const placeBtn = this.createButton(placeX, placeY, "Place Block", () => this.game.events.emit("ui:placeRequested"));
+    const placeBtn = this.createButton(this, placeX, placeY, "Place Block", () => this.game.events.emit("ui:placeRequested"));
     this.panel.add(placeBtn);
 
     //Working Code - Manvir
@@ -144,7 +144,8 @@ export class UIScene extends Phaser.Scene {
   }
 
   // Return a Container [bg + label], but attach interactivity to the bg rectangle.
-  private createButton(
+  public createButton(
+    scene : Phaser.Scene,
     x: number,
     y: number,
     label: string,
@@ -168,7 +169,7 @@ export class UIScene extends Phaser.Scene {
     const textColor = opts?.textColor ?? "#111111";
 
     // Label
-    const txt = this.add.text(0, 0, label, {
+    const txt = scene.add.text(0, 0, label, {
       fontSize: `${fontSize}px`,
       color: textColor,
     }).setOrigin(0.5);
@@ -177,25 +178,31 @@ export class UIScene extends Phaser.Scene {
     const w = Math.max(opts?.fixedWidth ?? (Math.ceil(txt.width) + paddingX * 2), 48);
     const h = Math.max(opts?.minHeight ?? (Math.ceil(txt.height) + paddingY * 2), 28);
 
+    /*const bg1 = scene.add.rectangle(0, 0, w, h, fill)
+      .setOrigin(0.5)
+      .setStrokeStyle(strokeW, stroke)
+      .setInteractive({ useHandCursor: true });
+      */
+
     // Background with real border — make THIS the interactive thing
-    const bg = this.add.rectangle(0, 0, w, h, fill)
+    const bg = scene.add.rectangle(0, 0, w, h, fill)
       .setOrigin(0.5)
       .setStrokeStyle(strokeW, stroke)
       .setInteractive({ useHandCursor: true }); // attach events to bg
 
     // Container groups them (so you can add to panel)
-    const btn = this.add.container(x, y, [bg, txt])
+    const btn = scene.add.container(x, y, [bg, txt])
       .setSize(w, h);
 
     // ----- States -----
     bg.on("pointerover", () => {
       bg.setFillStyle(hoverFill);
-      this.setPointerOverUI?.(true);     // if you added this helper
+      scene.setPointerOverUI?.(true);     // if you added this helper
     });
 
     bg.on("pointerout", () => {
       bg.setFillStyle(fill);
-      this.setPointerOverUI?.(false);
+      scene.setPointerOverUI?.(false);
     });
 
     bg.on("pointerdown", () => {
@@ -233,15 +240,22 @@ export class UIScene extends Phaser.Scene {
     const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
     input.focus();
   }
+
+  private startGame() {
+    console.log('Play button clicked!');
+    this.scene.get("editorScene").startGame();
+    this.scene.stop('UIScene');
+  }
+
   // Create the play button - Shawn K
   private createPlayButton() {
     this.playButton = this.createButton(
+      this,
       100, // 100 pixels from left of screen
       this.cameras.main.height - 50, // 100 pixels from bottom of screen
       'Play',
       () => {
-        console.log('Play button clicked!');
-        this.scene.start('GameScene');
+        this.startGame();
       },
       {
         fill: 0x1a1a1a,        // Dark background

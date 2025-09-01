@@ -39,9 +39,10 @@ export class EditorScene extends Phaser.Scene {
 
   private scrollDeadzone = 50; // pixels from the edge of the camera view to stop scrolling
 
-  
+  private editorButton!: Phaser.GameObjects.Container;
   private scrollSpeed = 10; // pixels per second
 
+  private gameActive = false;
 
   // keyboard controls
   private keyA!: Phaser.Input.Keyboard.Key;
@@ -50,11 +51,20 @@ export class EditorScene extends Phaser.Scene {
   private keyS!: Phaser.Input.Keyboard.Key;
   private keyShift!: Phaser.Input.Keyboard.Key;
 
+  private setPointerOverUI = (v: boolean) => this.registry.set("uiPointerOver", v);
+  
   constructor() {
     super({ key: "editorScene" });
   }
 
+  
   preload() {}
+
+  startGame() {
+    this.gameActive = true;
+    this.cameras.remove(this.minimap);
+    this.createEditorButton();
+  }
 
   create() {
     this.map = this.make.tilemap({ key: "defaultMap" });
@@ -322,6 +332,9 @@ export class EditorScene extends Phaser.Scene {
           this.isEditMode = !this.isEditMode;
           console.log(`Edit mode: ${this.isEditMode ? "ON" : "OFF"}`);
           break;
+        case "q":
+          this.startEditor();
+          break;
         case "1":
           this.currentTileId = 1;
           break;
@@ -368,4 +381,40 @@ export class EditorScene extends Phaser.Scene {
       cam.scrollY += scrollSpeed / cam.zoom;
     }
   }
+
+  // Create the editor button - Shawn K
+  private createEditorButton() {
+    
+    /* Someone help me! I can't get this button to draw.
+    var UIScene = this.scene.get("UIScene");
+    
+    this.editorButton = UIScene.createButton(
+      this,
+      100, // 100 pixels from left of screen
+      this.cameras.main.height - 50, // 100 pixels from bottom of screen
+      'Edit',
+      () => {
+        this.startEditor();
+      },
+      {
+        fill: 0x1a1a1a,        // Dark background
+        hoverFill: 0x127803,   // Green hover
+        downFill: 0x0f5f02,    // Darker green
+        textColor: '#ffffff',   // White text
+        fontSize: 24,
+        paddingX: 15,
+        paddingY: 10
+      }
+    );
+
+    // Set high depth so it appears above other UI elements
+    this.editorButton.setDepth(1001);
+    */
+  }
+
+  private startEditor() {
+    this.gameActive = false;
+    this.scene.start("editorScene");
+  }
+
 }

@@ -31,11 +31,11 @@ export class PlaceEnemy {
       const enemies = scene.enemies;
 
       if (enemyType == "Slime") {
-        const slime = new Slime(scene, x, y);
+        const slime = new Slime(scene, x, y, scene.map);
         enemies.push(slime);
         return `Placed Slime Enemy at (${x}, ${y})'.`;
       } else if (enemyType == "UltraSlime") {
-        const ultraSlime = new UltraSlime(scene, x, y);
+        const ultraSlime = new UltraSlime(scene, x, y, scene.map);
         enemies.push(ultraSlime);
         return `Placed Ultra Slime Enemy at (${x}, ${y})'.`;
       } else {

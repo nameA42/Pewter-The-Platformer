@@ -55,6 +55,7 @@ export class EditorScene extends Phaser.Scene {
   private keyU!: Phaser.Input.Keyboard.Key;
   private keyR!: Phaser.Input.Keyboard.Key;
   private keyN!: Phaser.Input.Keyboard.Key;
+  private keyCtrl!: Phaser.Input.Keyboard.Key;
 
   private chatBox!: Phaser.GameObjects.DOMElement;
 
@@ -196,7 +197,7 @@ export class EditorScene extends Phaser.Scene {
     let isChatVisible = true;
 
     window.addEventListener("keydown", (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === "c") {
+      if (e.key === "Escape") {
         isChatVisible = !isChatVisible;
         this.chatBox.setVisible(isChatVisible);
       }
@@ -274,20 +275,107 @@ export class EditorScene extends Phaser.Scene {
     });
 
     if (this.input.keyboard) {
-      this.keyA = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
-      this.keyS = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
-      this.keyD = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
-      this.keyW = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
+      const keyCodes = [
+        "A",
+        "S",
+        "D",
+        "W",
+        "SHIFT",
+        "C",
+        "X",
+        "V",
+        "R",
+        "U",
+        "N",
+        "CTRL",
+        "SPACE",
+        "F",
+      ];
+
+      keyCodes.forEach((code) => {
+        const phaserCode =
+          Phaser.Input.Keyboard.KeyCodes[
+            code as keyof typeof Phaser.Input.Keyboard.KeyCodes
+          ];
+        if (phaserCode !== undefined) {
+          this.input.keyboard!.addKey(phaserCode, false, false); // capture = false
+        }
+      });
+
+      // Keep references for hotkeys you check in update
+      this.keyA = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.A,
+        false,
+        false,
+      );
+      this.keyS = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.S,
+        false,
+        false,
+      );
+      this.keyD = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.D,
+        false,
+        false,
+      );
+      this.keyW = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.W,
+        false,
+        false,
+      );
       this.keyShift = this.input.keyboard.addKey(
         Phaser.Input.Keyboard.KeyCodes.SHIFT,
+        false,
+        false,
       );
-      this.keyC = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.C);
-      this.keyX = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
-      this.keyV = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.V);
-      this.keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
-      this.keyU = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.U);
-      this.keyN = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.N);
+      this.keyC = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.C,
+        false,
+        false,
+      );
+      this.keyX = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.X,
+        false,
+        false,
+      );
+      this.keyV = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.V,
+        false,
+        false,
+      );
+      this.keyR = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.R,
+        false,
+        false,
+      );
+      this.keyU = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.U,
+        false,
+        false,
+      );
+      this.keyN = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.N,
+        false,
+        false,
+      );
+      this.keyCtrl = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.CTRL,
+        false,
+        false,
+      );
     }
+
+    // Disable Phaser key processing while typing
+    const chatInput = this.chatBox.getChildByID(
+      "chat-input",
+    ) as HTMLInputElement;
+    chatInput.addEventListener("focus", () => {
+      this.input.keyboard!.enabled = false;
+    });
+    chatInput.addEventListener("blur", () => {
+      this.input.keyboard!.enabled = true;
+    });
+
     this.createPlayButton();
 
     //highlight box
@@ -471,23 +559,41 @@ export class EditorScene extends Phaser.Scene {
       this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.keyC)) {
+    if (
+      Phaser.Input.Keyboard.JustDown(this.keyC) &&
+      Phaser.Input.Keyboard.JustDown(this.keyCtrl)
+    ) {
       this.copySelection();
       console.log("Copied selection");
-    } else if (Phaser.Input.Keyboard.JustDown(this.keyX)) {
+    } else if (
+      Phaser.Input.Keyboard.JustDown(this.keyX) &&
+      Phaser.Input.Keyboard.JustDown(this.keyCtrl)
+    ) {
       this.cutSelection();
       console.log("Cut selection");
-    } else if (Phaser.Input.Keyboard.JustDown(this.keyV)) {
+    } else if (
+      Phaser.Input.Keyboard.JustDown(this.keyV) &&
+      Phaser.Input.Keyboard.JustDown(this.keyCtrl)
+    ) {
       const pointer = this.input.activePointer;
       this.pasteSelection(pointer);
       console.log("Pasted selection");
-    } else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
+    } else if (
+      Phaser.Input.Keyboard.JustDown(this.keyN) &&
+      Phaser.Input.Keyboard.JustDown(this.keyCtrl)
+    ) {
       this.bindMapHistory();
       console.log("Saved map state");
-    } else if (Phaser.Input.Keyboard.JustDown(this.keyU)) {
+    } else if (
+      Phaser.Input.Keyboard.JustDown(this.keyU) &&
+      Phaser.Input.Keyboard.JustDown(this.keyCtrl)
+    ) {
       this.undoLastAction();
       console.log("Undid last action");
-    } else if (Phaser.Input.Keyboard.JustDown(this.keyR)) {
+    } else if (
+      Phaser.Input.Keyboard.JustDown(this.keyR) &&
+      Phaser.Input.Keyboard.JustDown(this.keyCtrl)
+    ) {
       this.redoLastAction();
       console.log("Redid last action");
     }

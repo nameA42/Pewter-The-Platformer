@@ -36,7 +36,7 @@ export class UIScene extends Phaser.Scene {
     //this.cameras.main.setBackgroundColor("rgba(0,0,0,0.3)");
 
     // Build UI panel container
-    this.panel = this.add.container(160, 50);
+    this.panel = this.add.container(-100, 0);
     this.panel.setDepth(1000);
 
     //Variables
@@ -57,24 +57,42 @@ export class UIScene extends Phaser.Scene {
     //   });
     // });
 
-    // Buttons
-    const startX = 0;
-    const startY = 550;
-    const gap = 175;
+    // Buttons - compact, centered on middle button, text 'block#', lifted off bottom
+    const buttonWidth = 110;
+    const buttonHeight = 38;
+    const gap = 16;
+    const numButtons = this.blocks.length;
+    const centerIndex = Math.floor(numButtons / 2);
+    const screenWidth = this.cameras.main.width;
+    const centerX = screenWidth / 2;
+    const startY = this.cameras.main.height - buttonHeight - 64; // lifted off bottom
     this.buttons = [];
 
-    // Build the buttons
     this.blocks.forEach((block, i) => {
-      const btn = this.createButton(this, startX + i * (24 + gap), startY, `Set ${block}`, () => this.emitSelect(block));
+      // Position relative to center button
+      const offset = (i - centerIndex) * (buttonWidth + gap);
+      const btn = this.createButton(
+        this,
+        centerX + offset,
+        startY,
+        `block${i + 1}`,
+        () => this.emitSelect(block),
+        {
+          fixedWidth: buttonWidth,
+          minHeight: buttonHeight,
+          fontSize: 20,
+          paddingX: 8,
+          paddingY: 6,
+          fill: 0xffffff,
+          hoverFill: 0xe0e0e0,
+          downFill: 0xcccccc,
+          strokeWidth: 2,
+          stroke: 0x222222,
+          textColor: '#222222'
+        }
+      );
       this.panel.add(btn);
-      //this.buttons.push(btn);
     });
-    
-    // Place Block button
-    const placeX = startX + this.blocks.length * (24 + gap) + gap;
-    const placeY = startY;
-    const placeBtn = this.createButton(this, placeX, placeY, "Place Block", () => this.game.events.emit("ui:placeRequested"));
-    this.panel.add(placeBtn);
 
     //Working Code - Manvir
 

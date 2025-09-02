@@ -7,6 +7,7 @@ type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
 import { sendUserPrompt } from "../languageModel/chatBox";
 import { Slime } from "./EnemyClasses/Slime.ts";
 import { UltraSlime } from "./EnemyClasses/UltraSlime.ts";
+import { UIScene } from "./UIScene.ts";
 
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
@@ -34,9 +35,13 @@ export class EditorScene extends Phaser.Scene {
   private editorButton!: Phaser.GameObjects.Container;
   private scrollSpeed = 10; // pixels per second
 
-    /// Game Variables.
+  /// Game Variables.
   private gameActive = false;
   private player!: PlayerSprite;
+  // Play mode controls
+  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
+  private wasd!: any;
+  private isJumpPressed = false;
 
   private selectedTileIndex = 1; // index of the tile to place
 
@@ -106,6 +111,25 @@ export class EditorScene extends Phaser.Scene {
     this.cameras.remove(this.minimap);
     this.createEditorButton();
     this.setupPlayer();
+
+    // Enable physics and gravity for play mode
+    this.physics.world.gravity.y = 1500;
+
+    // Ensure ground layer has collision enabled
+    if (this.groundLayer) {
+      this.groundLayer.setCollisionByExclusion([-1]);
+    }
+    // Add collider between player and ground layer
+    this.physics.add.collider(this.player, this.groundLayer);
+
+    // Camera follows player in play mode
+    this.cameras.main.startFollow(this.player, true, 0.25, 0.25)
+      .setDeadzone(50, 50)
+      .setZoom(this.zoomLevel);
+
+    // Setup player movement controls
+    this.cursors = this.input.keyboard!.createCursorKeys();
+    this.wasd = this.input.keyboard!.addKeys('W,S,A,D');
 
     // Add Q key handler to quit play mode
     if (this.input.keyboard) {
@@ -403,36 +427,98 @@ export class EditorScene extends Phaser.Scene {
     layer.putTileAt(tileIndex, x, y);
   }
 
-  // play button
-  private createPlayButton() {
-    const button = this.add
-      .text(100, 100, "Play", {
-        fontSize: "24px",
-        color: "#ffffff",
-        backgroundColor: "#1a1a1a",
-        padding: { x: 15, y: 10 },
-      })
-      .setDepth(100)
-      .setInteractive()
-      .on("pointerdown", () => {
-        console.log("Play button clicked!");
-        this.scene.start("GameScene");
-      })
-      .on("pointerover", () => {
-        button.setStyle({ backgroundColor: "#127803" });
-      })
-      .on("pointerout", () => {
-        button.setStyle({ backgroundColor: "#1a1a1a" });
-      });
-
-    this.minimap.ignore(button); // stops the button from apearing in the mini map
-    this.playButton = button;
-  }
-
   update() {
+    if (this.gameActive) {
+      // Play mode: player movement and camera follow
+      // Hide grid and red outline
+      if (this.gridGraphics) this.gridGraphics.clear();
+      if (this.highlightBox) this.highlightBox.clear();
+      if (this.selectionBox) this.selectionBox.clear();
+
+      if (this.player && this.cursors && this.wasd) {
+        const player = this.player;
+        const body = player.body;
+        const onGround = body.blocked.down;
+
+        let velocityX = body.velocity.x;
+        let velocityY = body.velocity.y;
+
+        let moveInput = 0;
+        if (this.cursors.left.isDown || this.wasd.A.isDown) {
+          moveInput = -1;
+          player.setFlipX(true);
+        } else if (this.cursors.right.isDown || this.wasd.D.isDown) {
+          moveInput = 1;
+          player.setFlipX(false);
+        }
+
+        const PLAYER_SPEED = 400;
+        const ACCELERATION = 1500;
+        const FRICTION = 1200;
+        const AIR_CONTROL = 0.8;
+        const JUMP_VELOCITY = -550;
+
+        if (moveInput !== 0) {
+          const acceleration = onGround ? ACCELERATION : ACCELERATION * AIR_CONTROL;
+          const targetVelocity = moveInput * PLAYER_SPEED;
+          if (Math.abs(velocityX - targetVelocity) > 5) {
+            velocityX += (targetVelocity - velocityX) * (acceleration / 1000) * (1/60);
+            velocityX = Phaser.Math.Clamp(velocityX, -PLAYER_SPEED, PLAYER_SPEED);
+          } else {
+            velocityX = targetVelocity;
+          }
+        } else {
+          // No horizontal input - apply friction
+          if (onGround) {
+            const frictionForce = FRICTION * (1/60);
+            if (Math.abs(velocityX) > frictionForce) {
+              velocityX -= Math.sign(velocityX) * frictionForce;
+            } else {
+              velocityX = 0;
+            }
+          } else {
+            const airFriction = FRICTION * 0.3 * (1/60);
+            if (Math.abs(velocityX) > airFriction) {
+              velocityX -= Math.sign(velocityX) * airFriction;
+            } else {
+              velocityX = 0;
+            }
+          }
+        }
+
+        // Jump logic
+        const jumpPressed = this.cursors.up.isDown || this.wasd.W.isDown;
+        if (jumpPressed && !this.isJumpPressed && onGround) {
+          velocityY = JUMP_VELOCITY;
+          this.isJumpPressed = true;
+        } else if (!jumpPressed && this.isJumpPressed && velocityY < -50) {
+          velocityY *= 0.4;
+        }
+        if (!jumpPressed) {
+          this.isJumpPressed = false;
+        }
+
+        player.setVelocity(velocityX, velocityY);
+
+        // Reset if fallen off world
+        if (player.y > this.map.heightInPixels + 100) {
+          player.setPosition(100, 150);
+          player.setVelocity(0, 0);
+        }
+      }
+      // update the play button's position to the camera
+      if (this.playButton) {
+        const cam = this.cameras.main;
+        this.playButton.x = cam.worldView.x + cam.worldView.width - 550;
+        this.playButton.y = cam.worldView.y + 250;
+      }
+      // No grid/camera/block placement/editing in play mode
+      return;
+    }
+
+    // Editor mode: normal controls
     this.drawGrid();
     this.cameraMotion();
-    // update the play button's position to the camera
     if (this.playButton) {
       const cam = this.cameras.main;
       this.playButton.x = cam.worldView.x + cam.worldView.width - 550;
@@ -467,8 +553,7 @@ export class EditorScene extends Phaser.Scene {
       this.pasteSelection(pointer);
       console.log("Pasted selection");
     } else if (
-      Phaser.Input.Keyboard.JustDown(this.keyN) &&
-      this.keyCtrl.isDown
+      Phaser.Input.Keyboard.JustDown(this.keyN)
     ) {
       this.bindMapHistory();
       console.log("Saved map state");
@@ -795,7 +880,7 @@ export class EditorScene extends Phaser.Scene {
   // ...existing code...
   // cameraMotion is already defined above, removed duplicate
   // ...existing code...
-
+ 
   // Create the editor button - Shawn K
    createEditorButton() {
     
@@ -831,8 +916,54 @@ export class EditorScene extends Phaser.Scene {
   }
 
   private startEditor() {
+    // Undo play mode and restore editor mode
     this.gameActive = false;
-    this.scene.start("editorScene");
+
+    this.scene.launch("UIScene");
+    this.scene.bringToTop("UIScene");
+    // Stop camera follow and reset zoom
+    this.cameras.main.stopFollow();
+    this.cameras.main.setZoom(this.zoomLevel);
+
+    // Restore minimap
+    if (!this.cameras.cameras.includes(this.minimap)) {
+      this.cameras.add(
+        10,
+        10,
+        this.map.widthInPixels * this.minimapZoom,
+        this.map.heightInPixels * this.minimapZoom,
+      )
+      .setZoom(this.minimapZoom)
+      .setName("minimap")
+      .setBackgroundColor(0x002244)
+      .setBounds(0, 0, this.map.widthInPixels, this.map.heightInPixels);
+    }
+
+    // Remove player sprite
+    if (this.player) {
+      this.player.destroy();
+      this.player = undefined as any;
+    }
+
+    // Reset gravity
+    this.physics.world.gravity.y = 0;
+
+    // Clear play mode controls
+    this.cursors = undefined as any;
+    this.wasd = undefined as any;
+    this.isJumpPressed = false;
+
+    // Redraw grid and highlight
+    if (this.gridGraphics) this.gridGraphics.clear();
+    this.drawGrid();
+    if (this.highlightBox) this.highlightBox.clear();
+    if (this.selectionBox) this.selectionBox.clear();
+
+    // Optionally, reset camera position
+    this.cameras.main.centerOn(0, 0);
+
+    // also remove the editor button
+
   }
 
 }

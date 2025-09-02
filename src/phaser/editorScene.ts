@@ -111,6 +111,7 @@ export class EditorScene extends Phaser.Scene {
   }
 
   create() {
+    
     this.map = this.make.tilemap({ key: "defaultMap" });
 
     console.log("Map loaded:", this.map);
@@ -229,6 +230,46 @@ export class EditorScene extends Phaser.Scene {
       this.keyCtrl = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.CTRL);
     }
 
+    // scrolling
+    let isDragging = false;
+    let dragStartPoint = new Phaser.Math.Vector2();
+
+    // highlight box
+    this.highlightBox = this.add.graphics();
+    this.highlightBox.setDepth(101); // Ensure it's on top of everything
+
+    // selection box
+    this.selectionBox = this.add.graphics();
+    this.selectionBox.setDepth(100); // Slightly under highlight box
+    this.input.on("pointermove", this.updateSelection, this);
+    this.input.on("pointerup", this.endSelection, this);
+
+    this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      if (pointer.middleButtonDown()) {
+        isDragging = true;
+        dragStartPoint.set(pointer.x, pointer.y);
+      } else if (pointer.leftButtonDown()) {
+        this.isPlacing = true;
+        // Pasting the recently selected area of tiles
+        const worldPoint = this.cameras.main.getWorldPoint(
+          pointer.x,
+          pointer.y,
+        );
+        const tileX = Math.floor(worldPoint.x / (16 * this.SCALE));
+        const tileY = Math.floor(worldPoint.y / (16 * this.SCALE));
+
+        // Place the currently selected brush tile
+        this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
+      } else if (pointer.rightButtonDown()) {
+        // Setup selection box
+        console.log(`Starting selection`);
+        this.startSelection(pointer);
+
+        this.selectedTileIndex =
+          this.groundLayer.getTileAtWorldXY(pointer.worldX, pointer.worldY)
+            ?.index || 0;
+      }
+    });
   //TODO: handle UI -> Editor communication
   }
 

@@ -1,7 +1,4 @@
 // Pewter Platformer EditorScene - Cleaned and consolidated after merge
-
-
-
 import Phaser from "phaser";
 
 type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
@@ -109,6 +106,14 @@ export class EditorScene extends Phaser.Scene {
     this.cameras.remove(this.minimap);
     this.createEditorButton();
     this.setupPlayer();
+
+    // Add Q key handler to quit play mode
+    if (this.input.keyboard) {
+      const keyQ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+      keyQ.on('down', () => {
+        this.startEditor();
+      });
+    }
   }
 
   create() {
@@ -288,12 +293,16 @@ export class EditorScene extends Phaser.Scene {
 
   setupPlayer()
   {
-    this.player = this.add.sprite(
+    this.player = this.physics.add.sprite(
       100,
-      200,
+      100,
       "platformer_characters",
       "tile_0000.png",
     ) as PlayerSprite;
+
+    this.player.setCollideWorldBounds(false);
+    this.player.isFalling = true;
+    this.physics.add.collider(this.player, this.groundLayer);
   }
 
   cameraMotion() {
@@ -314,17 +323,6 @@ export class EditorScene extends Phaser.Scene {
     if (this.keyS.isDown) {
       cam.scrollY += scrollSpeed / cam.zoom;
     }
-
-    this.player = this.physics.add.sprite(
-      100,
-      100,
-      "platformer_characters",
-      "tile_0000.png",
-    ) as PlayerSprite;
-
-    this.player.setCollideWorldBounds(false);
-    this.player.isFalling = false;
-    this.physics.add.collider(this.player, this.groundLayer);
   }
 
   private async sendToGemini(prompt: string): Promise<string> {
@@ -700,19 +698,32 @@ export class EditorScene extends Phaser.Scene {
     const selectionWidth = eX - sX + 1;
     const selectionHeight = eY - sY + 1;
 
-    // Only send info if selection is bigger than 1x1
-    if (selectionWidth > 1 || selectionHeight > 1) {
-      let msg =
+    // Helper to convert any global (x, y) to selection-local coordinates
+    const toSelectionCoordinates = (x: number, y: number) => {
+      return {
+        x: x - sX,
+        y: eY - y,
+      };
+    };
+
+    let msg: string;
+
+    if (sX === eX && sY === eY) {
+      const { x: localX, y: localY } = toSelectionCoordinates(sX, sY);
+      msg = `User has selected a single tile at (${localX}, ${localY}) relative to the bottom-left of the selection box.`;
+    } else {
+      msg =
         `User has selected a rectangular region that is this size: ${selectionWidth}x${selectionHeight}. Here are the global coordinates for the selection box: [${sX}, ${sY}] to [${eX}, ${eY}].` +
         `There are no notable points of interest in this selection` +
         `Be sure to re-explain what is in the selection box. If there are objects in the selection, specify the characteristics of the object. ` +
         `If no objects are inside the selection, then do not mention anything else.`;
       console.log(msg);
-      // Send selection info to UIScene
-      const uiScene = this.scene.get("UIScene") as any;
-      if (uiScene && typeof uiScene.handleSelectionInfo === "function") {
-        uiScene.handleSelectionInfo(msg);
-      }
+    }
+
+    // Send selection info to UIScene
+    const uiScene = this.scene.get("UIScene") as UIScene;
+    if (uiScene && typeof uiScene.handleSelectionInfo === "function") {
+      uiScene.handleSelectionInfo(msg);
     }
   }
 

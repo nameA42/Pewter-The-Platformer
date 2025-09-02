@@ -59,6 +59,8 @@ export class ClearTile {
             map.removeTileAt(x, y, false, false, layer);
           }
         }
+
+        console.log(layer);
         return `✅ Cleared tiles from (${xMin}, ${yMin}) up to (${xMax}, ${yMax}) on layer '${layerName}'.`;
       } catch (e) {
         console.error("removeTileAt failed:", e);

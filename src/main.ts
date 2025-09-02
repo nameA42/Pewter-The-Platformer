@@ -2,25 +2,38 @@ import "./style.css";
 import { LoadingScene } from "./phaser/loadingScene.ts";
 import { EditorScene } from "./phaser/editorScene.ts";
 import { sendSystemMessage } from "./languageModel/chatBox.ts";
-import { initializeTools } from "./languageModel/modelConnector.ts";
 import { GameScene } from "./phaser/gameScene.ts";
 
-//initializeTools();
+initializeTools();
+// import { GravityTool } from "./languageModel/tools/gravityTool.ts";
+import {
+  initializeTools,
+  registerTool,
+} from "./languageModel/modelConnector.ts";
+// import { MoveTool } from "./languageModel/tools/moveTool.ts";
+// import { sendSystemMessage } from "./languageModel/chatBox.ts";
+// import { ZoomTool } from "./languageModel/tools/zoomTool.ts";
+
+import { PlaceSingleTile } from "./languageModel/tools/placeSingleTile.ts";
+import { PlaceEnemy } from "./languageModel/tools/placeEnemy.ts";
 import { PlaceGridofTiles } from "./languageModel/tools/placeGridofTiles.ts";
 import { ClearTile } from "./languageModel/tools/clearTile.ts";
-import { PlaceSingleTile } from "./languageModel/tools/placeSingleTile.ts";
-import {
-   registerTool,
- } from "./languageModel/modelConnector.ts";
 
-//****LLM Tool Setup****////
+////****LLM Tool Setup****////
+// const tools = {
+//   gravity: new GravityTool(getScene),
+//   direction: new MoveTool(getScene),
+//   zoom: new ZoomTool(getScene),
+// };
+
 const tools = {
-  gravity: new PlaceGridofTiles(getScene),
-  direction: new ClearTile(getScene),
-  zoom: new PlaceSingleTile(getScene),
+  placeSingleTile: new PlaceSingleTile(getScene),
+  placeEnemy: new PlaceEnemy(getScene),
+  placeGridofTiles: new PlaceGridofTiles(getScene),
+  clearTile: new ClearTile(getScene),
 };
 
-// Register all tools with the LLM
+// // Register all tools with the LLM
 Object.values(tools).forEach((generator) => {
   if (generator.toolCall) {
     registerTool(generator.toolCall);

@@ -9,13 +9,32 @@ export class ClearTile {
     this.sceneGetter = sceneGetter;
   }
 
-  // New schema: tile index + coordinates + layer name
+  // Improved schema with clearer descriptions
   static argsSchema = z.object({
-    xMin: z.number().int().min(0),
-    xMax: z.number().int().min(0),
-    yMin: z.number().int().min(0),
-    yMax: z.number().int().min(0),
-    layerName: z.string(),
+    xMin: z
+      .number()
+      .int()
+      .min(0)
+      .describe("Minimum X (leftmost column index, inclusive)."),
+    xMax: z
+      .number()
+      .int()
+      .min(0)
+      .describe("Maximum X (rightmost column index, exclusive)."),
+    yMin: z
+      .number()
+      .int()
+      .min(0)
+      .describe("Minimum Y (topmost row index, inclusive)."),
+    yMax: z
+      .number()
+      .int()
+      .min(0)
+      .describe("Maximum Y (bottommost row index, exclusive)."),
+    layerName: z
+      .string()
+      .min(1)
+      .describe("Name of the map layer to clear tiles from."),
   });
 
   toolCall = tool(
@@ -23,7 +42,7 @@ export class ClearTile {
       const scene = this.sceneGetter();
       if (!scene) {
         console.log("getSceneFailed");
-        return "Tool Failed: no reference to scene.";
+        return "❌ Tool Failed: no reference to scene.";
       }
 
       const { xMin, xMax, yMin, yMax, layerName } = args;
@@ -31,20 +50,35 @@ export class ClearTile {
       const layer = map.getLayer(layerName)?.tilemapLayer;
 
       if (!layer) {
-        return `Tool Failed: layer '${layerName}' not found.`;
+        return `❌ Tool Failed: layer '${layerName}' not found.`;
       }
 
-      for (let x: number = xMin; x < xMax; x++) {
-        for (let y: number = yMin; y < yMax; y++) {
-          map.removeTileAt(x, y, false, false, layer);
+      try {
+        for (let x = xMin; x < xMax; x++) {
+          for (let y = yMin; y < yMax; y++) {
+            map.removeTileAt(x, y, false, false, layer);
+          }
         }
+        return `✅ Cleared tiles from (${xMin}, ${yMin}) up to (${xMax}, ${yMax}) on layer '${layerName}'.`;
+      } catch (e) {
+        console.error("removeTileAt failed:", e);
+        return "❌ Tool Failed: error while clearing tiles.";
       }
-      return `Cleared grid of tile from (${xMin}, ${yMin}) up to (${xMax}, ${yMax}) on layer '${layerName}'.`;
     },
     {
-      name: "placeSingleTile",
+      name: "clearTiles",
       schema: ClearTile.argsSchema,
-      description: "Clears a section of the map given a selection.",
+      description: `
+Clears a rectangular section of the map by removing tiles from the specified layer.
+
+- (xMin, yMin): top-left inclusive coordinates.
+- (xMax, yMax): bottom-right exclusive coordinates.
+- layerName: the name of the target map layer.
+
+Examples:
+  { "xMin": 0, "yMin": 0, "xMax": 3, "yMax": 3, "layerName": "Ground" }
+  { "xMin": 2, "yMin": 2, "xMax": 5, "yMax": 6, "layerName": "Walls" }
+`,
     },
   );
 }

@@ -197,12 +197,12 @@ export class UIScene extends Phaser.Scene {
     // ----- States -----
     bg.on("pointerover", () => {
       bg.setFillStyle(hoverFill);
-      scene.setPointerOverUI?.(true);     // if you added this helper
+      (scene as UIScene).setPointerOverUI?.(true);
     });
 
     bg.on("pointerout", () => {
       bg.setFillStyle(fill);
-      scene.setPointerOverUI?.(false);
+      (scene as UIScene).setPointerOverUI?.(false);
     });
 
     bg.on("pointerdown", () => {

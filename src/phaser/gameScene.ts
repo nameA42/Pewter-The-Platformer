@@ -17,7 +17,8 @@ export class GameScene extends Phaser.Scene {
   private readonly particleVelocity = 50;
   private gameScale = 2;
 
-  private map!: Phaser.Tilemaps.Tilemap;
+  public map!: Phaser.Tilemaps.Tilemap;
+  private passedmap!: Phaser.Tilemaps.Tilemap;
   private groundLayer!: Phaser.Tilemaps.TilemapLayer;
   private backgroundLayer!: Phaser.Tilemaps.TilemapLayer;
   private coinGroup!: Phaser.GameObjects.Group;
@@ -41,28 +42,13 @@ export class GameScene extends Phaser.Scene {
     super({ key: "GameScene" });
   }
 
-  init() {
+  init(data: { map: Phaser.Tilemaps.Tilemap }) {
     this.collectedItems = 0;
     this.isUpDown = false;
-  }
-
-  preload(){
-    this.load.setPath("phaserAssets/");
-    //this.load.image("tilemap_tiles", "tilemap_packed.png");
-    
-    // Load as spritesheet, not image
-    this.load.spritesheet("tilemap_tiles", "tilemap_packed.png", {
-        frameWidth: 18,  // width of each tile
-        frameHeight: 18  // height of each tile
-    });
-
-    // Load the character atlas (PNG + JSON)
-    this.load.atlas("platformer_characters", "tilemap-characters-packed.png", "tilemap-characters-packed.json");
-
-    // Add audio loading
-    this.load.audio("bgm", "audio/bgm.wav");
-
-    this.load.tilemapTiledJSON("platformer-level-1", "platformer-level-1.tmj");
+    console.log("GameScene initialized with data:", data);
+    if (data.map) {
+      this.passedmap = data.map;
+    }
   }
 
   create() {
@@ -84,8 +70,9 @@ export class GameScene extends Phaser.Scene {
     });
     */
 
-    this.map = this.make.tilemap({ key: "defaultMap" });
+    this.map = this.make.tilemap(this.passedmap);
 
+    this
     /*
     const tileset = this.map.addTilesetImage(
       "kenny_tilemap_packed",
@@ -154,8 +141,8 @@ export class GameScene extends Phaser.Scene {
     //Not actually coins but whatever
     const coins = this.map.createFromObjects("Objects", {
       name: "coin",
-      key: "tilemap_tiles",
-      frame: 151,
+      key: "tilemap_sheet",
+      frame: 190,
     });
     this.physics.world.enable(coins, Phaser.Physics.Arcade.STATIC_BODY);
     this.coinGroup = this.add.group(coins);
@@ -324,7 +311,7 @@ export class GameScene extends Phaser.Scene {
 
 
   
-  private handlePlayerMovement() {
+  public handlePlayerMovement() {
     const player = this.player;
     const body = player.body;
     const onGround = body.blocked.down;

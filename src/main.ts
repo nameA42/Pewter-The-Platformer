@@ -2,20 +2,24 @@ import "./style.css";
 import { LoadingScene } from "./phaser/loadingScene.ts";
 import { EditorScene } from "./phaser/editorScene.ts";
 import { sendSystemMessage } from "./languageModel/chatBox.ts";
-import { initializeTools } from "./languageModel/modelConnector.ts";
+import { GameScene } from "./phaser/gameScene.ts";
+import { UIScene } from './phaser/UIScene.ts';
 
 initializeTools();
-import { UIScene } from './phaser/uiScene.ts';
-import { GameScene } from "./phaser/gameScene.ts";
 
 // import { GravityTool } from "./languageModel/tools/gravityTool.ts";
-// import {
-//   initializeTools,
-//   registerTool,
-// } from "./languageModel/modelConnector.ts";
+import {
+  initializeTools,
+  registerTool,
+} from "./languageModel/modelConnector.ts";
 // import { MoveTool } from "./languageModel/tools/moveTool.ts";
 // import { sendSystemMessage } from "./languageModel/chatBox.ts";
 // import { ZoomTool } from "./languageModel/tools/zoomTool.ts";
+
+import { PlaceSingleTile } from "./languageModel/tools/placeSingleTile.ts";
+import { PlaceEnemy } from "./languageModel/tools/placeEnemy.ts";
+import { PlaceGridofTiles } from "./languageModel/tools/placeGridofTiles.ts";
+import { ClearTile } from "./languageModel/tools/clearTile.ts";
 
 ////****LLM Tool Setup****////
 // const tools = {
@@ -24,15 +28,22 @@ import { GameScene } from "./phaser/gameScene.ts";
 //   zoom: new ZoomTool(getScene),
 // };
 
+const tools = {
+  placeSingleTile: new PlaceSingleTile(getScene),
+  placeEnemy: new PlaceEnemy(getScene),
+  placeGridofTiles: new PlaceGridofTiles(getScene),
+  clearTile: new ClearTile(getScene),
+};
+
 // // Register all tools with the LLM
-// Object.values(tools).forEach((generator) => {
-//   if (generator.toolCall) {
-//     registerTool(generator.toolCall);
-//   }
-// });
+Object.values(tools).forEach((generator) => {
+  if (generator.toolCall) {
+    registerTool(generator.toolCall);
+  }
+});
 
 //Now that all tools are registered, we can send them to the LLM.
-// initializeTools();
+initializeTools();
 
 // // Tell the system to introduce itself and explain what it can do
 // sendSystemMessage("Introduce yourself and explain what you can do. ");

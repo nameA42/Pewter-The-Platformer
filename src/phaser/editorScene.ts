@@ -10,7 +10,6 @@ type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
 import { sendUserPrompt } from "../languageModel/chatBox";
 import { Slime } from "./EnemyClasses/Slime.ts";
 import { UltraSlime } from "./EnemyClasses/UltraSlime.ts";
-import { UIScene } from "./UIScene.ts";
 
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
@@ -27,7 +26,7 @@ export class EditorScene extends Phaser.Scene {
   private maxZoomLevel = 10;
   private zoomLevel = 2.25;
 
-  private currentTileId = 1; // What tile to place
+  //private currentTileId = 1; // What tile to place
   private isEditMode = false; // Toggle between drag mode and edit mode
 
   private minimap!: Phaser.Cameras.Scene2D.Camera;
@@ -41,6 +40,8 @@ export class EditorScene extends Phaser.Scene {
     /// Game Variables.
   private gameActive = false;
   private player!: PlayerSprite;
+
+  private selectedTileIndex = 1; // index of the tile to place
 
   private isPlacing: boolean = false; // Place tile flag
 
@@ -75,7 +76,7 @@ export class EditorScene extends Phaser.Scene {
 
   private setPointerOverUI = (v: boolean) => this.registry.set("uiPointerOver", v);
   
-  private chatBox!: Phaser.GameObjects.DOMElement;
+  // Removed chatBox from EditorScene
 
   public enemies: (Slime | UltraSlime)[] = [];
 
@@ -242,7 +243,19 @@ export class EditorScene extends Phaser.Scene {
     this.selectionBox = this.add.graphics();
     this.selectionBox.setDepth(100); // Slightly under highlight box
     this.input.on("pointermove", this.updateSelection, this);
-    this.input.on("pointerup", this.endSelection, this);
+    this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => {
+      if(pointer.rightButtonReleased())
+      {
+        if(this.isSelecting)
+        {
+          this.endSelection();
+        }
+      }
+      else if(pointer.leftButtonReleased())
+      {
+        this.isPlacing = false;
+      }
+    }, this);
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       if (pointer.middleButtonDown()) {
@@ -259,7 +272,7 @@ export class EditorScene extends Phaser.Scene {
         const tileY = Math.floor(worldPoint.y / (16 * this.SCALE));
 
         // Place the currently selected brush tile
-        this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
+        //this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
       } else if (pointer.rightButtonDown()) {
         // Setup selection box
         console.log(`Starting selection`);
@@ -302,11 +315,6 @@ export class EditorScene extends Phaser.Scene {
       cam.scrollY += scrollSpeed / cam.zoom;
     }
 
-    // Prevent runtime error if chatBox is not initialized
-    if (!this.chatBox) return;
-    const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
-    const log = this.chatBox.getChildByID("chat-log") as HTMLDivElement;
-
     this.player = this.physics.add.sprite(
       100,
       100,
@@ -323,24 +331,7 @@ export class EditorScene extends Phaser.Scene {
     return await sendUserPrompt(prompt);
   }
 
-  public showChatboxAt(x: number, y: number): void {
-    this.chatBox.setPosition(x, y);
-    this.chatBox.setVisible(true);
-    const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
-    input.focus();
-    // play button
-    const slime1 = new Slime(this, 5 * 16 + 8, 14 * 16 + 8, this.map);
-    this.enemies.push(slime1);
-    const slime2 = new UltraSlime(this, 15 * 16 + 8, 14 * 16 + 8, this.map);
-    this.enemies.push(slime2);
-
-    this.damageKey = this.input.keyboard!.addKey(
-      Phaser.Input.Keyboard.KeyCodes.SPACE,
-    );
-    this.flipKey = this.input.keyboard!.addKey(
-      Phaser.Input.Keyboard.KeyCodes.F,
-    );
-  }
+  // Removed showChatboxAt from EditorScene
 
   drawGrid() {
     const cam = this.cameras.main;
@@ -455,43 +446,43 @@ export class EditorScene extends Phaser.Scene {
       const pointer = this.input.activePointer;
       const tileX = Math.floor(pointer.worldX / this.TILE_SIZE);
       const tileY = Math.floor(pointer.worldY / this.TILE_SIZE);
-      this.placeTile(this.groundLayer, tileX, tileY, this.currentTileId);
+      this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
     }
 
     if (
       Phaser.Input.Keyboard.JustDown(this.keyC) &&
-      Phaser.Input.Keyboard.JustDown(this.keyCtrl)
+      this.keyCtrl.isDown
     ) {
       this.copySelection();
       console.log("Copied selection");
     } else if (
       Phaser.Input.Keyboard.JustDown(this.keyX) &&
-      Phaser.Input.Keyboard.JustDown(this.keyCtrl)
+      this.keyCtrl.isDown
     ) {
       this.cutSelection();
       console.log("Cut selection");
     } else if (
       Phaser.Input.Keyboard.JustDown(this.keyV) &&
-      Phaser.Input.Keyboard.JustDown(this.keyCtrl)
+      this.keyCtrl.isDown
     ) {
       const pointer = this.input.activePointer;
       this.pasteSelection(pointer);
       console.log("Pasted selection");
     } else if (
       Phaser.Input.Keyboard.JustDown(this.keyN) &&
-      Phaser.Input.Keyboard.JustDown(this.keyCtrl)
+      this.keyCtrl.isDown
     ) {
       this.bindMapHistory();
       console.log("Saved map state");
     } else if (
       Phaser.Input.Keyboard.JustDown(this.keyU) &&
-      Phaser.Input.Keyboard.JustDown(this.keyCtrl)
+      this.keyCtrl.isDown
     ) {
       this.undoLastAction();
       console.log("Undid last action");
     } else if (
       Phaser.Input.Keyboard.JustDown(this.keyR) &&
-      Phaser.Input.Keyboard.JustDown(this.keyCtrl)
+      this.keyCtrl.isDown
     ) {
       this.redoLastAction();
       console.log("Redid last action");
@@ -709,37 +700,20 @@ export class EditorScene extends Phaser.Scene {
     const selectionWidth = eX - sX + 1;
     const selectionHeight = eY - sY + 1;
 
-    // Helper to convert any global (x, y) to selection-local coordinates
-    const toSelectionCoordinates = (x: number, y: number) => {
-      return {
-        x: x - sX,
-        y: eY - y,
-      };
-    };
-
-    let msg: string;
-
-    if (sX === eX && sY === eY) {
-      const { x: localX, y: localY } = toSelectionCoordinates(sX, sY);
-      msg = `User has selected a single tile at (${localX}, ${localY}) relative to the bottom-left of the selection box.`;
-    } else {
-      msg =
+    // Only send info if selection is bigger than 1x1
+    if (selectionWidth > 1 || selectionHeight > 1) {
+      let msg =
         `User has selected a rectangular region that is this size: ${selectionWidth}x${selectionHeight}. Here are the global coordinates for the selection box: [${sX}, ${sY}] to [${eX}, ${eY}].` +
         `There are no notable points of interest in this selection` +
         `Be sure to re-explain what is in the selection box. If there are objects in the selection, specify the characteristics of the object. ` +
         `If no objects are inside the selection, then do not mention anything else.`;
       console.log(msg);
+      // Send selection info to UIScene
+      const uiScene = this.scene.get("UIScene") as any;
+      if (uiScene && typeof uiScene.handleSelectionInfo === "function") {
+        uiScene.handleSelectionInfo(msg);
+      }
     }
-
-    const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
-    const log = this.chatBox.getChildByID("chat-log") as HTMLDivElement;
-
-    input.value = "";
-    log.innerHTML += `<p><strong>You:</strong> Got Selection</p>`;
-    const reply = await this.sendToGemini(msg);
-    console.log(reply);
-    log.innerHTML += `<p><strong>Pewter:</strong> ${reply}</p>`;
-    log.scrollTop = log.scrollHeight;
   }
 
   // Copy selection of tiles function

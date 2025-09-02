@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { sendUserPrompt } from "../languageModel/chatBox";
+import { EditorScene } from "./editorScene.ts";
 
 export class UIScene extends Phaser.Scene {
 
@@ -26,6 +27,9 @@ export class UIScene extends Phaser.Scene {
   //Chat LLM 
   private chatBox!: Phaser.GameObjects.DOMElement;
   //private selectedTileIndex = 0; // index of the tile to place
+
+  // Latest selection context
+  private latestSelectionContext: string = "";
 
   create() {
     // Transparent background
@@ -109,24 +113,39 @@ export class UIScene extends Phaser.Scene {
         this.chatBox.setVisible(isChatVisible);
       }
     });
+    
     const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
     const log = this.chatBox.getChildByID("chat-log") as HTMLDivElement;
 
+    
+    input.addEventListener("keydown", (e: KeyboardEvent) => {
+      // Prevent Phaser from capturing WASD and other keys when typing in chat
+      e.stopPropagation();
+    });
+
     input.addEventListener("keydown", async (e: KeyboardEvent) => {
       if (e.key === "Enter") {
-        const msg = input.value.trim();
-        if (!msg) return;
+        const userMsg = input.value.trim();
+        if (!userMsg) return;
 
         input.value = "";
-        log.innerHTML += `<p><strong>You:</strong> ${msg}</p>`;
-        const reply = await this.sendToGemini(msg);
+        let contextMsg = userMsg;
+        if (this.latestSelectionContext) {
+          contextMsg = `[WORLD CONTEXT]: ${this.latestSelectionContext}\n[USER MESSAGE]: ${userMsg}`;
+        }
+        log.innerHTML += `<p><strong>You:</strong> ${userMsg}</p>`;
+        const reply = await this.sendToGemini(contextMsg);
         log.innerHTML += `<p><strong>Pewter:</strong> ${reply}</p>`;
         log.scrollTop = log.scrollHeight;
       }
     });
-
+    
     // Play mode button - Shawn
     this.createPlayButton();
+  }
+    // Receives selection info from EditorScene and displays it in the chatbox
+  public handleSelectionInfo(msg: string) {
+    this.latestSelectionContext = msg;
   }
 
   //Working Code - Jason Cho (Helper functions)
@@ -243,7 +262,7 @@ export class UIScene extends Phaser.Scene {
 
   private startGame() {
     console.log('Play button clicked!');
-    this.scene.get("editorScene").startGame();
+    (this.scene.get("editorScene") as EditorScene).startGame();
     this.scene.stop('UIScene');
   }
 

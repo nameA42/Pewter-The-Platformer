@@ -5,7 +5,7 @@ import { sendSystemMessage } from "./languageModel/chatBox.ts";
 import { GameScene } from "./phaser/gameScene.ts";
 import { UIScene } from './phaser/UIScene.ts';
 
-initializeTools();
+//initializeTools();
 
 // import { GravityTool } from "./languageModel/tools/gravityTool.ts";
 import {

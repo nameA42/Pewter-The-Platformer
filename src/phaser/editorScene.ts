@@ -27,7 +27,7 @@ export class EditorScene extends Phaser.Scene {
   //private currentTileId = 1; // What tile to place
   private isEditMode = false; // Toggle between drag mode and edit mode
 
-  private minimap!: Phaser.Cameras.Scene2D.Camera;
+  private minimap: Phaser.Cameras.Scene2D.Camera | null = null;
   private minimapZoom = 0.15;
 
   private scrollDeadzone = 50; // pixels from the edge of the camera view to stop scrolling
@@ -108,7 +108,7 @@ export class EditorScene extends Phaser.Scene {
 
   startGame() {
     this.gameActive = true;
-    this.cameras.remove(this.minimap);
+    this.removeMinimap();
     this.createEditorButton();
     this.setupPlayer();
 
@@ -174,23 +174,7 @@ export class EditorScene extends Phaser.Scene {
     this.cameras.main.centerOn(0, 0);
     this.cameras.main.setZoom(this.zoomLevel);
 
-    // minimap
-    this.minimap = this.cameras
-      .add(
-        10,
-        10,
-        this.map.widthInPixels * this.minimapZoom,
-        this.map.heightInPixels * this.minimapZoom,
-      )
-      .setZoom(this.minimapZoom)
-      .setName("minimap");
-    this.minimap.setBackgroundColor(0x002244);
-    this.minimap.setBounds(
-      0,
-      0,
-      this.map.widthInPixels,
-      this.map.heightInPixels,
-    );
+    this.createMinimap();
     this.cameras.main.centerOn(0, 0);
 
     // grid
@@ -925,7 +909,9 @@ export class EditorScene extends Phaser.Scene {
     this.cameras.main.stopFollow();
     this.cameras.main.setZoom(this.zoomLevel);
 
+    this.createMinimap();
     // Restore minimap
+    /*
     if (!this.cameras.cameras.includes(this.minimap)) {
       this.cameras.add(
         10,
@@ -938,6 +924,7 @@ export class EditorScene extends Phaser.Scene {
       .setBackgroundColor(0x002244)
       .setBounds(0, 0, this.map.widthInPixels, this.map.heightInPixels);
     }
+    */
 
     // Remove player sprite
     if (this.player) {
@@ -964,6 +951,37 @@ export class EditorScene extends Phaser.Scene {
 
     // also remove the editor button
 
+  }
+
+  private createMinimap () {
+    if (this.minimap) {
+      this.removeMinimap();
+    }
+
+    this.minimap = this.cameras
+      .add(
+        10,
+        10,
+        this.map.widthInPixels * this.minimapZoom,
+        this.map.heightInPixels * this.minimapZoom,
+      )
+      .setZoom(this.minimapZoom)
+      .setName("minimap");
+    this.minimap.setBackgroundColor(0x002244);
+    this.minimap.setBounds(
+      0,
+      0,
+      this.map.widthInPixels,
+      this.map.heightInPixels,
+    );
+  }
+
+  private removeMinimap () {
+    if (this.minimap){
+      this.cameras.remove(this.minimap);
+      this.minimap = null;
+    }
+    
   }
 
 }

@@ -1,5 +1,7 @@
 import Phaser from "phaser";
 import { sendUserPrompt } from "../languageModel/chatBox";
+import { SelectionBox } from "../phaser/selectionBox";
+
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
   private SCALE = 1.0;
@@ -28,9 +30,9 @@ export class EditorScene extends Phaser.Scene {
 
   private selectedTiles: number[][] = []; // Selected Tiles
 
-  //Box Properties
+  //Selection Box Properties
   private highlightBox!: Phaser.GameObjects.Graphics;
-  private selectionBox!: Phaser.GameObjects.Graphics;
+  //private selectionBox!: Phaser.GameObjects.Graphics;
   public selectionStart!: Phaser.Math.Vector2;
   public selectionEnd!: Phaser.Math.Vector2;
   private isSelecting: boolean = false;
@@ -40,6 +42,8 @@ export class EditorScene extends Phaser.Scene {
     endX: number;
     endY: number;
   } | null = null;
+  private activeBox: SelectionBox | null = null;
+  private selectionBoxes: SelectionBox[] = [];
 
   // keyboard controls
   private keyA!: Phaser.Input.Keyboard.Key;
@@ -50,8 +54,12 @@ export class EditorScene extends Phaser.Scene {
   private keyC!: Phaser.Input.Keyboard.Key;
   private keyX!: Phaser.Input.Keyboard.Key;
   private keyV!: Phaser.Input.Keyboard.Key;
+  private keyZ!: Phaser.Input.Keyboard.Key;
+  private keyN!: Phaser.Input.Keyboard.Key;
 
   private chatBox!: Phaser.GameObjects.DOMElement;
+
+  private currentZLevel: number = 1; // 1 = red, 2 = green, 3 = blue
 
   constructor() {
     super({ key: "editorScene" });
@@ -199,8 +207,8 @@ export class EditorScene extends Phaser.Scene {
     this.highlightBox.setDepth(101); // Ensure it's on top of everything
 
     // selection box
-    this.selectionBox = this.add.graphics();
-    this.selectionBox.setDepth(100); // Slightly under highlight box
+    //this.selectionBox = this.add.graphics();
+    //this.selectionBox.setDepth(100); // Slightly under highlight box
     this.input.on("pointermove", this.updateSelection, this);
     this.input.on("pointerup", this.endSelection, this);
 
@@ -272,6 +280,8 @@ export class EditorScene extends Phaser.Scene {
       this.keyC = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.C);
       this.keyX = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
       this.keyV = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.V);
+      this.keyZ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
+      this.keyN = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.N);
     }
     this.createPlayButton();
 
@@ -453,6 +463,10 @@ export class EditorScene extends Phaser.Scene {
       const pointer = this.input.activePointer;
       this.pasteSelection(pointer);
       console.log("Pasted selection");
+    } else if (Phaser.Input.Keyboard.JustDown(this.keyZ)) {
+      this.cycleZLevel();
+    } else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
+      this.createNewSelectionBox();
     }
   }
 
@@ -496,131 +510,51 @@ export class EditorScene extends Phaser.Scene {
     );
   }
 
-  startSelection(pointer: Phaser.Input.Pointer): void {
-    // Convert screen coordinates to tile coordinates
+  startSelection(pointer: Phaser.Input.Pointer) {
+    console.log("Made a new box!");
     const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const x: number = Math.floor(worldPoint.x / (16 * this.SCALE));
-    const y: number = Math.floor(worldPoint.y / (16 * this.SCALE));
+    const x = Math.floor(worldPoint.x / this.TILE_SIZE);
+    const y = Math.floor(worldPoint.y / this.TILE_SIZE);
 
     // Begin the selection
     this.isSelecting = true;
-    this.selectionStart = new Phaser.Math.Vector2(x, y);
-    this.selectionEnd = new Phaser.Math.Vector2(x, y);
-    this.drawSelectionBox();
+
+    if (!this.activeBox) {
+      this.selectionStart = new Phaser.Math.Vector2(x, y);
+      this.selectionEnd = new Phaser.Math.Vector2(x, y);
+
+      this.activeBox = new SelectionBox(
+        this,
+        this.selectionStart,
+        this.selectionEnd,
+        this.currentZLevel,
+        this.groundLayer,
+      );
+      this.selectionBoxes.push(this.activeBox);
+    } else {
+      // Continue working with the existing active box
+      this.selectionStart.set(x, y);
+      this.selectionEnd.set(x, y);
+      this.activeBox.updateEnd(this.selectionEnd);
+    }
   }
 
-  drawSelectionBox() {
-    this.selectionBox.clear();
+  updateSelection(pointer: Phaser.Input.Pointer) {
+    if (!this.isSelecting || !this.activeBox) return;
 
-    if (!this.isSelecting) return;
-
-    // Calculate the bounds of the selection
-    const startX = Math.min(this.selectionStart.x, this.selectionEnd.x);
-    const startY = Math.min(this.selectionStart.y, this.selectionEnd.y);
-    const endX = Math.max(this.selectionStart.x, this.selectionEnd.x);
-    const endY = Math.max(this.selectionStart.y, this.selectionEnd.y);
-
-    const width = endX - startX + 1;
-    const height = endY - startY + 1;
-
-    // Draw a semi-transparent rectangle
-    this.selectionBox.fillStyle(0xff5555, 0.3);
-    this.selectionBox.fillRect(
-      startX * 16 * this.SCALE,
-      startY * 16 * this.SCALE,
-      (endX - startX + 1) * 16 * this.SCALE,
-      (endY - startY + 1) * 16 * this.SCALE,
-    );
-
-    // Draw a dashed border
-    this.selectionBox.lineStyle(2, 0xff5555, 1);
-    this.selectionBox.beginPath();
-    const dashLength = 8; // Length of each dash
-    const gapLength = 4; // Length of each gap
-
-    // Top border
-    for (let i = 0; i < width * 16 * this.SCALE; i += dashLength + gapLength) {
-      this.selectionBox.moveTo(
-        startX * 16 * this.SCALE + i,
-        startY * 16 * this.SCALE,
-      );
-      this.selectionBox.lineTo(
-        Math.min(
-          startX * 16 * this.SCALE + i + dashLength,
-          endX * 16 * this.SCALE + 16 * this.SCALE,
-        ),
-        startY * 16 * this.SCALE,
-      );
-    }
-
-    // Bottom border
-    for (let i = 0; i < width * 16 * this.SCALE; i += dashLength + gapLength) {
-      this.selectionBox.moveTo(
-        startX * 16 * this.SCALE + i,
-        endY * 16 * this.SCALE + 16 * this.SCALE,
-      );
-      this.selectionBox.lineTo(
-        Math.min(
-          startX * 16 * this.SCALE + i + dashLength,
-          endX * 16 * this.SCALE + 16 * this.SCALE,
-        ),
-        endY * 16 * this.SCALE + 16 * this.SCALE,
-      );
-    }
-
-    // Left border
-    for (let i = 0; i < height * 16 * this.SCALE; i += dashLength + gapLength) {
-      this.selectionBox.moveTo(
-        startX * 16 * this.SCALE,
-        startY * 16 * this.SCALE + i,
-      );
-      this.selectionBox.lineTo(
-        startX * 16 * this.SCALE,
-        Math.min(
-          startY * 16 * this.SCALE + i + dashLength,
-          endY * 16 * this.SCALE + 16 * this.SCALE,
-        ),
-      );
-    }
-
-    // Right border
-    for (let i = 0; i < height * 16 * this.SCALE; i += dashLength + gapLength) {
-      this.selectionBox.moveTo(
-        endX * 16 * this.SCALE + 16 * this.SCALE,
-        startY * 16 * this.SCALE + i,
-      );
-      this.selectionBox.lineTo(
-        endX * 16 * this.SCALE + 16 * this.SCALE,
-        Math.min(
-          startY * 16 * this.SCALE + i + dashLength,
-          endY * 16 * this.SCALE + 16 * this.SCALE,
-        ),
-      );
-    }
-
-    this.selectionBox.strokePath();
-  }
-
-  updateSelection(pointer: Phaser.Input.Pointer): void {
-    if (!this.isSelecting) return;
-
-    // Convert screen coordinates to tile coordinates
     const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const x: number = Math.floor(worldPoint.x / (16 * this.SCALE));
-    const y: number = Math.floor(worldPoint.y / (16 * this.SCALE));
+    const x = Math.floor(worldPoint.x / this.TILE_SIZE);
+    const y = Math.floor(worldPoint.y / this.TILE_SIZE);
 
-    // Clamp to map bounds
-    let clampedX: number = Phaser.Math.Clamp(x, 0, 36 - 1);
-    let clampedY: number = Phaser.Math.Clamp(y, 0, 20 - 1);
-
-    this.selectionEnd.set(clampedX, clampedY);
-    this.drawSelectionBox();
+    this.selectionEnd.set(x, y);
+    this.activeBox.updateEnd(this.selectionEnd);
   }
 
   async endSelection() {
-    if (!this.isSelecting) return;
+    if (!this.isSelecting || !this.activeBox) return;
 
     this.isSelecting = false;
+
     this.selectedTiles = [];
 
     const sX = Math.min(this.selectionStart.x, this.selectionEnd.x);
@@ -628,13 +562,14 @@ export class EditorScene extends Phaser.Scene {
     const eX = Math.max(this.selectionStart.x, this.selectionEnd.x);
     const eY = Math.max(this.selectionStart.y, this.selectionEnd.y);
 
-    // Copying tiles from the selected region
-    this.selectionBounds = {
-      startX: sX,
-      startY: sY,
-      endX: eX,
-      endY: eY,
-    };
+    // Finalize the box
+    this.activeBox.updateEnd(this.selectionEnd);
+    this.activeBox.copyTiles();
+
+    // Add to permanent list
+    if (!this.selectionBoxes.includes(this.activeBox)) {
+      this.selectionBoxes.push(this.activeBox);
+    }
 
     // These define the height and width of the selection box
     const selectionWidth = eX - sX + 1;
@@ -671,6 +606,28 @@ export class EditorScene extends Phaser.Scene {
     console.log(reply);
     log.innerHTML += `<p><strong>Pewter:</strong> ${reply}</p>`;
     log.scrollTop = log.scrollHeight;
+  }
+
+  createNewSelectionBox() {
+    console.log("Made a new box!");
+    const pointer = this.input.activePointer;
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const x = Math.floor(worldPoint.x / this.TILE_SIZE);
+    const y = Math.floor(worldPoint.y / this.TILE_SIZE);
+
+    this.selectionStart = new Phaser.Math.Vector2(x, y);
+    this.selectionEnd = new Phaser.Math.Vector2(x, y);
+
+    this.activeBox = new SelectionBox(
+      this,
+      this.selectionStart,
+      this.selectionEnd,
+      this.currentZLevel,
+      this.groundLayer,
+    );
+
+    this.selectionBoxes.push(this.activeBox);
+    this.isSelecting = true;
   }
 
   // Copy selection of tiles function
@@ -721,6 +678,21 @@ export class EditorScene extends Phaser.Scene {
 
         this.placeTile(this.groundLayer, pasteX + x, pasteY + y, tileIndex);
       }
+    }
+  }
+
+  // Goes through each Z Level
+  cycleZLevel() {
+    this.currentZLevel++;
+    if (this.currentZLevel > 3) {
+      this.currentZLevel = 1;
+    }
+
+    console.log("Z-Level changed to:", this.currentZLevel);
+
+    // If a box is being drawn, update its z-level immediately
+    if (this.activeBox) {
+      this.activeBox.setZLevel(this.currentZLevel);
     }
   }
 }

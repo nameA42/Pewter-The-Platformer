@@ -33,11 +33,23 @@ export class PlaceEnemy {
 
       try {
         if (enemyType === "Slime") {
-          const slime = new Slime(scene, x, y, scene.map);
+          const slime = new Slime(
+            scene,
+            x * scene.map.tileWidth + scene.map.tileWidth / 2,
+            y * scene.map.tileWidth + scene.map.tileWidth / 2,
+            scene.map,
+            scene.groundLayer,
+          );
           enemies.push(slime);
           return `✅ Placed Slime at (${x}, ${y}).`;
         } else if (enemyType === "UltraSlime") {
-          const ultraSlime = new UltraSlime(scene, x, y, scene.map);
+          const ultraSlime = new UltraSlime(
+            scene,
+            x * scene.map.tileWidth + scene.map.tileWidth / 2,
+            y * scene.map.tileWidth + scene.map.tileWidth / 2,
+            scene.map,
+            scene.groundLayer,
+          );
           enemies.push(ultraSlime);
           return `✅ Placed UltraSlime at (${x}, ${y}).`;
         }

@@ -18,6 +18,10 @@ const sysPrompt =
   "The layers are Background_Layer and Ground_Layer. there are no backslashes" +
   "Tile ID 1 matches with an empty tile. Tile ID 2 matches with a coin. Tile ID 4 matches with a fruit (apple, mango, etc.). Tile ID 5 matches with a platform block. Tile ID 6 matches with a dirt block. Tile ID 7 matches with a item (question mark (?)) block." +
   "Each tool has a description associated to it so make sure to check out each tool. Most of your task will require you to use at lease one of the tools or multiple tools at once so use them. You may use each tool multiple times if instructed. When told specific coordinates, make sure to use them strictly. If told to choose random coordinates or place something in a general viscinity of the selection, make sure to be open to such situations and accomodate what they ask of you." +
+  "Some additional Information regarding each tool: " +
+  "Place Enemy: Force yourself to place the enemy only at the ground. Make sure to find the nearest ground tile within the selection and place the enemy there. Account for the fact that the enemy will be moving side to side (Slime will move 4 tiles to the left and Ultra Slime will move 6 tiles to the left). If the placement is not possible (enemy is placed in the air or where the ground layer has tiles, the space for the movement of the enemy is too small), suggest that the enemy should be placed elsewhere and do not do the placement. To place it on the ground tile, you must place it one tile above where the ground tile is." +
+  "Clear Tile: When clearing tiles, make sure to clear tiles only on the Ground_Layer unless told otherwise." +
+  "" +
   "Be friendly and remember to do what you are told. You may also provide suggestions occasionally if you feel it is right to do so. Account for the fact that the level has to be completable and things look straight.";
 
 let tools: any = []; //tool functions and their schemas

@@ -31,12 +31,14 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
     x: number,
     y: number,
     map: Phaser.Tilemaps.Tilemap,
+    groundLayer: Phaser.Tilemaps.TilemapLayer,
   ) {
     super(scene, x, y, "spritesheet", 6);
 
     scene.add.existing(this);
     scene.physics.add.existing(this);
     //this.setCollideWorldBounds(true);
+    scene.physics.add.collider(this, groundLayer);
 
     this.pathfinder = new Pathfinding(
       scene,
@@ -58,57 +60,63 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
     ];
   }
 
-  update(player: Phaser.GameObjects.Sprite, playerHealth: number) {
-    this.frameCounter++;
+  update(
+    player: Phaser.GameObjects.Sprite,
+    playerHealth: number,
+    active: boolean,
+  ) {
+    if (active) {
+      this.frameCounter++;
 
-    if (this.frameCounter > 100 && this.frameCounter <= 200) {
-      this.isRapidFiring = true;
-    } else if (this.frameCounter <= 100) {
-      this.isRapidFiring = false;
-    } else if (this.frameCounter > 200) {
-      this.frameCounter = 0;
-    }
-
-    if (this.isRapidFiring == false) {
-      if (this.frameCounter % this.fireRate === 0) {
-        this.shootPellet();
+      if (this.frameCounter > 100 && this.frameCounter <= 200) {
+        this.isRapidFiring = true;
+      } else if (this.frameCounter <= 100) {
+        this.isRapidFiring = false;
+      } else if (this.frameCounter > 200) {
+        this.frameCounter = 0;
       }
-    } else {
-      if ((this.frameCounter % this.fireRate) / 10 === 0) {
-        this.shootMegaPellet();
-      }
-    }
 
-    this.pellets = this.pellets.filter((pellet) => {
-      this.scene.physics.add.overlap(player, pellet, () => {
-        const isMega = pellet.getData("isMega") === true;
-        playerHealth -= isMega ? 5 : 2;
-        pellet.destroy();
+      if (this.isRapidFiring == false) {
+        if (this.frameCounter % this.fireRate === 0) {
+          this.shootPellet();
+        }
+      } else {
+        if ((this.frameCounter % this.fireRate) / 10 === 0) {
+          this.shootMegaPellet();
+        }
+      }
+
+      this.pellets = this.pellets.filter((pellet) => {
+        this.scene.physics.add.overlap(player, pellet, () => {
+          const isMega = pellet.getData("isMega") === true;
+          playerHealth -= isMega ? 5 : 2;
+          pellet.destroy();
+        });
+        return playerHealth;
       });
-      return playerHealth;
-    });
 
-    // --- PATROL LOGIC ---
-    if (this.reachedPoint) {
-      // reached a patrol point → set up next path
-      const start = this.patrolPoints[this.currentPatrolIndex == 1 ? 0 : 1];
-      const target = this.patrolPoints[this.currentPatrolIndex];
+      // --- PATROL LOGIC ---
+      if (this.reachedPoint) {
+        // reached a patrol point → set up next path
+        const start = this.patrolPoints[this.currentPatrolIndex == 1 ? 0 : 1];
+        const target = this.patrolPoints[this.currentPatrolIndex];
 
-      this.pathfinder.findPath(start.x, start.y, target.x, target.y);
-      this.reachedPoint = false;
+        this.pathfinder.findPath(start.x, start.y, target.x, target.y);
+        this.reachedPoint = false;
 
-      // next target in sequence
-      this.currentPatrolIndex++;
-      this.currentPatrolIndex = this.currentPatrolIndex % 2;
-    } else {
-      // continue pathfinding
-      this.reachedPoint = this.pathfinder.pathfind();
-    }
+        // next target in sequence
+        this.currentPatrolIndex++;
+        this.currentPatrolIndex = this.currentPatrolIndex % 2;
+      } else {
+        // continue pathfinding
+        this.reachedPoint = this.pathfinder.pathfind();
+      }
 
-    if (this.currentPatrolIndex == 0) {
-      this.flip(false);
-    } else if (this.currentPatrolIndex == 1) {
-      this.flip(true);
+      if (this.currentPatrolIndex == 0) {
+        this.flip(false);
+      } else if (this.currentPatrolIndex == 1) {
+        this.flip(true);
+      }
     }
   }
 

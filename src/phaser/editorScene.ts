@@ -13,7 +13,7 @@ export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
   private SCALE = 1.0;
   public map!: Phaser.Tilemaps.Tilemap;
-  private groundLayer!: Phaser.Tilemaps.TilemapLayer;
+  public groundLayer!: Phaser.Tilemaps.TilemapLayer;
   private backgroundLayer!: Phaser.Tilemaps.TilemapLayer;
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private playButton!: Phaser.GameObjects.Text;
@@ -76,8 +76,9 @@ export class EditorScene extends Phaser.Scene {
   private keyN!: Phaser.Input.Keyboard.Key;
   private keyCtrl!: Phaser.Input.Keyboard.Key;
 
-  private setPointerOverUI = (v: boolean) => this.registry.set("uiPointerOver", v);
-  
+  private setPointerOverUI = (v: boolean) =>
+    this.registry.set("uiPointerOver", v);
+
   // Removed chatBox from EditorScene
 
   public enemies: (Slime | UltraSlime)[] = [];
@@ -89,21 +90,22 @@ export class EditorScene extends Phaser.Scene {
     super({ key: "editorScene" });
   }
 
-  
   preload() {
-
     this.load.setPath("phaserAssets/");
     //this.load.image("tilemap_tiles", "tilemap_packed.png");
-    
+
     // Load as spritesheet, not image
     this.load.spritesheet("tilemap_tiles", "tilemap_packed.png", {
-        frameWidth: 18,  // width of each tile
-        frameHeight: 18  // height of each tile
+      frameWidth: 18, // width of each tile
+      frameHeight: 18, // height of each tile
     });
 
     // Load the character atlas (PNG + JSON)
-    this.load.atlas("platformer_characters", "tilemap-characters-packed.png", "tilemap-characters-packed.json");
-
+    this.load.atlas(
+      "platformer_characters",
+      "tilemap-characters-packed.png",
+      "tilemap-characters-packed.json",
+    );
   }
 
   startGame() {
@@ -123,25 +125,25 @@ export class EditorScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.groundLayer);
 
     // Camera follows player in play mode
-    this.cameras.main.startFollow(this.player, true, 0.25, 0.25)
+    this.cameras.main
+      .startFollow(this.player, true, 0.25, 0.25)
       .setDeadzone(50, 50)
       .setZoom(this.zoomLevel);
 
     // Setup player movement controls
     this.cursors = this.input.keyboard!.createCursorKeys();
-    this.wasd = this.input.keyboard!.addKeys('W,S,A,D');
+    this.wasd = this.input.keyboard!.addKeys("W,S,A,D");
 
     // Add Q key handler to quit play mode
     if (this.input.keyboard) {
       const keyQ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
-      keyQ.on('down', () => {
+      keyQ.on("down", () => {
         this.startEditor();
       });
     }
   }
 
   create() {
-    
     this.map = this.make.tilemap({ key: "defaultMap" });
 
     console.log("Map loaded:", this.map);
@@ -226,8 +228,7 @@ export class EditorScene extends Phaser.Scene {
       },
     );
 
-    if (this.input.mouse)
-    {
+    if (this.input.mouse) {
       this.input.mouse.disableContextMenu();
     }
 
@@ -237,8 +238,6 @@ export class EditorScene extends Phaser.Scene {
     // you can also right click to delete a tile in edit mode.
     // you can move the3 camera still by dragging the mouse around when in edit mode.
     // make sure to not be moving the mouse too fast or it will not register and not place the tile.
-
-    
 
     //UI Scene setup
     this.scene.launch("UIScene");
@@ -250,14 +249,18 @@ export class EditorScene extends Phaser.Scene {
       this.keyD = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
       this.keyW = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
       this.keyS = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
-      this.keyShift = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+      this.keyShift = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.SHIFT,
+      );
       this.keyC = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.C);
       this.keyX = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
       this.keyV = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.V);
       this.keyU = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.U);
       this.keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
       this.keyN = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.N);
-      this.keyCtrl = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.CTRL);
+      this.keyCtrl = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.CTRL,
+      );
     }
 
     // scrolling
@@ -272,19 +275,19 @@ export class EditorScene extends Phaser.Scene {
     this.selectionBox = this.add.graphics();
     this.selectionBox.setDepth(100); // Slightly under highlight box
     this.input.on("pointermove", this.updateSelection, this);
-    this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => {
-      if(pointer.rightButtonReleased())
-      {
-        if(this.isSelecting)
-        {
-          this.endSelection();
+    this.input.on(
+      "pointerup",
+      (pointer: Phaser.Input.Pointer) => {
+        if (pointer.rightButtonReleased()) {
+          if (this.isSelecting) {
+            this.endSelection();
+          }
+        } else if (pointer.leftButtonReleased()) {
+          this.isPlacing = false;
         }
-      }
-      else if(pointer.leftButtonReleased())
-      {
-        this.isPlacing = false;
-      }
-    }, this);
+      },
+      this,
+    );
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       if (pointer.middleButtonDown()) {
@@ -312,11 +315,10 @@ export class EditorScene extends Phaser.Scene {
             ?.index || 0;
       }
     });
-  //TODO: handle UI -> Editor communication
+    //TODO: handle UI -> Editor communication
   }
 
-  setupPlayer()
-  {
+  setupPlayer() {
     this.player = this.physics.add.sprite(
       100,
       100,
@@ -431,6 +433,19 @@ export class EditorScene extends Phaser.Scene {
     if (this.gameActive) {
       // Play mode: player movement and camera follow
       // Hide grid and red outline
+
+      this.enemies.forEach((enemy, index) => {
+        if (!enemy || !enemy.active) {
+          enemy.destroy();
+          if (index !== -1) {
+            this.enemies.splice(index, 1); // removes 1 item at that index
+          }
+
+          return;
+        }
+        enemy.update(this.player, 0, this.gameActive);
+      });
+
       if (this.gridGraphics) this.gridGraphics.clear();
       if (this.highlightBox) this.highlightBox.clear();
       if (this.selectionBox) this.selectionBox.clear();
@@ -459,25 +474,32 @@ export class EditorScene extends Phaser.Scene {
         const JUMP_VELOCITY = -550;
 
         if (moveInput !== 0) {
-          const acceleration = onGround ? ACCELERATION : ACCELERATION * AIR_CONTROL;
+          const acceleration = onGround
+            ? ACCELERATION
+            : ACCELERATION * AIR_CONTROL;
           const targetVelocity = moveInput * PLAYER_SPEED;
           if (Math.abs(velocityX - targetVelocity) > 5) {
-            velocityX += (targetVelocity - velocityX) * (acceleration / 1000) * (1/60);
-            velocityX = Phaser.Math.Clamp(velocityX, -PLAYER_SPEED, PLAYER_SPEED);
+            velocityX +=
+              (targetVelocity - velocityX) * (acceleration / 1000) * (1 / 60);
+            velocityX = Phaser.Math.Clamp(
+              velocityX,
+              -PLAYER_SPEED,
+              PLAYER_SPEED,
+            );
           } else {
             velocityX = targetVelocity;
           }
         } else {
           // No horizontal input - apply friction
           if (onGround) {
-            const frictionForce = FRICTION * (1/60);
+            const frictionForce = FRICTION * (1 / 60);
             if (Math.abs(velocityX) > frictionForce) {
               velocityX -= Math.sign(velocityX) * frictionForce;
             } else {
               velocityX = 0;
             }
           } else {
-            const airFriction = FRICTION * 0.3 * (1/60);
+            const airFriction = FRICTION * 0.3 * (1 / 60);
             if (Math.abs(velocityX) > airFriction) {
               velocityX -= Math.sign(velocityX) * airFriction;
             } else {
@@ -533,10 +555,7 @@ export class EditorScene extends Phaser.Scene {
       this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
     }
 
-    if (
-      Phaser.Input.Keyboard.JustDown(this.keyC) &&
-      this.keyCtrl.isDown
-    ) {
+    if (Phaser.Input.Keyboard.JustDown(this.keyC) && this.keyCtrl.isDown) {
       this.copySelection();
       console.log("Copied selection");
     } else if (
@@ -552,9 +571,7 @@ export class EditorScene extends Phaser.Scene {
       const pointer = this.input.activePointer;
       this.pasteSelection(pointer);
       console.log("Pasted selection");
-    } else if (
-      Phaser.Input.Keyboard.JustDown(this.keyN)
-    ) {
+    } else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
       this.bindMapHistory();
       console.log("Saved map state");
     } else if (
@@ -861,18 +878,6 @@ export class EditorScene extends Phaser.Scene {
         this.placeTile(this.groundLayer, pasteX + x, pasteY + y, tileIndex);
       }
     }
-
-    this.enemies.forEach((enemy, index) => {
-      if (!enemy || !enemy.active) {
-        enemy.destroy();
-        if (index !== -1) {
-          this.enemies.splice(index, 1); // removes 1 item at that index
-        }
-
-        return;
-      }
-      enemy.update(this.player, 0);
-    });
   }
 
   // Removed duplicate setupInput logic (all hotkey setup is handled in create)
@@ -880,10 +885,9 @@ export class EditorScene extends Phaser.Scene {
   // ...existing code...
   // cameraMotion is already defined above, removed duplicate
   // ...existing code...
- 
+
   // Create the editor button - Shawn K
-   createEditorButton() {
-    
+  createEditorButton() {
     // some help text
     this.add.rectangle(30, 310, 500, 20, 0x1a1a1a);
     this.add.text(20, 300, "Press Q to quit play mode.");
@@ -927,16 +931,17 @@ export class EditorScene extends Phaser.Scene {
 
     // Restore minimap
     if (!this.cameras.cameras.includes(this.minimap)) {
-      this.cameras.add(
-        10,
-        10,
-        this.map.widthInPixels * this.minimapZoom,
-        this.map.heightInPixels * this.minimapZoom,
-      )
-      .setZoom(this.minimapZoom)
-      .setName("minimap")
-      .setBackgroundColor(0x002244)
-      .setBounds(0, 0, this.map.widthInPixels, this.map.heightInPixels);
+      this.cameras
+        .add(
+          10,
+          10,
+          this.map.widthInPixels * this.minimapZoom,
+          this.map.heightInPixels * this.minimapZoom,
+        )
+        .setZoom(this.minimapZoom)
+        .setName("minimap")
+        .setBackgroundColor(0x002244)
+        .setBounds(0, 0, this.map.widthInPixels, this.map.heightInPixels);
     }
 
     // Remove player sprite
@@ -963,7 +968,5 @@ export class EditorScene extends Phaser.Scene {
     this.cameras.main.centerOn(0, 0);
 
     // also remove the editor button
-
   }
-
 }

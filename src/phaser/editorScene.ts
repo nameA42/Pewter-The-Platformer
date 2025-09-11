@@ -8,6 +8,7 @@ import { sendUserPrompt } from "../languageModel/chatBox";
 import { Slime } from "./EnemyClasses/Slime.ts";
 import { UltraSlime } from "./EnemyClasses/UltraSlime.ts";
 import { UIScene } from "./UIScene.ts";
+import { SelectionBox } from "./selectionBox.ts";
 
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
@@ -51,7 +52,6 @@ export class EditorScene extends Phaser.Scene {
 
   //Box Properties
   private highlightBox!: Phaser.GameObjects.Graphics;
-  private selectionBox!: Phaser.GameObjects.Graphics;
   public selectionStart!: Phaser.Math.Vector2;
   public selectionEnd!: Phaser.Math.Vector2;
   private isSelecting: boolean = false;
@@ -61,6 +61,8 @@ export class EditorScene extends Phaser.Scene {
     endX: number;
     endY: number;
   } | null = null;
+  private activeBox: SelectionBox | null = null;
+  private selectionBoxes: SelectionBox[] = [];
 
   // keyboard controls
   private keyA!: Phaser.Input.Keyboard.Key;
@@ -74,10 +76,15 @@ export class EditorScene extends Phaser.Scene {
   private keyU!: Phaser.Input.Keyboard.Key;
   private keyR!: Phaser.Input.Keyboard.Key;
   private keyN!: Phaser.Input.Keyboard.Key;
+  private keyZ!: Phaser.Input.Keyboard.Key;
+  private keyB!: Phaser.Input.Keyboard.Key;
   private keyCtrl!: Phaser.Input.Keyboard.Key;
 
-  private setPointerOverUI = (v: boolean) => this.registry.set("uiPointerOver", v);
-  
+  private currentZLevel: number = 1; // 1 = red, 2 = green, 3 = blue
+
+  private setPointerOverUI = (v: boolean) =>
+    this.registry.set("uiPointerOver", v);
+
   // Removed chatBox from EditorScene
 
   public enemies: (Slime | UltraSlime)[] = [];
@@ -89,21 +96,22 @@ export class EditorScene extends Phaser.Scene {
     super({ key: "editorScene" });
   }
 
-  
   preload() {
-
     this.load.setPath("phaserAssets/");
     //this.load.image("tilemap_tiles", "tilemap_packed.png");
-    
+
     // Load as spritesheet, not image
     this.load.spritesheet("tilemap_tiles", "tilemap_packed.png", {
-        frameWidth: 18,  // width of each tile
-        frameHeight: 18  // height of each tile
+      frameWidth: 18, // width of each tile
+      frameHeight: 18, // height of each tile
     });
 
     // Load the character atlas (PNG + JSON)
-    this.load.atlas("platformer_characters", "tilemap-characters-packed.png", "tilemap-characters-packed.json");
-
+    this.load.atlas(
+      "platformer_characters",
+      "tilemap-characters-packed.png",
+      "tilemap-characters-packed.json",
+    );
   }
 
   startGame() {
@@ -123,25 +131,25 @@ export class EditorScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.groundLayer);
 
     // Camera follows player in play mode
-    this.cameras.main.startFollow(this.player, true, 0.25, 0.25)
+    this.cameras.main
+      .startFollow(this.player, true, 0.25, 0.25)
       .setDeadzone(50, 50)
       .setZoom(this.zoomLevel);
 
     // Setup player movement controls
     this.cursors = this.input.keyboard!.createCursorKeys();
-    this.wasd = this.input.keyboard!.addKeys('W,S,A,D');
+    this.wasd = this.input.keyboard!.addKeys("W,S,A,D");
 
     // Add Q key handler to quit play mode
     if (this.input.keyboard) {
       const keyQ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
-      keyQ.on('down', () => {
+      keyQ.on("down", () => {
         this.startEditor();
       });
     }
   }
 
   create() {
-    
     this.map = this.make.tilemap({ key: "defaultMap" });
 
     console.log("Map loaded:", this.map);
@@ -210,8 +218,7 @@ export class EditorScene extends Phaser.Scene {
       },
     );
 
-    if (this.input.mouse)
-    {
+    if (this.input.mouse) {
       this.input.mouse.disableContextMenu();
     }
 
@@ -221,8 +228,6 @@ export class EditorScene extends Phaser.Scene {
     // you can also right click to delete a tile in edit mode.
     // you can move the3 camera still by dragging the mouse around when in edit mode.
     // make sure to not be moving the mouse too fast or it will not register and not place the tile.
-
-    
 
     //UI Scene setup
     this.scene.launch("UIScene");
@@ -234,14 +239,20 @@ export class EditorScene extends Phaser.Scene {
       this.keyD = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
       this.keyW = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
       this.keyS = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
-      this.keyShift = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+      this.keyShift = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.SHIFT,
+      );
       this.keyC = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.C);
       this.keyX = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
       this.keyV = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.V);
       this.keyU = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.U);
       this.keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
       this.keyN = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.N);
-      this.keyCtrl = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.CTRL);
+      this.keyZ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
+      this.keyB = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B);
+      this.keyCtrl = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.CTRL,
+      );
     }
 
     // scrolling
@@ -251,24 +262,46 @@ export class EditorScene extends Phaser.Scene {
     // highlight box
     this.highlightBox = this.add.graphics();
     this.highlightBox.setDepth(101); // Ensure it's on top of everything
+    this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
+      // Setup pointer movement
+      this.highlightTile(pointer);
+
+      if (!isDragging) return;
+      if (
+        pointer.x >= this.cameras.main.width - this.scrollDeadzone ||
+        pointer.y >= this.cameras.main.height - this.scrollDeadzone ||
+        pointer.x <= this.scrollDeadzone ||
+        pointer.y <= this.scrollDeadzone
+      ) {
+        isDragging = false; // Stop dragging if pointer is outside the camera view
+        console.warn("Pointer moved outside camera view, stopping drag.");
+        return;
+      }
+
+      const dragX = dragStartPoint.x - pointer.x;
+      const dragY = dragStartPoint.y - pointer.y;
+
+      this.cameras.main.scrollX += dragX / this.cameras.main.zoom;
+      this.cameras.main.scrollY += dragY / this.cameras.main.zoom;
+
+      dragStartPoint.set(pointer.x, pointer.y);
+    });
 
     // selection box
-    this.selectionBox = this.add.graphics();
-    this.selectionBox.setDepth(100); // Slightly under highlight box
     this.input.on("pointermove", this.updateSelection, this);
-    this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => {
-      if(pointer.rightButtonReleased())
-      {
-        if(this.isSelecting)
-        {
-          this.endSelection();
+    this.input.on(
+      "pointerup",
+      (pointer: Phaser.Input.Pointer) => {
+        if (pointer.rightButtonReleased()) {
+          if (this.isSelecting) {
+            this.endSelection();
+          }
+        } else if (pointer.leftButtonReleased()) {
+          this.isPlacing = false;
         }
-      }
-      else if(pointer.leftButtonReleased())
-      {
-        this.isPlacing = false;
-      }
-    }, this);
+      },
+      this,
+    );
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       if (pointer.middleButtonDown()) {
@@ -296,11 +329,10 @@ export class EditorScene extends Phaser.Scene {
             ?.index || 0;
       }
     });
-  //TODO: handle UI -> Editor communication
+    //TODO: handle UI -> Editor communication
   }
 
-  setupPlayer()
-  {
+  setupPlayer() {
     this.player = this.physics.add.sprite(
       100,
       100,
@@ -417,7 +449,7 @@ export class EditorScene extends Phaser.Scene {
       // Hide grid and red outline
       if (this.gridGraphics) this.gridGraphics.clear();
       if (this.highlightBox) this.highlightBox.clear();
-      if (this.selectionBox) this.selectionBox.clear();
+      //if (this.selectionBox) this.selectionBox.clear();
 
       if (this.player && this.cursors && this.wasd) {
         const player = this.player;
@@ -443,25 +475,32 @@ export class EditorScene extends Phaser.Scene {
         const JUMP_VELOCITY = -550;
 
         if (moveInput !== 0) {
-          const acceleration = onGround ? ACCELERATION : ACCELERATION * AIR_CONTROL;
+          const acceleration = onGround
+            ? ACCELERATION
+            : ACCELERATION * AIR_CONTROL;
           const targetVelocity = moveInput * PLAYER_SPEED;
           if (Math.abs(velocityX - targetVelocity) > 5) {
-            velocityX += (targetVelocity - velocityX) * (acceleration / 1000) * (1/60);
-            velocityX = Phaser.Math.Clamp(velocityX, -PLAYER_SPEED, PLAYER_SPEED);
+            velocityX +=
+              (targetVelocity - velocityX) * (acceleration / 1000) * (1 / 60);
+            velocityX = Phaser.Math.Clamp(
+              velocityX,
+              -PLAYER_SPEED,
+              PLAYER_SPEED,
+            );
           } else {
             velocityX = targetVelocity;
           }
         } else {
           // No horizontal input - apply friction
           if (onGround) {
-            const frictionForce = FRICTION * (1/60);
+            const frictionForce = FRICTION * (1 / 60);
             if (Math.abs(velocityX) > frictionForce) {
               velocityX -= Math.sign(velocityX) * frictionForce;
             } else {
               velocityX = 0;
             }
           } else {
-            const airFriction = FRICTION * 0.3 * (1/60);
+            const airFriction = FRICTION * 0.3 * (1 / 60);
             if (Math.abs(velocityX) > airFriction) {
               velocityX -= Math.sign(velocityX) * airFriction;
             } else {
@@ -517,10 +556,7 @@ export class EditorScene extends Phaser.Scene {
       this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
     }
 
-    if (
-      Phaser.Input.Keyboard.JustDown(this.keyC) &&
-      this.keyCtrl.isDown
-    ) {
+    if (Phaser.Input.Keyboard.JustDown(this.keyC) && this.keyCtrl.isDown) {
       this.copySelection();
       console.log("Copied selection");
     } else if (
@@ -536,9 +572,7 @@ export class EditorScene extends Phaser.Scene {
       const pointer = this.input.activePointer;
       this.pasteSelection(pointer);
       console.log("Pasted selection");
-    } else if (
-      Phaser.Input.Keyboard.JustDown(this.keyN)
-    ) {
+    } else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
       this.bindMapHistory();
       console.log("Saved map state");
     } else if (
@@ -553,6 +587,16 @@ export class EditorScene extends Phaser.Scene {
     ) {
       this.redoLastAction();
       console.log("Redid last action");
+    } else if (
+      Phaser.Input.Keyboard.JustDown(this.keyZ) &&
+      this.keyCtrl.isDown
+    ) {
+      this.cycleZLevel();
+    } else if (
+      Phaser.Input.Keyboard.JustDown(this.keyB) &&
+      this.keyCtrl.isDown
+    ) {
+      this.finalizeSelectBox();
     }
   }
 
@@ -623,129 +667,88 @@ export class EditorScene extends Phaser.Scene {
     );
   }
 
-  startSelection(pointer: Phaser.Input.Pointer): void {
-    // Convert screen coordinates to tile coordinates
+  startSelection(pointer: Phaser.Input.Pointer) {
     const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const x: number = Math.floor(worldPoint.x / (16 * this.SCALE));
-    const y: number = Math.floor(worldPoint.y / (16 * this.SCALE));
+    const x = Math.floor(worldPoint.x / this.TILE_SIZE);
+    const y = Math.floor(worldPoint.y / this.TILE_SIZE);
+    this.selectionStart = new Phaser.Math.Vector2(x, y);
+    this.selectionEnd = new Phaser.Math.Vector2(x, y);
 
     // Begin the selection
     this.isSelecting = true;
-    this.selectionStart = new Phaser.Math.Vector2(x, y);
-    this.selectionEnd = new Phaser.Math.Vector2(x, y);
-    this.drawSelectionBox();
+
+    if (!this.activeBox) {
+      // Checking Overlapping
+      const candidate = new Phaser.Geom.Rectangle(x, y, 1, 1);
+      let overlap = false;
+      for (const box of this.selectionBoxes) {
+        const bound = box.getBounds(); // MUST be tile-space rectangle
+        if (Phaser.Geom.Intersects.RectangleToRectangle(candidate, bound)) {
+          console.log("Cannot create box here — overlap detected");
+          overlap = true;
+          break;
+        }
+      }
+      // If overlap does occur, do not make a box
+      if (overlap) {
+        console.log("Cannot create box there!! Overlap detected!!");
+        this.isSelecting = false;
+        return;
+      } else {
+        // If overlap does not occur, do make a box
+        console.log("Made a new box!");
+        this.currentZLevel = 1;
+        this.activeBox = new SelectionBox(
+          this,
+          this.selectionStart,
+          this.selectionEnd,
+          this.currentZLevel,
+          this.groundLayer,
+        );
+      }
+    } else {
+      // Continue working with the existing active box
+      this.selectionStart.set(x, y);
+      this.selectionEnd.set(x, y);
+      this.activeBox.updateEnd(this.selectionEnd);
+    }
   }
 
-  drawSelectionBox() {
-    this.selectionBox.clear();
+  updateSelection(pointer: Phaser.Input.Pointer) {
+    if (!this.isSelecting || !this.activeBox) return;
 
-    if (!this.isSelecting) return;
-
-    // Calculate the bounds of the selection
-    const startX = Math.min(this.selectionStart.x, this.selectionEnd.x);
-    const startY = Math.min(this.selectionStart.y, this.selectionEnd.y);
-    const endX = Math.max(this.selectionStart.x, this.selectionEnd.x);
-    const endY = Math.max(this.selectionStart.y, this.selectionEnd.y);
-
-    const width = endX - startX + 1;
-    const height = endY - startY + 1;
-
-    // Draw a semi-transparent rectangle
-    this.selectionBox.fillStyle(0xff5555, 0.3);
-    this.selectionBox.fillRect(
-      startX * 16 * this.SCALE,
-      startY * 16 * this.SCALE,
-      (endX - startX + 1) * 16 * this.SCALE,
-      (endY - startY + 1) * 16 * this.SCALE,
-    );
-
-    // Draw a dashed border
-    this.selectionBox.lineStyle(2, 0xff5555, 1);
-    this.selectionBox.beginPath();
-    const dashLength = 8; // Length of each dash
-    const gapLength = 4; // Length of each gap
-
-    // Top border
-    for (let i = 0; i < width * 16 * this.SCALE; i += dashLength + gapLength) {
-      this.selectionBox.moveTo(
-        startX * 16 * this.SCALE + i,
-        startY * 16 * this.SCALE,
-      );
-      this.selectionBox.lineTo(
-        Math.min(
-          startX * 16 * this.SCALE + i + dashLength,
-          endX * 16 * this.SCALE + 16 * this.SCALE,
-        ),
-        startY * 16 * this.SCALE,
-      );
-    }
-
-    // Bottom border
-    for (let i = 0; i < width * 16 * this.SCALE; i += dashLength + gapLength) {
-      this.selectionBox.moveTo(
-        startX * 16 * this.SCALE + i,
-        endY * 16 * this.SCALE + 16 * this.SCALE,
-      );
-      this.selectionBox.lineTo(
-        Math.min(
-          startX * 16 * this.SCALE + i + dashLength,
-          endX * 16 * this.SCALE + 16 * this.SCALE,
-        ),
-        endY * 16 * this.SCALE + 16 * this.SCALE,
-      );
-    }
-
-    // Left border
-    for (let i = 0; i < height * 16 * this.SCALE; i += dashLength + gapLength) {
-      this.selectionBox.moveTo(
-        startX * 16 * this.SCALE,
-        startY * 16 * this.SCALE + i,
-      );
-      this.selectionBox.lineTo(
-        startX * 16 * this.SCALE,
-        Math.min(
-          startY * 16 * this.SCALE + i + dashLength,
-          endY * 16 * this.SCALE + 16 * this.SCALE,
-        ),
-      );
-    }
-
-    // Right border
-    for (let i = 0; i < height * 16 * this.SCALE; i += dashLength + gapLength) {
-      this.selectionBox.moveTo(
-        endX * 16 * this.SCALE + 16 * this.SCALE,
-        startY * 16 * this.SCALE + i,
-      );
-      this.selectionBox.lineTo(
-        endX * 16 * this.SCALE + 16 * this.SCALE,
-        Math.min(
-          startY * 16 * this.SCALE + i + dashLength,
-          endY * 16 * this.SCALE + 16 * this.SCALE,
-        ),
-      );
-    }
-
-    this.selectionBox.strokePath();
-  }
-
-  updateSelection(pointer: Phaser.Input.Pointer): void {
-    if (!this.isSelecting) return;
-
-    // Convert screen coordinates to tile coordinates
     const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const x: number = Math.floor(worldPoint.x / (16 * this.SCALE));
-    const y: number = Math.floor(worldPoint.y / (16 * this.SCALE));
+    const x = Math.floor(worldPoint.x / this.TILE_SIZE);
+    const y = Math.floor(worldPoint.y / this.TILE_SIZE);
 
-    // Clamp to map bounds
-    let clampedX: number = Phaser.Math.Clamp(x, 0, 36 - 1);
-    let clampedY: number = Phaser.Math.Clamp(y, 0, 20 - 1);
+    // Now checking whether if any finalized boxes overlap with current one
+    const possibleEnd = new Phaser.Math.Vector2(x, y);
+    const possibleBounds = this.activeBox.tempBounds(possibleEnd);
 
-    this.selectionEnd.set(clampedX, clampedY);
-    this.drawSelectionBox();
+    let overlap = false;
+    for (const box of this.selectionBoxes) {
+      if (
+        box !== this.activeBox &&
+        Phaser.Geom.Intersects.RectangleToRectangle(
+          possibleBounds,
+          box.getBounds(),
+        )
+      ) {
+        console.log("Overlap has been detected!!");
+        overlap = true;
+        break;
+      }
+    }
+
+    // If no overlap was detected
+    if (!overlap) {
+      this.selectionEnd.set(x, y);
+      this.activeBox.updateEnd(this.selectionEnd);
+    }
   }
 
   async endSelection() {
-    if (!this.isSelecting) return;
+    if (!this.isSelecting || !this.activeBox) return;
 
     this.isSelecting = false;
     this.selectedTiles = [];
@@ -754,6 +757,15 @@ export class EditorScene extends Phaser.Scene {
     const sY = Math.min(this.selectionStart.y, this.selectionEnd.y);
     const eX = Math.max(this.selectionStart.x, this.selectionEnd.x);
     const eY = Math.max(this.selectionStart.y, this.selectionEnd.y);
+
+    // Finalize the box
+    this.activeBox.updateEnd(this.selectionEnd);
+    this.activeBox.copyTiles();
+
+    // Add to permanent list
+    if (!this.selectionBoxes.includes(this.activeBox)) {
+      this.selectionBoxes.push(this.activeBox);
+    }
 
     // Copying tiles from the selected region
     this.selectionBounds = {
@@ -864,10 +876,9 @@ export class EditorScene extends Phaser.Scene {
   // ...existing code...
   // cameraMotion is already defined above, removed duplicate
   // ...existing code...
- 
+
   // Create the editor button - Shawn K
-   createEditorButton() {
-    
+  createEditorButton() {
     // some help text
     this.add.rectangle(30, 310, 500, 20, 0x1a1a1a);
     this.add.text(20, 300, "Press Q to quit play mode.");
@@ -944,16 +955,15 @@ export class EditorScene extends Phaser.Scene {
     if (this.gridGraphics) this.gridGraphics.clear();
     this.drawGrid();
     if (this.highlightBox) this.highlightBox.clear();
-    if (this.selectionBox) this.selectionBox.clear();
+    //if (this.selectionBox) this.selectionBox.clear();
 
     // Optionally, reset camera position
     this.cameras.main.centerOn(0, 0);
 
     // also remove the editor button
-
   }
 
-  private createMinimap () {
+  private createMinimap() {
     if (this.minimap) {
       this.removeMinimap();
     }
@@ -976,12 +986,37 @@ export class EditorScene extends Phaser.Scene {
     );
   }
 
-  private removeMinimap () {
-    if (this.minimap){
+  private removeMinimap() {
+    if (this.minimap) {
       this.cameras.remove(this.minimap);
       this.minimap = null;
     }
-    
   }
 
+  // Goes through each Z Level
+  cycleZLevel() {
+    this.currentZLevel++;
+    if (this.currentZLevel > 3) {
+      this.currentZLevel = 1;
+    }
+
+    console.log("Z-Level changed to:", this.currentZLevel);
+
+    // If a box is being drawn, update its z-level immediately
+    if (this.activeBox) {
+      this.activeBox.setZLevel(this.currentZLevel);
+    }
+  }
+
+  // Finalize the box whenever user wants a brand new box
+  finalizeSelectBox() {
+    if (!this.activeBox) return;
+
+    // Push it to the array
+    this.selectionBoxes.push(this.activeBox);
+
+    // Clear references
+    this.activeBox = null;
+    this.isSelecting = false;
+  }
 }

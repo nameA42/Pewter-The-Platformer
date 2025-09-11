@@ -466,7 +466,7 @@ export class EditorScene extends Phaser.Scene {
     } else if (Phaser.Input.Keyboard.JustDown(this.keyZ)) {
       this.cycleZLevel();
     } else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
-      this.createNewSelectionBox();
+      this.finalizeSelectBox();
     }
   }
 
@@ -511,26 +511,44 @@ export class EditorScene extends Phaser.Scene {
   }
 
   startSelection(pointer: Phaser.Input.Pointer) {
-    console.log("Made a new box!");
     const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const x = Math.floor(worldPoint.x / this.TILE_SIZE);
     const y = Math.floor(worldPoint.y / this.TILE_SIZE);
+    this.selectionStart = new Phaser.Math.Vector2(x, y);
+    this.selectionEnd = new Phaser.Math.Vector2(x, y);
 
     // Begin the selection
     this.isSelecting = true;
 
     if (!this.activeBox) {
-      this.selectionStart = new Phaser.Math.Vector2(x, y);
-      this.selectionEnd = new Phaser.Math.Vector2(x, y);
-
-      this.activeBox = new SelectionBox(
-        this,
-        this.selectionStart,
-        this.selectionEnd,
-        this.currentZLevel,
-        this.groundLayer,
-      );
-      this.selectionBoxes.push(this.activeBox);
+      // Checking Overlapping
+      const candidate = new Phaser.Geom.Rectangle(x, y, 1, 1);
+      let overlap = false;
+      for (const box of this.selectionBoxes) {
+        const bound = box.getBounds(); // MUST be tile-space rectangle
+        if (Phaser.Geom.Intersects.RectangleToRectangle(candidate, bound)) {
+          console.log("Cannot create box here — overlap detected");
+          overlap = true;
+          break;
+        }
+      }
+      // If overlap does occur, do not make a box
+      if (overlap) {
+        console.log("Cannot create box there!! Overlap detected!!");
+        this.isSelecting = false;
+        return;
+      } else {
+        // If overlap does not occur, do make a box
+        console.log("Made a new box!");
+        this.currentZLevel = 1;
+        this.activeBox = new SelectionBox(
+          this,
+          this.selectionStart,
+          this.selectionEnd,
+          this.currentZLevel,
+          this.groundLayer,
+        );
+      }
     } else {
       // Continue working with the existing active box
       this.selectionStart.set(x, y);
@@ -546,8 +564,30 @@ export class EditorScene extends Phaser.Scene {
     const x = Math.floor(worldPoint.x / this.TILE_SIZE);
     const y = Math.floor(worldPoint.y / this.TILE_SIZE);
 
-    this.selectionEnd.set(x, y);
-    this.activeBox.updateEnd(this.selectionEnd);
+    // Now checking whether if any finalized boxes overlap with current one
+    const possibleEnd = new Phaser.Math.Vector2(x, y);
+    const possibleBounds = this.activeBox.tempBounds(possibleEnd);
+
+    let overlap = false;
+    for (const box of this.selectionBoxes) {
+      if (
+        box !== this.activeBox &&
+        Phaser.Geom.Intersects.RectangleToRectangle(
+          possibleBounds,
+          box.getBounds(),
+        )
+      ) {
+        console.log("Overlap has been detected!!");
+        overlap = true;
+        break;
+      }
+    }
+
+    // If no overlap was detected
+    if (!overlap) {
+      this.selectionEnd.set(x, y);
+      this.activeBox.updateEnd(this.selectionEnd);
+    }
   }
 
   async endSelection() {
@@ -606,28 +646,6 @@ export class EditorScene extends Phaser.Scene {
     console.log(reply);
     log.innerHTML += `<p><strong>Pewter:</strong> ${reply}</p>`;
     log.scrollTop = log.scrollHeight;
-  }
-
-  createNewSelectionBox() {
-    console.log("Made a new box!");
-    const pointer = this.input.activePointer;
-    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const x = Math.floor(worldPoint.x / this.TILE_SIZE);
-    const y = Math.floor(worldPoint.y / this.TILE_SIZE);
-
-    this.selectionStart = new Phaser.Math.Vector2(x, y);
-    this.selectionEnd = new Phaser.Math.Vector2(x, y);
-
-    this.activeBox = new SelectionBox(
-      this,
-      this.selectionStart,
-      this.selectionEnd,
-      this.currentZLevel,
-      this.groundLayer,
-    );
-
-    this.selectionBoxes.push(this.activeBox);
-    this.isSelecting = true;
   }
 
   // Copy selection of tiles function
@@ -694,5 +712,17 @@ export class EditorScene extends Phaser.Scene {
     if (this.activeBox) {
       this.activeBox.setZLevel(this.currentZLevel);
     }
+  }
+
+  // Finalize the box whenever user wants a brand new box
+  finalizeSelectBox() {
+    if (!this.activeBox) return;
+
+    // Push it to the array
+    this.selectionBoxes.push(this.activeBox);
+
+    // Clear references
+    this.activeBox = null;
+    this.isSelecting = false;
   }
 }

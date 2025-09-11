@@ -135,6 +135,36 @@ export class SelectionBox {
     }
   }
 
+  // Checking the possible bounds without finalizing the update
+  tempBounds(possibleEnd: Phaser.Math.Vector2): Phaser.Geom.Rectangle {
+    const startX = Math.min(this.start.x, possibleEnd.x);
+    const startY = Math.min(this.start.y, possibleEnd.y);
+    const endX = Math.max(this.start.x, possibleEnd.x);
+    const endY = Math.max(this.start.y, possibleEnd.y);
+
+    return new Phaser.Geom.Rectangle(
+      startX,
+      startY,
+      endX - startX,
+      endY - startY,
+    );
+  }
+
+  // Returns the current Bounds of that box
+  getBounds(): Phaser.Geom.Rectangle {
+    const startX = Math.min(this.start.x, this.end.x);
+    const startY = Math.min(this.start.y, this.end.y);
+    const endX = Math.max(this.start.x, this.end.x);
+    const endY = Math.max(this.start.y, this.end.y);
+
+    return new Phaser.Geom.Rectangle(
+      startX,
+      startY,
+      endX - startX,
+      endY - startY,
+    );
+  }
+
   destroy() {
     this.graphics.destroy();
   }

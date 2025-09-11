@@ -104,7 +104,7 @@ export class WorldFactsTool {
             }
           }
 
-          scene.worldFacts.setFact(fact);
+          scene.worldFacts.refresh();
           return `✅ ${fact.category} fact set: ${JSON.stringify(fact.toJSON())}`;
         }
 

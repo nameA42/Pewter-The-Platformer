@@ -1,7 +1,7 @@
 import { tool } from "@langchain/core/tools";
 import type { EditorScene } from "../../phaser/editorScene.ts";
-import { Slime } from "../../phaser/EnemyClasses/Slime.ts";
-import { UltraSlime } from "../../phaser/EnemyClasses/UltraSlime.ts";
+import { Slime } from "../../phaser/ExternalClasses/Slime.ts";
+import { UltraSlime } from "../../phaser/ExternalClasses/UltraSlime.ts";
 import { z } from "zod";
 
 export class PlaceEnemy {

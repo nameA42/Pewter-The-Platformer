@@ -5,9 +5,12 @@ type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
   isFalling?: boolean;
 };
 import { sendUserPrompt } from "../languageModel/chatBox";
-import { Slime } from "./EnemyClasses/Slime.ts";
-import { UltraSlime } from "./EnemyClasses/UltraSlime.ts";
+import { Slime } from "./ExternalClasses/Slime.ts";
+import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
+import type { CollectableData } from "./ExternalClasses/Collectables.ts";
 import { UIScene } from "./UIScene.ts";
+import { WorldFacts } from "../worldFacts.ts";
+import type { World } from "matter";
 
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
@@ -82,9 +85,12 @@ export class EditorScene extends Phaser.Scene {
   // Removed chatBox from EditorScene
 
   public enemies: (Slime | UltraSlime)[] = [];
+  public collectables: CollectableData[] = [];
 
   private damageKey!: Phaser.Input.Keyboard.Key;
   private flipKey!: Phaser.Input.Keyboard.Key;
+
+  public worldFacts!: WorldFacts;
 
   constructor() {
     super({ key: "editorScene" });

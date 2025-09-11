@@ -3,7 +3,7 @@ import { LoadingScene } from "./phaser/loadingScene.ts";
 import { EditorScene } from "./phaser/editorScene.ts";
 import { sendSystemMessage } from "./languageModel/chatBox.ts";
 import { GameScene } from "./phaser/gameScene.ts";
-import { UIScene } from './phaser/UIScene.ts';
+import { UIScene } from "./phaser/UIScene.ts";
 
 //initializeTools();
 
@@ -20,6 +20,7 @@ import { PlaceSingleTile } from "./languageModel/tools/placeSingleTile.ts";
 import { PlaceEnemy } from "./languageModel/tools/placeEnemy.ts";
 import { PlaceGridofTiles } from "./languageModel/tools/placeGridofTiles.ts";
 import { ClearTile } from "./languageModel/tools/clearTile.ts";
+import { WorldFactsTool } from "./languageModel/tools/worldFactsTool.ts";
 
 ////****LLM Tool Setup****////
 // const tools = {
@@ -33,6 +34,7 @@ const tools = {
   placeEnemy: new PlaceEnemy(getScene),
   placeGridofTiles: new PlaceGridofTiles(getScene),
   clearTile: new ClearTile(getScene),
+  WorldFactsTool: new WorldFactsTool(getScene),
 };
 
 // // Register all tools with the LLM

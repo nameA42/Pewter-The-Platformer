@@ -10,55 +10,34 @@ export class WorldFactsTool {
     this.sceneGetter = sceneGetter;
   }
 
-  // Schema now enforces a fact type when action = "set"
   static argsSchema = z.object({
     action: z
       .enum(["get", "set", "list", "remove"])
       .describe("The operation to perform: 'get', 'set', 'list', or 'remove'."),
 
-    // General keys
     key: z
       .string()
       .optional()
       .describe("Identifier for the fact (used in 'get' and 'remove')."),
 
-    // Fact-specific creation fields
     factType: z
       .enum(["Ground", "Pitfall", "Collectable", "Enemy"])
       .optional()
-      .describe(
-        "When setting a fact, specify its type: 'Ground', 'Pitfall', 'Collectable', or 'Enemy'.",
-      ),
+      .describe("When setting a fact, specify its type."),
 
-    // Common positional fields
     x: z
       .number()
       .optional()
-      .describe(
-        "X-coordinate (required for Ground, Pitfall, Collectable, Enemy).",
-      ),
+      .describe("X-coordinate (required for most facts)."),
     y: z
       .number()
       .optional()
-      .describe(
-        "Y-coordinate (required for Ground, Pitfall, Collectable, Enemy).",
-      ),
+      .describe("Y-coordinate (required for most facts)."),
 
-    // Collectable-specific
-    itemType: z
-      .string()
-      .optional()
-      .describe("Type of collectable item (required for Collectable)."),
+    itemType: z.string().optional().describe("Type of collectable item."),
 
-    // Enemy-specific
-    enemyId: z
-      .string()
-      .optional()
-      .describe("Unique ID for enemy (required for Enemy)."),
-    enemyType: z
-      .string()
-      .optional()
-      .describe("Enemy type or class (required for Enemy)."),
+    enemyId: z.string().optional().describe("Unique ID for enemy."),
+    enemyType: z.string().optional().describe("Enemy type or class."),
   });
 
   toolCall = tool(
@@ -79,8 +58,7 @@ export class WorldFactsTool {
             case "Pitfall": {
               if (typeof x !== "number" || typeof y !== "number")
                 return "❌ Tool Failed: 'x' and 'y' are required for Ground/Pitfall.";
-              const hasGround = factType === "Ground";
-              fact = new GroundFact(x, y, hasGround);
+              fact = new GroundFact(x, y, factType === "Ground");
               break;
             }
 
@@ -104,6 +82,7 @@ export class WorldFactsTool {
             }
           }
 
+          // Always refresh after change
           scene.worldFacts.refresh();
           return `✅ ${fact.category} fact set: ${JSON.stringify(fact.toJSON())}`;
         }
@@ -130,10 +109,15 @@ export class WorldFactsTool {
         case "remove": {
           if (!key)
             return "❌ Tool Failed: 'key' is required for action 'remove'.";
-          const ok = scene.worldFacts.removeFact(key);
-          return ok
-            ? `🗑️ Removed fact "${key}".`
-            : `ℹ️ No fact found for "${key}".`;
+
+          const exists = !!scene.worldFacts.getFact(key);
+          if (!exists) return `ℹ️ No fact found for "${key}".`;
+
+          scene.worldFacts.removeFact(key);
+
+          // Always refresh after change
+          scene.worldFacts.refresh();
+          return `🗑️ Removed fact "${key}".`;
         }
 
         default:
@@ -152,14 +136,7 @@ Actions:
 - 'list': Show all stored facts with details.
 - 'remove': Delete a fact (requires 'key').
 
-Examples:
-  { "action": "set", "factType": "Ground", "x": 5, "y": 10 }
-  { "action": "set", "factType": "Pitfall", "x": 7, "y": 12 }
-  { "action": "set", "factType": "Collectable", "x": 3, "y": 4, "itemType": "GoldCoin" }
-  { "action": "set", "factType": "Enemy", "enemyId": "e1", "x": 6, "y": 8, "enemyType": "Orc" }
-  { "action": "get", "key": "collectable:3,4" }
-  { "action": "list" }
-  { "action": "remove", "key": "enemy:e1" }
+The tool always refreshes world facts from the scene whenever a change is made ('set' or 'remove').
 `,
     },
   );

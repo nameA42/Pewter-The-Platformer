@@ -54,9 +54,9 @@ export class PlaceSingleTile {
       map.putTileAt(tileIndex, x, y, true, layer);
 
       if (layerName == "Ground_Layer") {
-        scene.worldFacts.setFact("Ground", -1, -1);
+        scene.worldFacts.setFact("Ground");
       } else if (layerName == "Collectables_Layer") {
-        scene.worldFacts.setFact("Collectable", -1, -1);
+        scene.worldFacts.setFact("Collectable");
       }
       return `✅ Placed tile ${tileIndex} at (${x}, ${y}) on layer '${layerName}'.`;
     },

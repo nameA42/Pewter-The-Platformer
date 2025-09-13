@@ -38,27 +38,23 @@ export class GroundFact extends Fact {
 }
 
 export class CollectableFact extends Fact {
-  x: number;
-  y: number;
-  itemType: string;
+  xs: number[];
+  ys: number[];
+  types: number[];
 
-  constructor(x: number, y: number, itemType: string) {
-    super(
-      `collectable:${x},${y}`,
-      "Collectable",
-      `Collectable of type '${itemType}'`,
-    );
-    this.x = x;
-    this.y = y;
-    this.itemType = itemType;
+  constructor(xs: number[], ys: number[], types: number[]) {
+    super("collectables", "Collectable");
+    this.xs = xs;
+    this.ys = ys;
+    this.types = types;
   }
 
   toJSON() {
     return {
       category: this.category,
-      x: this.x,
-      y: this.y,
-      itemType: this.itemType,
+      xs: this.xs,
+      ys: this.ys,
+      types: this.types,
     };
   }
 }
@@ -129,8 +125,27 @@ export class WorldFacts {
     }
 
     // 2. Collectables
-    for (const c of scene.collectables ?? []) {
-      this.collectableFacts.push(new CollectableFact(c.x, c.y, c.type));
+    const collectablesLayer =
+      scene.map.getLayer("Collectables_Layer")?.tilemapLayer;
+    if (collectablesLayer) {
+      const xs: number[] = [];
+      const ys: number[] = [];
+      const types: number[] = [];
+
+      for (let x = 0; x < collectablesLayer.width; x++) {
+        for (let y = 0; y < collectablesLayer.height; y++) {
+          const tile = collectablesLayer.getTileAt(x, y);
+          if (tile) {
+            xs.push(x);
+            ys.push(y);
+            types.push(tile.index); // store the tile type/index
+          }
+        }
+      }
+
+      if (xs.length > 0) {
+        this.collectableFacts.push(new CollectableFact(xs, ys, types));
+      }
     }
 
     // 3. Enemies
@@ -141,7 +156,7 @@ export class WorldFacts {
 
   // --- API methods ---
 
-  setFact(category: FactCategory, x: number, y: number, type?: string): void {
+  setFact(category: FactCategory, x?: number, y?: number, type?: string): void {
     switch (category) {
       case "Ground": {
         // Recompute ground heights directly from the scene
@@ -173,19 +188,33 @@ export class WorldFacts {
         this.enemyFacts = this.enemyFacts.filter(
           (f) => !(f.x === x && f.y === y),
         );
-        this.enemyFacts.push(new EnemyFact(x, y, type ?? "unknown"));
+        this.enemyFacts.push(new EnemyFact(x!, y!, type ?? "unknown"));
         break;
       }
 
       case "Collectable": {
-        // Replace any existing collectable fact at same (x, y)
-        this.collectableFacts = this.collectableFacts.filter(
-          (f) => !(f.x === x && f.y === y),
-        );
-        this.collectableFacts.push(
-          new CollectableFact(x, y, type ?? "unknown"),
-        );
-        break;
+        const collectablesLayer =
+          this.scene.map.getLayer("Collectables_Layer")?.tilemapLayer;
+        if (collectablesLayer) {
+          const xs: number[] = [];
+          const ys: number[] = [];
+          const types: number[] = [];
+
+          for (let x = 0; x < collectablesLayer.width; x++) {
+            for (let y = 0; y < collectablesLayer.height; y++) {
+              const tile = collectablesLayer.getTileAt(x, y);
+              if (tile) {
+                xs.push(x);
+                ys.push(y);
+                types.push(tile.index); // store the tile type/index
+              }
+            }
+          }
+
+          if (xs.length > 0) {
+            this.collectableFacts.push(new CollectableFact(xs, ys, types));
+          }
+        }
       }
     }
   }

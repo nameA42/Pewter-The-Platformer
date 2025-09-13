@@ -61,9 +61,9 @@ export class ClearTile {
         }
 
         if (layerName == "Ground_Layer") {
-          scene.worldFacts.setFact("Ground", -1, -1);
+          scene.worldFacts.setFact("Ground");
         } else if (layerName == "Collectables_Layer") {
-          scene.worldFacts.setFact("Collectable", -1, -1);
+          scene.worldFacts.setFact("Collectable");
         }
 
         console.log(layer);

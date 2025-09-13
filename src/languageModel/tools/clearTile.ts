@@ -60,6 +60,12 @@ export class ClearTile {
           }
         }
 
+        if (layerName == "Ground_Layer") {
+          scene.worldFacts.setFact("Ground", -1, -1);
+        } else if (layerName == "Collectables_Layer") {
+          scene.worldFacts.setFact("Collectable", -1, -1);
+        }
+
         console.log(layer);
         return `✅ Cleared tiles from (${xMin}, ${yMin}) up to (${xMax}, ${yMax}) on layer '${layerName}'.`;
       } catch (e) {
@@ -75,7 +81,7 @@ Clears a rectangular section of the map by removing tiles from the specified lay
 
 - (xMin, yMin): top-left inclusive coordinates.
 - (xMax, yMax): bottom-right exclusive coordinates.
-- layerName: the name of the target map layer.
+- layerName: the name of the target map layer. Choose between 'Ground_Layer' and 'Collectables_Layer' 
 
 Examples:
   { "xMin": 0, "yMin": 0, "xMax": 3, "yMax": 3, "layerName": "Ground" }

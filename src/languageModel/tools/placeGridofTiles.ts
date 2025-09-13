@@ -69,6 +69,11 @@ export class PlaceGridofTiles {
             map.putTileAt(tileIndex, x, y, true, layer);
           }
         }
+        if (layerName == "Ground_Layer") {
+          scene.worldFacts.setFact("Ground", -1, -1);
+        } else if (layerName == "Collectables_Layer") {
+          scene.worldFacts.setFact("Collectable", -1, -1);
+        }
         return `✅ Placed grid of tile ${tileIndex} from (${xMin}, ${yMin}) up to (${xMax}, ${yMax}) on layer '${layerName}'.`;
       } catch (e) {
         console.error("putTileAt failed:", e);
@@ -84,7 +89,7 @@ Places a rectangular grid of tiles on the map.
 - tileIndex: numeric ID of the tile to place.
 - (xMin, yMin): top-left inclusive coordinates.
 - (xMax, yMax): bottom-right exclusive coordinates.
-- layerName: the name of the target map layer.
+- layerName: the name of the target map layer. Choose between 'Ground_Layer' and 'Collectables_Layer' 
 
 Examples:
   { "tileIndex": 5, "xMin": 0, "yMin": 0, "xMax": 3, "yMax": 3, "layerName": "Ground" }

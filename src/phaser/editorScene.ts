@@ -7,9 +7,8 @@ type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
 import { sendUserPrompt } from "../languageModel/chatBox";
 import { Slime } from "./ExternalClasses/Slime.ts";
 import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
-import type { CollectableData } from "./ExternalClasses/Collectables.ts";
 import { UIScene } from "./UIScene.ts";
-import { WorldFacts } from "../worldFacts.ts";
+import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
 import type { World } from "matter";
 
 export class EditorScene extends Phaser.Scene {
@@ -17,6 +16,7 @@ export class EditorScene extends Phaser.Scene {
   private SCALE = 1.0;
   public map!: Phaser.Tilemaps.Tilemap;
   public groundLayer!: Phaser.Tilemaps.TilemapLayer;
+  public collectablesLayer!: Phaser.Tilemaps.TilemapLayer;
   private backgroundLayer!: Phaser.Tilemaps.TilemapLayer;
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private playButton!: Phaser.GameObjects.Text;
@@ -85,7 +85,6 @@ export class EditorScene extends Phaser.Scene {
   // Removed chatBox from EditorScene
 
   public enemies: (Slime | UltraSlime)[] = [];
-  public collectables: CollectableData[] = [];
 
   private damageKey!: Phaser.Input.Keyboard.Key;
   private flipKey!: Phaser.Input.Keyboard.Key;
@@ -152,6 +151,8 @@ export class EditorScene extends Phaser.Scene {
   create() {
     this.map = this.make.tilemap({ key: "defaultMap" });
 
+    this.worldFacts = new WorldFacts(this);
+
     console.log("Map loaded:", this.map);
     const tileset = this.map.addTilesetImage(
       "pewterPlatformerTileset",
@@ -172,7 +173,12 @@ export class EditorScene extends Phaser.Scene {
     // console.log("LAYER1 added:", this.map);
     this.groundLayer = this.map.createLayer("Ground_Layer", tileset, 0, 0)!;
     // console.log("LAYER2 added:", this.map);
-
+    this.collectablesLayer = this.map.createLayer(
+      "Collectables_Layer",
+      tileset,
+      0,
+      0,
+    )!;
     this.cameras.main.setBounds(
       0,
       0,
@@ -322,6 +328,8 @@ export class EditorScene extends Phaser.Scene {
       }
     });
     //TODO: handle UI -> Editor communication
+
+    this.worldFacts.refresh();
   }
 
   setupPlayer() {

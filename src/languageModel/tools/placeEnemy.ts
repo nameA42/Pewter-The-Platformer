@@ -41,6 +41,12 @@ export class PlaceEnemy {
             scene.groundLayer,
           );
           enemies.push(slime);
+          scene.worldFacts.setFact(
+            "Enemy",
+            x * scene.map.tileWidth + scene.map.tileWidth / 2,
+            y * scene.map.tileWidth + scene.map.tileWidth / 2,
+            "Slime",
+          );
           return `✅ Placed Slime at (${x}, ${y}).`;
         } else if (enemyType === "UltraSlime") {
           const ultraSlime = new UltraSlime(
@@ -51,6 +57,12 @@ export class PlaceEnemy {
             scene.groundLayer,
           );
           enemies.push(ultraSlime);
+          scene.worldFacts.setFact(
+            "Enemy",
+            x * scene.map.tileWidth + scene.map.tileWidth / 2,
+            y * scene.map.tileWidth + scene.map.tileWidth / 2,
+            "Ultra Slime",
+          );
           return `✅ Placed UltraSlime at (${x}, ${y}).`;
         }
       } catch (e) {

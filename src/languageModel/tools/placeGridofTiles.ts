@@ -64,8 +64,8 @@ export class PlaceGridofTiles {
       }
 
       try {
-        for (let x = xMin; x <= xMax; x++) {
-          for (let y = yMin; y <= yMax; y++) {
+        for (let x = xMin; x < xMax; x++) {
+          for (let y = yMin; y < yMax; y++) {
             map.putTileAt(tileIndex, x, y, true, layer);
           }
         }

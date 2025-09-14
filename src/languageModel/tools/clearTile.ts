@@ -54,8 +54,8 @@ export class ClearTile {
       }
 
       try {
-        for (let x = xMin; x <= xMax; x++) {
-          for (let y = yMin; y <= yMax; y++) {
+        for (let x = xMin; x < xMax; x++) {
+          for (let y = yMin; y < yMax; y++) {
             map.removeTileAt(x, y, false, false, layer);
           }
         }

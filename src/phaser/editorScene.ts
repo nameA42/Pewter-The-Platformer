@@ -478,7 +478,8 @@ export class EditorScene extends Phaser.Scene {
 
     // Only highlight if within map bounds
     if (x >= 0 && x < 36 && y >= 0 && y < 20) {
-      this.drawHighlightBox(x, y, 0xff0000); // Red outline
+      const color = this.getHighlightColorForZLevel(this.currentZLevel);
+      this.drawHighlightBox(x, y, color);
     } else {
       // Clear highlight if out of bounds
       this.highlightBox.clear();
@@ -797,5 +798,19 @@ export class EditorScene extends Phaser.Scene {
     // Clear references
     this.activeBox = null;
     this.isSelecting = false;
+  }
+
+  // Match Highlight Color with Z-Level
+  getHighlightColorForZLevel(zLevel: number): number {
+    switch (zLevel) {
+      case 1:
+        return 0xff5555; // red
+      case 2:
+        return 0x55ff55; // green
+      case 3:
+        return 0x5555ff; // blue
+      default:
+        return 0xffffff; // white (This is not gonna happen)
+    }
   }
 }

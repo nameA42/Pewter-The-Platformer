@@ -27,6 +27,11 @@ export class SelectionBox {
     this.redraw();
   }
 
+  updateStart(start: Phaser.Math.Vector2) {
+    this.start = start.clone();
+    this.redraw();
+  }
+
   updateEnd(end: Phaser.Math.Vector2) {
     this.end = end.clone();
     this.redraw();

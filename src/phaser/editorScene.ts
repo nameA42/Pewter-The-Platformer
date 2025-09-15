@@ -553,6 +553,7 @@ export class EditorScene extends Phaser.Scene {
       // Continue working with the existing active box
       this.selectionStart.set(x, y);
       this.selectionEnd.set(x, y);
+      this.activeBox.updateStart(this.selectionStart);
       this.activeBox.updateEnd(this.selectionEnd);
     }
   }

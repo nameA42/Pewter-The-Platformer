@@ -27,6 +27,10 @@ export class SelectionBox {
     this.redraw();
   }
 
+  getZLevel(): number {
+    return this.zLevel;
+  }
+
   updateStart(start: Phaser.Math.Vector2) {
     this.start = start.clone();
     this.redraw();

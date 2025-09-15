@@ -519,7 +519,7 @@ export class EditorScene extends Phaser.Scene {
 
     // Begin the selection
     this.isSelecting = true;
-
+    /*
     if (!this.activeBox) {
       // Checking Overlapping
       const candidate = new Phaser.Geom.Rectangle(x, y, 1, 1);
@@ -556,6 +556,48 @@ export class EditorScene extends Phaser.Scene {
       this.activeBox.updateStart(this.selectionStart);
       this.activeBox.updateEnd(this.selectionEnd);
     }
+    */
+    // Checking Overlapping
+    const candidate = new Phaser.Geom.Rectangle(x, y, 1, 1);
+    let overlap = false;
+    for (const box of this.selectionBoxes) {
+      if (box === this.activeBox) continue; // skip the box currently being edited
+
+      if (box.getZLevel() === this.currentZLevel) {
+        // only check boxes on same level
+        const bound = box.getBounds(); // MUST be tile-space rectangle
+        if (Phaser.Geom.Intersects.RectangleToRectangle(candidate, bound)) {
+          console.log("Cannot create box here — overlap detected");
+          overlap = true;
+          break;
+        }
+      }
+    }
+    // If overlap does occur, do not make a box
+    if (overlap) {
+      console.log("Cannot create box there!! Overlap detected!!");
+      this.isSelecting = false;
+      return;
+    } else {
+      if (!this.activeBox) {
+        // If overlap does not occur, do make a new box
+        console.log("Made a new box!");
+        this.currentZLevel = 1;
+        this.activeBox = new SelectionBox(
+          this,
+          this.selectionStart,
+          this.selectionEnd,
+          this.currentZLevel,
+          this.groundLayer,
+        );
+      } else {
+        // If overlap does not occur, continue working with the existing active box
+        this.selectionStart.set(x, y);
+        this.selectionEnd.set(x, y);
+        this.activeBox.updateStart(this.selectionStart);
+        this.activeBox.updateEnd(this.selectionEnd);
+      }
+    }
   }
 
   updateSelection(pointer: Phaser.Input.Pointer) {
@@ -571,16 +613,19 @@ export class EditorScene extends Phaser.Scene {
 
     let overlap = false;
     for (const box of this.selectionBoxes) {
-      if (
-        box !== this.activeBox &&
-        Phaser.Geom.Intersects.RectangleToRectangle(
-          possibleBounds,
-          box.getBounds(),
-        )
-      ) {
-        console.log("Overlap has been detected!!");
-        overlap = true;
-        break;
+      if (box.getZLevel() === this.currentZLevel) {
+        // only check boxes on same level
+        if (
+          box !== this.activeBox &&
+          Phaser.Geom.Intersects.RectangleToRectangle(
+            possibleBounds,
+            box.getBounds(),
+          )
+        ) {
+          console.log("Overlap has been detected!!");
+          overlap = true;
+          break;
+        }
       }
     }
 
@@ -702,9 +747,36 @@ export class EditorScene extends Phaser.Scene {
 
   // Goes through each Z Level
   cycleZLevel() {
+    if (!this.activeBox) return;
+
     this.currentZLevel++;
     if (this.currentZLevel > 3) {
       this.currentZLevel = 1;
+    }
+
+    // Proposed rectangle of the active box
+    const checkedRect = this.activeBox.getBounds();
+    let overlap = false;
+
+    for (const box of this.selectionBoxes) {
+      if (box === this.activeBox) continue; // skip the box currently being edited
+
+      if (box.getZLevel() === this.currentZLevel) {
+        // only check boxes on same level
+        const bound = box.getBounds(); // MUST be tile-space rectangle
+        if (Phaser.Geom.Intersects.RectangleToRectangle(checkedRect, bound)) {
+          overlap = true;
+          break;
+        }
+      }
+    }
+
+    if (overlap) {
+      console.log("Skipping one Z-Level");
+      this.currentZLevel++;
+      if (this.currentZLevel > 3) {
+        this.currentZLevel = 1;
+      }
     }
 
     console.log("Z-Level changed to:", this.currentZLevel);

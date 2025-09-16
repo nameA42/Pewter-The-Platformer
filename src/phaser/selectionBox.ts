@@ -14,6 +14,7 @@ export class SelectionBox {
   private zLevel: number;
   public selectedTiles: number[][] = [];
   private layer: Phaser.Tilemaps.TilemapLayer;
+  private id?: string;
 
   constructor(
     scene: Phaser.Scene,
@@ -47,9 +48,22 @@ export class SelectionBox {
     this.redraw();
   }
 
+  setId(id: string) {
+    this.id = id;
+  }
+
+  getId(): string | undefined {
+    return this.id;
+  }
+
   setZLevel(zLevel: number) {
     this.zLevel = zLevel;
     this.redraw();
+  }
+
+  // expose Z level for external checks
+  public getZLevel(): number {
+    return this.zLevel;
   }
 
   private redraw() {
@@ -160,8 +174,8 @@ export class SelectionBox {
     return new Phaser.Geom.Rectangle(
       startX,
       startY,
-      endX - startX,
-      endY - startY,
+      endX - startX + 1,
+      endY - startY + 1,
     );
   }
 
@@ -175,8 +189,8 @@ export class SelectionBox {
     return new Phaser.Geom.Rectangle(
       startX,
       startY,
-      endX - startX,
-      endY - startY,
+      endX - startX + 1,
+      endY - startY + 1,
     );
   }
 

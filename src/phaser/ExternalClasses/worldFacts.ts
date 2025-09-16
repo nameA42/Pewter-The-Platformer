@@ -320,72 +320,83 @@ export class WorldFacts {
     const groundLayer = scene.map.getLayer("Ground_Layer")?.tilemapLayer;
     if (!groundLayer) return structures;
 
-    const groundHeights: Record<number, number> = {};
-    for (let x = 0; x < groundLayer.width; x++) {
-      for (let y = 0; y < groundLayer.height; y++) {
-        const tile = groundLayer.getTileAt(x, y);
-        if (tile) {
-          groundHeights[x] = y;
+    const width = groundLayer.width;
+    const height = groundLayer.height;
+
+    const xs: number[] = [];
+    const ys: number[] = [];
+
+    // Step 1: record topmost tile for each column
+    for (let x = 0; x < width; x++) {
+      xs.push(x);
+      let topY = -1;
+      for (let y = 0; y < height; y++) {
+        if (groundLayer.getTileAt(x, y)) {
+          topY = y;
           break;
         }
       }
+      ys.push(topY);
     }
 
-    let xs = [];
-    let ys = [];
+    // Helper: is the tile unsupported below?
+    const isFloating = (x: number, y: number) => {
+      if (y === -1) return false;
+      const belowTile = groundLayer.getTileAt(x, y + 1);
+      return !belowTile;
+    };
 
-    for (let gx = 0; gx < groundLayer.width; gx++) {
-      xs.push(gx);
+    let segStart = 0;
+    let prevType: "Pitfall" | "Platform" | "Flat" | "Ramp" | null = null;
+    let prevHeights: number | number[] | null = null;
 
-      let groundY = -1; // default if no ground tile found
-      for (let gy = 0; gy < groundLayer.height; gy++) {
-        const tile = groundLayer.getTileAt(gx, gy);
-        if (tile) {
-          groundY = gy;
-          break; // take first ground tile
-        }
+    for (let i = 0; i <= xs.length; i++) {
+      const x = xs[i];
+      const y = ys[i] ?? -1;
+
+      // Determine current type and height(s)
+      let type: "Pitfall" | "Platform" | "Flat" | "Ramp";
+      let heightsOrHeight: number | number[];
+
+      if (y === -1) {
+        type = "Pitfall";
+        heightsOrHeight = [-1];
+      } else if (isFloating(x, y)) {
+        type = "Platform";
+        heightsOrHeight = [y];
+      } else {
+        // fully supported
+        type = "Flat";
+        heightsOrHeight = y;
       }
 
-      ys.push(groundY);
+      // Check if we should split segment
+      const typeChanged =
+        prevType !== null &&
+        (type !== prevType ||
+          (type === "Flat" && heightsOrHeight !== prevHeights));
+
+      if (typeChanged) {
+        structures.push(
+          new StructureFact(xs[segStart], xs[i - 1], prevType!, prevHeights!),
+        );
+        segStart = i;
+      }
+
+      prevType = type;
+      prevHeights = heightsOrHeight;
     }
 
-    console.log(xs, ys);
-
-    let start = 0;
-    for (let i = 1; i <= xs.length; i++) {
-      const prev = ys[i - 1];
-      const curr = ys[i] ?? prev;
-
-      const slopePrev = i > 1 ? ys[i - 1] - ys[i - 2] : 0;
-      const slopeCurr = i > 1 ? curr - prev : 0;
-      const slopeChanged = slopePrev !== slopeCurr;
-
-      if (slopeChanged || i === xs.length) {
-        const xStart = xs[start];
-        const xEnd = xs[i - 1];
-        const segmentYs = ys.slice(start, i);
-
-        let type: "Pitfall" | "Ramp" | "Flat" | "Platform" = "Flat";
-        let heightsOrHeight: number[] | number | undefined;
-
-        if (segmentYs.every((y) => y === -1)) {
-          type = "Pitfall";
-        } else if (
-          segmentYs.every((_, j) => j === 0 || segmentYs[j] > segmentYs[j - 1])
-        ) {
-          type = "Ramp";
-          heightsOrHeight = segmentYs;
-        } else if (segmentYs.every((y) => y === segmentYs[0])) {
-          type = "Flat";
-          heightsOrHeight = segmentYs[0];
-        } else {
-          type = "Platform";
-          heightsOrHeight = segmentYs;
-        }
-
-        structures.push(new StructureFact(xStart, xEnd, type, heightsOrHeight));
-        start = i - 1;
-      }
+    // Push final segment
+    if (segStart < xs.length) {
+      structures.push(
+        new StructureFact(
+          xs[segStart],
+          xs[xs.length - 1],
+          prevType!,
+          prevHeights!,
+        ),
+      );
     }
 
     return structures;

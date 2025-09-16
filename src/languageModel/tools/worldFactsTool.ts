@@ -36,7 +36,7 @@ export class WorldFactsTool {
 Retrieve stored facts about the game world, grouped by category.
 
 Categories:
-- 'Ground': Information about ground height map.
+- 'Structure': Information about ground height map.
 - 'Collectable': Items that can be collected.
 - 'Enemy': Enemy positions and types.
 `,

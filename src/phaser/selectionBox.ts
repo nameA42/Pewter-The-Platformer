@@ -14,6 +14,7 @@ export class SelectionBox {
   private zLevel: number;
   public selectedTiles: number[][] = [];
   private layer: Phaser.Tilemaps.TilemapLayer;
+  public localContext: { chatHistory: any[] };
 
   constructor(
     scene: Phaser.Scene,
@@ -31,6 +32,9 @@ export class SelectionBox {
     this.graphics = scene.add.graphics();
     this.graphics.setDepth(100);
     this.redraw();
+
+  // Initialize localContext with its own chatHistory
+  this.localContext = { chatHistory: [] };
   }
 
   getZLevel(): number {
@@ -182,5 +186,18 @@ export class SelectionBox {
 
   destroy() {
     this.graphics.destroy();
+  }
+
+  // Chat history management for this selection box
+  addChatMessage(msg: any) {
+    this.localContext.chatHistory.push(msg);
+  }
+
+  getChatHistory(): any[] {
+    return this.localContext.chatHistory;
+  }
+
+  clearChatHistory() {
+    this.localContext.chatHistory.length = 0;
   }
 }

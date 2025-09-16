@@ -5,6 +5,7 @@ type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
   isFalling?: boolean;
 };
 import { sendUserPrompt } from "../languageModel/chatBox";
+import { setActiveSelectionBox } from "../languageModel/chatBox";
 import { Slime } from "./EnemyClasses/Slime.ts";
 import { UltraSlime } from "./EnemyClasses/UltraSlime.ts";
 import { UIScene } from "./UIScene.ts";
@@ -44,7 +45,7 @@ export class EditorScene extends Phaser.Scene {
   private wasd!: any;
   private isJumpPressed = false;
 
-  private selectedTileIndex = 1; // index of the tile to place
+  private selectedTileIndex = -1; // index of the tile to place
 
   private isPlacing: boolean = false; // Place tile flag
 
@@ -61,7 +62,7 @@ export class EditorScene extends Phaser.Scene {
     endX: number;
     endY: number;
   } | null = null;
-  private activeBox: SelectionBox | null = null;
+  public activeBox: SelectionBox | null = null;
   private selectionBoxes: SelectionBox[] = [];
 
   // keyboard controls
@@ -828,8 +829,10 @@ export class EditorScene extends Phaser.Scene {
     const eY = Math.max(this.selectionStart.y, this.selectionEnd.y);
 
     // Finalize the box
-    this.activeBox.updateEnd(this.selectionEnd);
-    this.activeBox.copyTiles();
+  this.activeBox.updateEnd(this.selectionEnd);
+  this.activeBox.copyTiles();
+  // Swap chatbox context to this selection box
+  setActiveSelectionBox(this.activeBox);
 
     // Add to permanent list
     if (!this.selectionBoxes.includes(this.activeBox)) {

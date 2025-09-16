@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { sendUserPrompt } from "../languageModel/chatBox";
+import { sendUserPrompt, getDisplayChatHistory } from "../languageModel/chatBox";
 import { EditorScene } from "./editorScene.ts";
 
 export class UIScene extends Phaser.Scene {
@@ -141,6 +141,7 @@ export class UIScene extends Phaser.Scene {
       e.stopPropagation();
     });
 
+    // Only display new messages as they are sent (not history)
     input.addEventListener("keydown", async (e: KeyboardEvent) => {
       if (e.key === "Enter") {
         const userMsg = input.value.trim();
@@ -272,10 +273,13 @@ export class UIScene extends Phaser.Scene {
   }
 
   public showChatboxAt(x: number, y: number): void {
-    this.chatBox.setPosition(x, y);
-    this.chatBox.setVisible(true);
-    const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
-    input.focus();
+  this.chatBox.setPosition(x, y);
+  this.chatBox.setVisible(true);
+  const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
+  input.focus();
+  // Clear chat log when chatbox is shown
+  const log = this.chatBox.getChildByID("chat-log") as HTMLDivElement;
+  log.innerHTML = "";
   }
 
   private startGame() {

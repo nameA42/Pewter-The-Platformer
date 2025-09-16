@@ -6,7 +6,7 @@ export class SelectionBox {
   private end: Phaser.Math.Vector2;
   private scene: Phaser.Scene;
   private zLevel: number;
-  public selectedTiles: number[][] = [];
+  private selectedTiles: number[][] = [];
   private layer: Phaser.Tilemaps.TilemapLayer;
 
   constructor(
@@ -172,6 +172,11 @@ export class SelectionBox {
       endX - startX,
       endY - startY,
     );
+  }
+
+  // Returns the selected tiles
+  getSelectedTiles(): number[][] {
+    return this.selectedTiles;
   }
 
   destroy() {

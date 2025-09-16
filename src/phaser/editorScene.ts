@@ -465,6 +465,9 @@ export class EditorScene extends Phaser.Scene {
       console.log("Pasted selection");
     } else if (Phaser.Input.Keyboard.JustDown(this.keyZ)) {
       this.cycleZLevel();
+      this.colorHighlightBox(
+        this.getHighlightColorForZLevel(this.currentZLevel),
+      );
     } else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
       this.finalizeSelectBox();
     }
@@ -477,7 +480,7 @@ export class EditorScene extends Phaser.Scene {
     const y: number = Math.floor(worldPoint.y / (16 * this.SCALE));
 
     // Only highlight if within map bounds
-    if (x >= 0 && x < 36 && y >= 0 && y < 20) {
+    if (x >= 0 && x < this.map.width && y >= 0 && y < this.map.height) {
       const color = this.getHighlightColorForZLevel(this.currentZLevel);
       this.drawHighlightBox(x, y, color);
     } else {
@@ -509,6 +512,12 @@ export class EditorScene extends Phaser.Scene {
       16 * this.SCALE,
       16 * this.SCALE,
     );
+  }
+
+  colorHighlightBox(color: number): void {
+    // Set the style for the highlight (e.g., semi-transparent yellow)
+    this.highlightBox.fillStyle(color, 0.5);
+    this.highlightBox.lineStyle(2, color, 1);
   }
 
   startSelection(pointer: Phaser.Input.Pointer) {
@@ -697,50 +706,43 @@ export class EditorScene extends Phaser.Scene {
 
   // Copy selection of tiles function
   copySelection() {
-    if (!this.selectionBounds) return;
-
-    const { startX, startY, endX, endY } = this.selectionBounds;
-    this.selectedTiles = [];
-
-    for (let y = startY; y <= endY; y++) {
-      const row: number[] = [];
-      for (let x = startX; x <= endX; x++) {
-        const tile = this.groundLayer.getTileAt(x, y);
-        row.push(tile ? tile.index : -1);
-      }
-      this.selectedTiles.push(row);
+    if (this.activeBox) {
+      this.activeBox.copyTiles();
     }
-
-    console.log("Copied selection:", this.selectedTiles);
   }
 
   // Cutting selection of tiles function
   cutSelection() {
-    this.copySelection();
+    if (this.activeBox) {
+      this.activeBox.copyTiles();
+      const bounds = this.activeBox.getBounds();
+      const startX = bounds.x / this.TILE_SIZE;
+      const startY = bounds.y / this.TILE_SIZE;
+      const endX = bounds.right / this.TILE_SIZE - 1;
+      const endY = bounds.bottom / this.TILE_SIZE - 1;
 
-    if (!this.selectionBounds) return;
-    const { startX, startY, endX, endY } = this.selectionBounds;
-
-    for (let y = startY; y <= endY; y++) {
-      for (let x = startX; x <= endX; x++) {
-        this.placeTile(this.groundLayer, x, y, -1); // Remove tile
+      for (let y = startY; y <= endY; y++) {
+        for (let x = startX; x <= endX; x++) {
+          this.placeTile(this.groundLayer, x, y, -1); // erase
+        }
       }
     }
   }
 
   // Pasting selection of tiles function
   pasteSelection(pointer: Phaser.Input.Pointer) {
-    if (this.selectedTiles.length === 0) return; // Nothing to paste
+    if (!this.activeBox) return;
+    const copied = this.activeBox.getSelectedTiles();
+    if (!copied || copied.length === 0) return;
 
     const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const pasteX = Math.floor(worldPoint.x / (16 * this.SCALE));
-    const pasteY = Math.floor(worldPoint.y / (16 * this.SCALE));
+    const pasteX = Math.floor(worldPoint.x / this.TILE_SIZE);
+    const pasteY = Math.floor(worldPoint.y / this.TILE_SIZE);
 
-    for (let y = 0; y < this.selectedTiles.length; y++) {
-      for (let x = 0; x < this.selectedTiles[y].length; x++) {
-        const tileIndex = this.selectedTiles[y][x];
-        if (tileIndex === -1) continue; // Skip empty spots
-
+    for (let y = 0; y < copied.length; y++) {
+      for (let x = 0; x < copied[y].length; x++) {
+        const tileIndex = copied[y][x];
+        if (tileIndex === -1) continue;
         this.placeTile(this.groundLayer, pasteX + x, pasteY + y, tileIndex);
       }
     }

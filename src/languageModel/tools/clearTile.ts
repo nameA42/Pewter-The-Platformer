@@ -35,6 +35,7 @@ export class ClearTile {
       .string()
       .min(1)
       .describe("Name of the map layer to clear tiles from."),
+    note: z.string().optional().describe("Optional note for history logging."),
   });
 
   toolCall = tool(
@@ -45,25 +46,26 @@ export class ClearTile {
         return "❌ Tool Failed: no reference to scene.";
       }
 
-      const { xMin, xMax, yMin, yMax, layerName } = args;
-      const map = scene.map;
-      const layer = map.getLayer(layerName)?.tilemapLayer;
+      const { xMin, xMax, yMin, yMax, layerName, note } = args;
 
-      if (!layer) {
-        return `❌ Tool Failed: layer '${layerName}' not found.`;
-      }
+      const w = xMax - xMin;
+      const h = yMax - yMin;
+      if (w <= 0 || h <= 0) return "❌ Tool Failed: width/height must be positive.";
 
       try {
-        for (let x = xMin; x < xMax; x++) {
-          for (let y = yMin; y < yMax; y++) {
-            map.removeTileAt(x, y, false, false, layer);
-          }
-        }
+        scene.applyTileMatrixWithHistoryPublic(
+          { x: xMin, y: yMin, w, h },
+          null,
+          -1,
+          "chat",
+          undefined,
+          note ?? "clearTiles",
+          layerName,
+        );
 
-        console.log(layer);
         return `✅ Cleared tiles from (${xMin}, ${yMin}) up to (${xMax}, ${yMax}) on layer '${layerName}'.`;
       } catch (e) {
-        console.error("removeTileAt failed:", e);
+        console.error("clearTiles failed:", e);
         return "❌ Tool Failed: error while clearing tiles.";
       }
     },

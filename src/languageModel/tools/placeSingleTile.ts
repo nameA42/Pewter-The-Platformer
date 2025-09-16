@@ -33,6 +33,8 @@ export class PlaceSingleTile {
       .string()
       .min(1)
       .describe("The name of the map layer where the tile should be placed."),
+
+    note: z.string().optional().describe("Optional note for history logging."),
   });
 
   toolCall = tool(
@@ -43,30 +45,26 @@ export class PlaceSingleTile {
         return "Tool Failed: no reference to scene.";
       }
 
-      const { tileIndex, x, y, layerName } = args;
-      const map = scene.map;
-      const layer = map.getLayer(layerName)?.tilemapLayer;
+      const { tileIndex, x, y, layerName, note } = args;
 
-      if (!layer) {
-        return `Tool Failed: layer '${layerName}' not found.`;
-      }
+      // Use the EditorScene history-aware public API to place the tile
+      scene.applyTileMatrixWithHistoryPublic(
+        { x, y, w: 1, h: 1 },
+        [[tileIndex]],
+        null,
+        "chat",
+        undefined,
+        note ?? "placeSingleTile",
+        layerName,
+      );
 
-      map.putTileAt(tileIndex, x, y, true, layer);
       return `✅ Placed tile ${tileIndex} at (${x}, ${y}) on layer '${layerName}'.`;
     },
     {
       name: "placeSingleTile",
       schema: PlaceSingleTile.argsSchema,
       description: `
-Places a single tile at the given tile coordinates (x, y) on the specified map layer.
-
-- tileIndex: numeric ID of the tile to place.
-- x, y: integer tile coordinates (not pixels).
-- layerName: the name of the target map layer.
-
-Examples:
-  { "tileIndex": 3, "x": 5, "y": 7, "layerName": "Ground" }
-  { "tileIndex": 12, "x": 0, "y": 0, "layerName": "Walls" }
+Places a single tile at the given tile coordinates (x, y) on the specified map layer and logs it to history.
 `,
     },
   );

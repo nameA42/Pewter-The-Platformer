@@ -1277,6 +1277,27 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
+  // Public wrapper so external tools (LLM tools) can route edits through history.
+  // Accepts an optional layerName to tag the operation for external tooling.
+  public applyTileMatrixWithHistoryPublic(
+    bbox: BBox,
+    matrix: number[][] | null,
+    fallbackIndex: number | null,
+    actor: "chat" | "user",
+    selectionId?: string,
+    note?: string,
+    layerName?: string,
+  ) {
+    // Forward to the internal implementation that actually writes tiles and builds diffs.
+    this.applyTileMatrixWithHistory(bbox, matrix, fallbackIndex, actor, selectionId, note);
+
+    // Tag the latest placement op with a layerName, if provided.
+    if (layerName && this.placementHistory.length > 0) {
+      const lastOp = this.placementHistory[this.placementHistory.length - 1] as any;
+      if (lastOp) lastOp.layerName = layerName;
+    }
+  }
+
   public getRegionHistory(bbox: BBox, limit = 10): PlacementOp[] {
     const inter = (a: BBox, b: BBox) =>
       !(a.x + a.w - 1 < b.x || b.x + b.w - 1 < a.x || a.y + a.h - 1 < b.y || b.y + b.h - 1 < a.y);

@@ -33,8 +33,8 @@ export class SelectionBox {
     this.graphics.setDepth(100);
     this.redraw();
 
-  // Initialize localContext with its own chatHistory
-  this.localContext = { chatHistory: [] };
+    // Initialize localContext with its own chatHistory
+    this.localContext = { chatHistory: [] };
   }
 
   getZLevel(): number {
@@ -182,6 +182,11 @@ export class SelectionBox {
       endX - startX,
       endY - startY,
     );
+  }
+
+  // Returns the selected tiles
+  getSelectedTiles(): number[][] {
+    return this.selectedTiles;
   }
 
   destroy() {

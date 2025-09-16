@@ -597,9 +597,9 @@ export class EditorScene extends Phaser.Scene {
       const pointer = this.input.activePointer;
       this.pasteSelection(pointer);
       console.log("Pasted selection");
-    // } else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
-    //   this.bindMapHistory();
-    //   console.log("Saved map state");
+      // } else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
+      //   this.bindMapHistory();
+      //   console.log("Saved map state");
     } else if (
       Phaser.Input.Keyboard.JustDown(this.keyU) &&
       this.keyCtrl.isDown
@@ -829,10 +829,10 @@ export class EditorScene extends Phaser.Scene {
     const eY = Math.max(this.selectionStart.y, this.selectionEnd.y);
 
     // Finalize the box
-  this.activeBox.updateEnd(this.selectionEnd);
-  this.activeBox.copyTiles();
-  // Swap chatbox context to this selection box
-  setActiveSelectionBox(this.activeBox);
+    this.activeBox.updateEnd(this.selectionEnd);
+    this.activeBox.copyTiles();
+    // Swap chatbox context to this selection box
+    setActiveSelectionBox(this.activeBox);
 
     // Add to permanent list
     if (!this.selectionBoxes.includes(this.activeBox)) {
@@ -874,9 +874,9 @@ export class EditorScene extends Phaser.Scene {
 
   // Copy selection of tiles function
   copySelection() {
-    if (!this.activeBox) return;
-    this.activeBox.copyTiles();
-    console.log("Copied selection:", this.activeBox.selectedTiles);
+    if (this.activeBox) {
+      this.activeBox.copyTiles();
+    }
   }
 
   // Cutting selection of tiles function
@@ -898,30 +898,21 @@ export class EditorScene extends Phaser.Scene {
 
   // Pasting selection of tiles function
   pasteSelection(pointer: Phaser.Input.Pointer) {
-    if (!this.activeBox || !this.activeBox.selectedTiles || this.activeBox.selectedTiles.length === 0) {
-      console.log("No selection to paste.");
-      return;
-    }
-    console.log("Pasting selection:", this.activeBox.selectedTiles);
+    if (!this.activeBox) return;
+    const copied = this.activeBox.getSelectedTiles();
+    if (!copied || copied.length === 0) return;
+
     const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const pasteX = Math.floor(worldPoint.x / (16 * this.SCALE));
-    const pasteY = Math.floor(worldPoint.y / (16 * this.SCALE));
-    for (let y = 0; y < this.activeBox.selectedTiles.length; y++) {
-      for (let x = 0; x < this.activeBox.selectedTiles[y].length; x++) {
-        const tileIndex = this.activeBox.selectedTiles[y][x];
+    const pasteX = Math.floor(worldPoint.x / this.TILE_SIZE);
+    const pasteY = Math.floor(worldPoint.y / this.TILE_SIZE);
+
+    for (let y = 0; y < copied.length; y++) {
+      for (let x = 0; x < copied[y].length; x++) {
+        const tileIndex = copied[y][x];
+        if (tileIndex === -1) continue;
         this.placeTile(this.groundLayer, pasteX + x, pasteY + y, tileIndex);
       }
     }
-    this.enemies.forEach((enemy, index) => {
-      if (!enemy || !enemy.active) {
-        enemy.destroy();
-        if (index !== -1) {
-          this.enemies.splice(index, 1); // removes 1 item at that index
-        }
-        return;
-      }
-      enemy.update(this.player, 0);
-    });
   }
 
   // Removed duplicate setupInput logic (all hotkey setup is handled in create)

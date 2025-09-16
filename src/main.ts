@@ -48,7 +48,7 @@ Object.values(tools).forEach((generator) => {
 initializeTools();
 
 // // Tell the system to introduce itself and explain what it can do
-// sendSystemMessage("Introduce yourself and explain what you can do. ");
+sendSystemMessage("Introduce yourself and explain what you can do. ");
 
 ////****Phaser Game Setup****////
 
@@ -82,4 +82,4 @@ export function getScene(): EditorScene {
   console.log(gameInstance.scene.getScene("editorScene"));
   return gameInstance.scene.getScene("editorScene") as EditorScene;
 }
-sendSystemMessage("Introduce yourself and explain what you can do.");
+//sendSystemMessage("Introduce yourself and explain what you can do.");

@@ -58,9 +58,12 @@ export async function sendUserPrompt(message: string): Promise<string> {
 
   try {
     const reply = await getChatResponse(chatHistory);
-    const aiMessage = new AIMessage(reply);
+    const replyText = Array.isArray(reply.text)
+      ? reply.text.join("\n")
+      : String(reply.text);
+    const aiMessage = new AIMessage(replyText);
     chatHistory.push(aiMessage);
-    return reply;
+    return replyText;
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     const fallback = new AIMessage("Error: " + errorMessage);
@@ -82,9 +85,12 @@ export async function sendSystemMessage(message: string): Promise<string> {
 
   try {
     const reply = await getChatResponse(chatHistory);
-    const aiMessage = new AIMessage(reply);
+    const replyText = Array.isArray(reply.text)
+      ? reply.text.join("\n")
+      : String(reply.text);
+    const aiMessage = new AIMessage(replyText);
     chatHistory.push(aiMessage);
-    return reply;
+    return replyText;
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     const fallback = new AIMessage("Error: " + errorMessage);

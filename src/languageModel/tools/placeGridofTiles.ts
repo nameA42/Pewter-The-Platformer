@@ -70,7 +70,7 @@ export class PlaceGridofTiles {
           }
         }
         if (layerName == "Ground_Layer") {
-          scene.worldFacts.setFact("Ground");
+          scene.worldFacts.setFact("Structure");
         } else if (layerName == "Collectables_Layer") {
           scene.worldFacts.setFact("Collectable");
         }
@@ -90,10 +90,6 @@ Places a rectangular grid of tiles on the map.
 - (xMin, yMin): top-left inclusive coordinates.
 - (xMax, yMax): bottom-right exclusive coordinates.
 - layerName: the name of the target map layer. Choose between 'Ground_Layer' and 'Collectables_Layer' 
-
-Examples:
-  { "tileIndex": 5, "xMin": 0, "yMin": 0, "xMax": 3, "yMax": 3, "layerName": "Ground" }
-  { "tileIndex": 12, "xMin": 2, "yMin": 2, "xMax": 5, "yMax": 6, "layerName": "Walls" }
 `,
     },
   );

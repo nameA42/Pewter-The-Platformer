@@ -11,7 +11,7 @@ export class WorldFactsTool {
 
   static argsSchema = z.object({
     category: z
-      .enum(["Ground", "Collectable", "Enemy"])
+      .enum(["Structure", "Collectable", "Enemy"])
       .describe("The category of facts to retrieve."),
   });
 
@@ -26,7 +26,7 @@ export class WorldFactsTool {
       }
 
       return facts
-        .map((f) => `📖 FACT: ${f.key} → ${JSON.stringify(f.toJSON())}`)
+        .map((f) => `📖 FACT: ${f.key} → ${JSON.stringify(f.toString())}`)
         .join("\n");
     },
     {

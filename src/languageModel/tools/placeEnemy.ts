@@ -79,10 +79,6 @@ Places an enemy at the given (x, y) coordinates in the scene.
 - enemyType: must be one of ["Slime", "UltraSlime"].
 - x, y: integer coordinates (starting at 0).
 - The enemy will be added to the scene's active enemies list.
-
-Examples:
-  { "enemyType": "Slime", "x": 10, "y": 5 }
-  { "enemyType": "UltraSlime", "x": 15, "y": 8 }
 `,
     },
   );

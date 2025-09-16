@@ -820,6 +820,7 @@ export class EditorScene extends Phaser.Scene {
     this.isSelecting = false;
 
     this.selectedTiles = [];
+    console.log("ending selection");
 
     const sX = Math.min(this.selectionStart.x, this.selectionEnd.x);
     const sY = Math.min(this.selectionStart.y, this.selectionEnd.y);
@@ -870,32 +871,23 @@ export class EditorScene extends Phaser.Scene {
 
   // Copy selection of tiles function
   copySelection() {
-    if (!this.selectionBounds) return;
-
-    const { startX, startY, endX, endY } = this.selectionBounds;
-    this.selectedTiles = [];
-
-    for (let y = startY; y <= endY; y++) {
-      const row: number[] = [];
-      for (let x = startX; x <= endX; x++) {
-        const tile = this.groundLayer.getTileAt(x, y);
-        row.push(tile ? tile.index : -1);
-      }
-      this.selectedTiles.push(row);
-    }
-
-    console.log("Copied selection:", this.selectedTiles);
+    if (!this.activeBox) return;
+    this.activeBox.copyTiles();
+    console.log("Copied selection:", this.activeBox.selectedTiles);
   }
 
   // Cutting selection of tiles function
   cutSelection() {
     this.copySelection();
-
-    if (!this.selectionBounds) return;
-    const { startX, startY, endX, endY } = this.selectionBounds;
-
-    for (let y = startY; y <= endY; y++) {
-      for (let x = startX; x <= endX; x++) {
+    if (!this.activeBox) return;
+    const start = this.activeBox.getStart();
+    const end = this.activeBox.getEnd();
+    const sX = Math.min(start.x, end.x);
+    const sY = Math.min(start.y, end.y);
+    const eX = Math.max(start.x, end.x);
+    const eY = Math.max(start.y, end.y);
+    for (let y = sY; y <= eY; y++) {
+      for (let x = sX; x <= eX; x++) {
         this.placeTile(this.groundLayer, x, y, -1); // Remove tile
       }
     }
@@ -903,28 +895,26 @@ export class EditorScene extends Phaser.Scene {
 
   // Pasting selection of tiles function
   pasteSelection(pointer: Phaser.Input.Pointer) {
-    if (this.selectedTiles.length === 0) return; // Nothing to paste
-
+    if (!this.activeBox || !this.activeBox.selectedTiles || this.activeBox.selectedTiles.length === 0) {
+      console.log("No selection to paste.");
+      return;
+    }
+    console.log("Pasting selection:", this.activeBox.selectedTiles);
     const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const pasteX = Math.floor(worldPoint.x / (16 * this.SCALE));
     const pasteY = Math.floor(worldPoint.y / (16 * this.SCALE));
-
-    for (let y = 0; y < this.selectedTiles.length; y++) {
-      for (let x = 0; x < this.selectedTiles[y].length; x++) {
-        const tileIndex = this.selectedTiles[y][x];
-        if (tileIndex === -1) continue; // Skip empty spots
-
+    for (let y = 0; y < this.activeBox.selectedTiles.length; y++) {
+      for (let x = 0; x < this.activeBox.selectedTiles[y].length; x++) {
+        const tileIndex = this.activeBox.selectedTiles[y][x];
         this.placeTile(this.groundLayer, pasteX + x, pasteY + y, tileIndex);
       }
     }
-
     this.enemies.forEach((enemy, index) => {
       if (!enemy || !enemy.active) {
         enemy.destroy();
         if (index !== -1) {
           this.enemies.splice(index, 1); // removes 1 item at that index
         }
-
         return;
       }
       enemy.update(this.player, 0);

@@ -4,6 +4,12 @@ export class SelectionBox {
   private graphics: Phaser.GameObjects.Graphics;
   private start: Phaser.Math.Vector2;
   private end: Phaser.Math.Vector2;
+  public getStart(): Phaser.Math.Vector2 {
+    return this.start.clone();
+  }
+  public getEnd(): Phaser.Math.Vector2 {
+    return this.end.clone();
+  }
   private scene: Phaser.Scene;
   private zLevel: number;
   public selectedTiles: number[][] = [];

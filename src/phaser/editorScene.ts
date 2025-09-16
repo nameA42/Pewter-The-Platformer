@@ -436,9 +436,10 @@ export class EditorScene extends Phaser.Scene {
   ) {
     tileIndex = Phaser.Math.Clamp(
       tileIndex,
-      1,
+      0,
       layer.tilemap.tilesets[0].total - 1,
     );
+    tileIndex = tileIndex === 0 ? -1 : tileIndex; // Allow -1 for erasing tiles
     console.log(`Placing tile at (${x}, ${y}) with index ${tileIndex}`);
     layer.putTileAt(tileIndex, x, y);
   }

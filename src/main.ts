@@ -42,6 +42,79 @@ Object.values(tools).forEach((generator) => {
   }
 });
 
+// Register read-only selection getter tool for the LLM
+registerTool({
+  name: "get_current_selection",
+  description:
+    "Returns the current active selection box in tile coordinates. If none is active, returns the last finalized selection.",
+  schema: {
+    type: "object",
+    properties: {},
+  },
+  async invoke() {
+    const editorScene = getScene();
+    const active = editorScene.getActiveSelectionBBox();
+    const last = editorScene.getLastSelectionBBox();
+    if (active) return JSON.stringify({ type: "active", ...active });
+    if (last) return JSON.stringify({ type: "last", ...last });
+    return JSON.stringify({ type: "none" });
+  },
+});
+
+// Tool to fill current selection with a tile index
+registerTool({
+  name: "fill_selection",
+  description: "Fill the current selection with a single tile index.",
+  schema: {
+    type: "object",
+    properties: { tileIndex: { type: "number" }, note: { type: "string" } },
+    required: ["tileIndex"],
+  },
+  async invoke({ tileIndex, note }: any) {
+    const scene = getScene();
+    const sel = scene.getActiveSelectionBBox() ?? scene.getLastSelectionBBox();
+    if (!sel) return "Error: no selection.";
+
+    const box = scene.getSelectionById(sel.id);
+    if (!box) return "Error: selection not found.";
+
+    scene.fillSelectionWithTile(box, tileIndex, note ?? "llm_fill");
+    return "ok";
+  },
+});
+
+// region history tool
+registerTool({
+  name: "get_region_history",
+  description: "Return placement history within a region",
+  schema: {
+    type: "object",
+    properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" }, limit: { type: "number" } },
+    required: ["x", "y", "w", "h"],
+  },
+  async invoke({ x, y, w, h, limit }: any) {
+    const scene = getScene();
+    const hist = scene.getRegionHistory({ x, y, w, h }, limit ?? 50);
+    return JSON.stringify(hist);
+  },
+});
+
+// single tile history tool
+registerTool({
+  name: "get_tile_history",
+  description: "Return placement history for a single tile",
+  schema: {
+    type: "object",
+    properties: { x: { type: "number" }, y: { type: "number" } },
+    required: ["x", "y"],
+  },
+  async invoke({ x, y }: any) {
+    const scene = getScene();
+    const hist = scene.getTileHistory(x, y);
+    return JSON.stringify(hist);
+  },
+});
+
 //Now that all tools are registered, we can send them to the LLM.
 initializeTools();
 

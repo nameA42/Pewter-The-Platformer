@@ -10,6 +10,20 @@ import { UltraSlime } from "./EnemyClasses/UltraSlime.ts";
 import { UIScene } from "./UIScene.ts";
 import { SelectionBox } from "./selectionBox.ts";
 
+// History types
+type BBox = { x: number; y: number; w: number; h: number };
+type TileIndex = number;
+type TileDiffCell = { dx: number; dy: number; before: TileIndex; after: TileIndex };
+type PlacementOp = {
+  id: string;
+  ts: number;
+  actor: "chat" | "user";
+  selectionId?: string;
+  bbox: BBox;
+  diffs: TileDiffCell[];
+  note?: string;
+};
+
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
   private SCALE = 1.0;
@@ -50,6 +64,11 @@ export class EditorScene extends Phaser.Scene {
 
   private selectedTiles: number[][] = []; // Selected Tiles
 
+  // New history state
+  private placementHistory: PlacementOp[] = [];
+  private tileProvenance: Map<string, string[]> = new Map();
+  private selectionIdCounter = 0;
+
   //Box Properties
   private highlightBox!: Phaser.GameObjects.Graphics;
   public selectionStart!: Phaser.Math.Vector2;
@@ -63,6 +82,23 @@ export class EditorScene extends Phaser.Scene {
   } | null = null;
   private activeBox: SelectionBox | null = null;
   private selectionBoxes: SelectionBox[] = [];
+  // New private flags for right-drag preview behavior
+  private _selectionWasRightDrag: boolean = false;
+  private _lastOverlapState: boolean = false;
+  // expose last selection bbox and id for tools
+  private lastSelectionBBox: { x: number; y: number; w: number; h: number } | null = null;
+  private lastSelectionId?: string;
+
+  public getActiveSelectionBBox() {
+    const b = this.activeBox?.getBounds();
+    if (!b) return null;
+    return { x: b.x, y: b.y, w: b.width, h: b.height, id: (this.activeBox as any).getId?.() };
+  }
+
+  public getLastSelectionBBox() {
+    if (!this.lastSelectionBBox) return null;
+    return { ...this.lastSelectionBBox, id: this.lastSelectionId };
+  }
 
   // keyboard controls
   private keyA!: Phaser.Input.Keyboard.Key;
@@ -81,6 +117,7 @@ export class EditorScene extends Phaser.Scene {
   private keyCtrl!: Phaser.Input.Keyboard.Key;
 
   private currentZLevel: number = 1; // 1 = red, 2 = green, 3 = blue
+  private zLabel?: Phaser.GameObjects.Text;
 
   private setPointerOverUI = (v: boolean) =>
     this.registry.set("uiPointerOver", v);
@@ -233,6 +270,12 @@ export class EditorScene extends Phaser.Scene {
     this.scene.launch("UIScene");
     this.scene.bringToTop("UIScene");
 
+    // Z-level label in the UI (fixed to camera)
+    this.zLabel = this.add
+      .text(8, 40, `Z: ${this.currentZLevel}`, { fontSize: "12px" })
+      .setScrollFactor(0)
+      .setDepth(10000);
+
     // Restore keyboard key initialization with null check
     if (this.input.keyboard) {
       this.keyA = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
@@ -253,6 +296,59 @@ export class EditorScene extends Phaser.Scene {
       this.keyCtrl = this.input.keyboard.addKey(
         Phaser.Input.Keyboard.KeyCodes.CTRL,
       );
+
+      // Bind Ctrl+Z to cycle persisted Z-level (1->2->3->1)
+      this.input.keyboard.on("keydown-Z", (ev: KeyboardEvent) => {
+        if (!ev.ctrlKey) return;
+        // cycle through 1..3
+        this.currentZLevel = (this.currentZLevel % 3) + 1;
+        // update any active preview box immediately
+        if (this.activeBox) {
+          this.activeBox.setZLevel(this.currentZLevel);
+        }
+        // update HUD
+        this.zLabel?.setText(`Z: ${this.currentZLevel}`);
+      });
+
+      // Bind Ctrl+B to finalize the active selection (if any)
+      this.input.keyboard.on("keydown-B", (ev: KeyboardEvent) => {
+        if (!ev.ctrlKey) return;
+        if (!this.activeBox) return;
+
+        // disallow finalize if overlapping any existing finalized box
+        if (this._checkOverlapAgainstFinalized(this.activeBox)) {
+          this.sound?.play?.("error");
+          console.warn("Cannot finalize — overlap detected");
+          return;
+        }
+
+        // copy tiles from the active box into its internal buffer
+        this.activeBox.copyTiles();
+
+        // save finalized bbox + id
+        const gb = this.activeBox.getBounds();
+        this.lastSelectionBBox = { x: gb.x, y: gb.y, w: gb.width, h: gb.height };
+        this.lastSelectionId = (this.activeBox as any).getId?.();
+
+        // now finalize (push into selectionBoxes and clear active)
+        this.finalizeSelectBox();
+        this._selectionWasRightDrag = false;
+
+        // Build and send the user-facing selection message (same style as previous endSelection)
+        const b = this.selectionBoxes[this.selectionBoxes.length - 1].getBounds();
+        const selectionWidth = b.width;
+        const selectionHeight = b.height;
+        const msg =
+          `User has selected a rectangular region that is this size: ${selectionWidth}x${selectionHeight}. Here are the global coordinates for the selection box: [${b.x}, ${b.y}] to [${b.x + b.width - 1}, ${b.y + b.height - 1}].` +
+          `There are no notable points of interest in this selection` +
+          `Be sure to re-explain what is in the selection box. If there are objects in the selection, specify the characteristics of the object. ` +
+          `If no objects are inside the selection, then do not mention anything else.`;
+
+        const uiScene = this.scene.get("UIScene") as UIScene;
+        if (uiScene && typeof uiScene.handleSelectionInfo === "function") {
+          uiScene.handleSelectionInfo(msg);
+        }
+      });
     }
 
     // scrolling
@@ -266,7 +362,7 @@ export class EditorScene extends Phaser.Scene {
       // Setup pointer movement
       this.highlightTile(pointer);
 
-      if (!isDragging) return;
+  if (!isDragging) return;
       if (
         pointer.x >= this.cameras.main.width - this.scrollDeadzone ||
         pointer.y >= this.cameras.main.height - this.scrollDeadzone ||
@@ -286,22 +382,36 @@ export class EditorScene extends Phaser.Scene {
 
       dragStartPoint.set(pointer.x, pointer.y);
     });
+    // selection box - use pointer events for preview-only right-drag
+    this.input.on("pointermove", (p: Phaser.Input.Pointer) => {
+      // only update selection preview when actively selecting from right-drag
+      if (this.isSelecting && this._selectionWasRightDrag && this.activeBox) {
+        this.updateSelection(p);
 
-    // selection box
-    this.input.on("pointermove", this.updateSelection, this);
-    this.input.on(
-      "pointerup",
-      (pointer: Phaser.Input.Pointer) => {
-        if (pointer.rightButtonReleased()) {
-          if (this.isSelecting) {
-            this.endSelection();
-          }
-        } else if (pointer.leftButtonReleased()) {
-          this.isPlacing = false;
+        // de-spam overlap logs by only logging on state change
+        const nowOver = this._checkOverlapAgainstFinalized(this.activeBox);
+        if (nowOver !== this._lastOverlapState) {
+          this._lastOverlapState = nowOver;
+          if (nowOver) console.warn("Overlap detected");
         }
-      },
-      this,
-    );
+      }
+    });
+
+    this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => {
+      if (pointer.leftButtonReleased()) {
+        this.isPlacing = false;
+      }
+
+      // If we were right-dragging, cancel preview on release
+      if (
+        this.isSelecting &&
+        this._selectionWasRightDrag &&
+        pointer.rightButtonReleased()
+      ) {
+        this.cancelSelection();
+        this._selectionWasRightDrag = false;
+      }
+    });
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       if (pointer.middleButtonDown()) {
@@ -310,20 +420,19 @@ export class EditorScene extends Phaser.Scene {
       } else if (pointer.leftButtonDown()) {
         this.isPlacing = true;
         // Pasting the recently selected area of tiles
-        const worldPoint = this.cameras.main.getWorldPoint(
-          pointer.x,
-          pointer.y,
-        );
+        const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
         const tileX = Math.floor(worldPoint.x / (16 * this.SCALE));
         const tileY = Math.floor(worldPoint.y / (16 * this.SCALE));
 
         // Place the currently selected brush tile
         //this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
       } else if (pointer.rightButtonDown()) {
-        // Setup selection box
-        console.log(`Starting selection`);
+        // Setup preview selection box (right-drag only)
         this.startSelection(pointer);
+        this._selectionWasRightDrag = true;
+        this._lastOverlapState = false;
 
+        // grab index under pointer for potential UX needs
         this.selectedTileIndex =
           this.groundLayer.getTileAtWorldXY(pointer.worldX, pointer.worldY)
             ?.index || 0;
@@ -434,13 +543,18 @@ export class EditorScene extends Phaser.Scene {
     y: number,
     tileIndex: number,
   ) {
-    tileIndex = Phaser.Math.Clamp(
-      tileIndex,
-      1,
-      layer.tilemap.tilesets[0].total - 1,
-    );
-    console.log(`Placing tile at (${x}, ${y}) with index ${tileIndex}`);
-    layer.putTileAt(tileIndex, x, y);
+    // allow clearing a tile when tileIndex === -1
+    if (tileIndex === -1) {
+      // putTileAt accepts -1 to clear a tile
+      layer.putTileAt(-1, x, y);
+      return;
+    }
+
+    const tileset = layer.tilemap.tilesets[0];
+    const max = Math.max(1, (tileset?.total ?? 1) - 1);
+    const clamped = Phaser.Math.Clamp(tileIndex, 1, max);
+    console.log(`Placing tile at (${x}, ${y}) with index ${clamped}`);
+    layer.putTileAt(clamped, x, y);
   }
 
   update() {
@@ -683,6 +797,8 @@ export class EditorScene extends Phaser.Scene {
       let overlap = false;
       for (const box of this.selectionBoxes) {
         const bound = box.getBounds(); // MUST be tile-space rectangle
+        // Only consider overlap if on same Z-level
+        if ((box as any).getZLevel && (this.currentZLevel !== (box as any).getZLevel())) continue;
         if (Phaser.Geom.Intersects.RectangleToRectangle(candidate, bound)) {
           console.log("Cannot create box here — overlap detected");
           overlap = true;
@@ -697,7 +813,6 @@ export class EditorScene extends Phaser.Scene {
       } else {
         // If overlap does not occur, do make a box
         console.log("Made a new box!");
-        this.currentZLevel = 1;
         this.activeBox = new SelectionBox(
           this,
           this.selectionStart,
@@ -705,6 +820,9 @@ export class EditorScene extends Phaser.Scene {
           this.currentZLevel,
           this.groundLayer,
         );
+        // assign id so we can attribute ops
+        const selId = `sel_${++this.selectionIdCounter}`;
+        (this.activeBox as any).setId?.(selId);
       }
     } else {
       // Continue working with the existing active box
@@ -712,6 +830,33 @@ export class EditorScene extends Phaser.Scene {
       this.selectionEnd.set(x, y);
       this.activeBox.updateEnd(this.selectionEnd);
     }
+  }
+
+  // Cancel an in-progress (preview) selection without finalizing it
+  private cancelSelection() {
+    if (this.activeBox) {
+      this.activeBox.destroy();
+    }
+    this.activeBox = null;
+    this.isSelecting = false;
+  }
+
+  // Check whether the provided box would overlap any finalized selection boxes
+  private _checkOverlapAgainstFinalized(box: SelectionBox): boolean {
+    const possible = box.getBounds();
+    const z = (box as any).getZLevel?.() ?? 1;
+    for (const b of this.selectionBoxes) {
+      const bz = (b as any).getZLevel?.() ?? 1;
+      // only block if same z-level
+      if (bz !== z) continue;
+      if (Phaser.Geom.Rectangle.Overlaps(
+        new Phaser.Geom.Rectangle(possible.x, possible.y, possible.width, possible.height),
+        new Phaser.Geom.Rectangle(b.getBounds().x, b.getBounds().y, b.getBounds().width, b.getBounds().height)
+      )) {
+        return true;
+      }
+    }
+    return false;
   }
 
   updateSelection(pointer: Phaser.Input.Pointer) {
@@ -727,13 +872,12 @@ export class EditorScene extends Phaser.Scene {
 
     let overlap = false;
     for (const box of this.selectionBoxes) {
-      if (
-        box !== this.activeBox &&
-        Phaser.Geom.Intersects.RectangleToRectangle(
-          possibleBounds,
-          box.getBounds(),
-        )
-      ) {
+      if (box === this.activeBox) continue;
+      // only consider collisions on same Z
+      const bz = (box as any).getZLevel?.() ?? 1;
+      const az = (this.activeBox as any).getZLevel?.() ?? 1;
+      if (bz !== az) continue;
+      if (Phaser.Geom.Rectangle.Overlaps(possibleBounds, box.getBounds())) {
         console.log("Overlap has been detected!!");
         overlap = true;
         break;
@@ -762,10 +906,13 @@ export class EditorScene extends Phaser.Scene {
     this.activeBox.updateEnd(this.selectionEnd);
     this.activeBox.copyTiles();
 
-    // Add to permanent list
-    if (!this.selectionBoxes.includes(this.activeBox)) {
-      this.selectionBoxes.push(this.activeBox);
-    }
+    // save finalized bbox + id
+    const gb = this.activeBox.getBounds(); // width/height already inclusive
+    this.lastSelectionBBox = { x: gb.x, y: gb.y, w: gb.width, h: gb.height };
+    this.lastSelectionId = (this.activeBox as any).getId?.();
+
+    // Finalize and add to permanent list (finalizeSelectBox guards duplicates)
+    this.finalizeSelectBox();
 
     // Copying tiles from the selected region
     this.selectionBounds = {
@@ -849,14 +996,18 @@ export class EditorScene extends Phaser.Scene {
     const pasteX = Math.floor(worldPoint.x / (16 * this.SCALE));
     const pasteY = Math.floor(worldPoint.y / (16 * this.SCALE));
 
-    for (let y = 0; y < this.selectedTiles.length; y++) {
-      for (let x = 0; x < this.selectedTiles[y].length; x++) {
-        const tileIndex = this.selectedTiles[y][x];
-        if (tileIndex === -1) continue; // Skip empty spots
+    const h = this.selectedTiles.length;
+    const w = this.selectedTiles[0]?.length ?? 0;
+    if (w === 0) return;
 
-        this.placeTile(this.groundLayer, pasteX + x, pasteY + y, tileIndex);
-      }
-    }
+    this.applyTileMatrixWithHistory(
+      { x: pasteX, y: pasteY, w, h },
+      this.selectedTiles,
+      null,
+      "user",
+      this.activeBox?.getId(),
+      "pasteSelection",
+    );
 
     this.enemies.forEach((enemy, index) => {
       if (!enemy || !enemy.active) {
@@ -1012,11 +1163,145 @@ export class EditorScene extends Phaser.Scene {
   finalizeSelectBox() {
     if (!this.activeBox) return;
 
-    // Push it to the array
-    this.selectionBoxes.push(this.activeBox);
+    // Push it to the array only if it's not already present
+    if (!this.selectionBoxes.includes(this.activeBox)) {
+      this.selectionBoxes.push(this.activeBox);
+    }
 
     // Clear references
     this.activeBox = null;
     this.isSelecting = false;
+  }
+
+  // Helpers for selection lifecycle
+  public clearAllSelections() {
+    for (const box of this.selectionBoxes) box.destroy();
+    if (this.activeBox) this.activeBox.destroy();
+    this.selectionBoxes = [];
+    this.activeBox = null;
+    this.isSelecting = false;
+    this.lastSelectionBBox = null;
+    this.lastSelectionId = undefined;
+  }
+
+  public removeSelectionById(id: string) {
+    const idx = this.selectionBoxes.findIndex((b) => (b as any).getId?.() === id);
+    if (idx >= 0) {
+      this.selectionBoxes[idx].destroy();
+      this.selectionBoxes.splice(idx, 1);
+    }
+  }
+
+  // Lookup a selection box by id
+  public getSelectionById(id: string) {
+    return this.selectionBoxes.find((b) => (b as any).getId?.() === id) ?? null;
+  }
+
+  // Z-level UI helper
+  private setSelectionZ(z: number) {
+    this.currentZLevel = z;
+    if (this.activeBox) this.activeBox.setZLevel(z);
+    if (this.zLabel) this.zLabel.setText(`Z: ${z}`);
+  }
+
+  private applyTileMatrixWithHistory(
+    bbox: BBox,
+    matrix: number[][] | null,
+    fallbackIndex: number | null,
+    actor: "chat" | "user",
+    selectionId?: string,
+    note?: string,
+  ) {
+    const layer = this.groundLayer;
+    const diffs: TileDiffCell[] = [];
+
+    // snapshot before
+    const before: number[][] = [];
+    for (let dy = 0; dy < bbox.h; dy++) {
+      const row: number[] = [];
+      for (let dx = 0; dx < bbox.w; dx++) {
+        const x = bbox.x + dx,
+          y = bbox.y + dy;
+        row.push(layer.getTileAt(x, y)?.index ?? -1);
+      }
+      before.push(row);
+    }
+
+    // write tiles
+    for (let dy = 0; dy < bbox.h; dy++) {
+      for (let dx = 0; dx < bbox.w; dx++) {
+        const x = bbox.x + dx,
+          y = bbox.y + dy;
+        const desired = matrix ? matrix[dy]?.[dx] ?? -1 : fallbackIndex ?? -1;
+        layer.putTileAt(desired, x, y); // allow -1 to clear
+      }
+    }
+
+    // after + sparse diffs
+    for (let dy = 0; dy < bbox.h; dy++) {
+      for (let dx = 0; dx < bbox.w; dx++) {
+        const x = bbox.x + dx,
+          y = bbox.y + dy;
+        const a = layer.getTileAt(x, y)?.index ?? -1;
+        const b = before[dy][dx];
+        if (a !== b) diffs.push({ dx, dy, before: b, after: a });
+      }
+    }
+
+    if (diffs.length === 0) return;
+
+    const opId = (crypto as any).randomUUID?.() ?? `${Date.now()}_${Math.random()}`;
+    const op: PlacementOp = {
+      id: opId,
+      ts: Date.now(),
+      actor,
+      selectionId,
+      bbox: { ...bbox },
+      diffs,
+      note,
+    };
+
+    // provenance
+    for (const d of diffs) {
+      const key = `${bbox.x + d.dx},${bbox.y + d.dy}`;
+      const list = this.tileProvenance.get(key) ?? [];
+      list.push(opId);
+      this.tileProvenance.set(key, list);
+    }
+
+    this.placementHistory.push(op);
+    // optional cap
+    const MAX_OPS = 1000;
+    if (this.placementHistory.length > MAX_OPS) {
+      this.placementHistory.splice(0, this.placementHistory.length - MAX_OPS);
+    }
+  }
+
+  public getRegionHistory(bbox: BBox, limit = 10): PlacementOp[] {
+    const inter = (a: BBox, b: BBox) =>
+      !(a.x + a.w - 1 < b.x || b.x + b.w - 1 < a.x || a.y + a.h - 1 < b.y || b.y + b.h - 1 < a.y);
+    return this.placementHistory
+      .filter((op) => inter(op.bbox, bbox))
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, limit);
+  }
+
+  public getTileHistory(x: number, y: number): PlacementOp[] {
+    const ids = this.tileProvenance.get(`${x},${y}`) ?? [];
+    const dict = new Map(this.placementHistory.map((op) => [op.id, op] as const));
+    return ids.map((id) => dict.get(id)!).filter(Boolean) as PlacementOp[];
+  }
+
+  public fillSelectionWithTile(box: SelectionBox, tileIndex: number, note?: string) {
+    const b = box.getBounds(); // now width/height are correct
+    const bbox: BBox = { x: b.x, y: b.y, w: b.width, h: b.height };
+    this.applyTileMatrixWithHistory(
+      bbox,
+      null,
+      tileIndex,
+      "chat",
+      box.getId(),
+      note ?? "fillSelectionWithTile",
+    );
   }
 }

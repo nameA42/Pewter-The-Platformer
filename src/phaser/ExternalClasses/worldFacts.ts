@@ -323,81 +323,229 @@ export class WorldFacts {
     const width = groundLayer.width;
     const height = groundLayer.height;
 
-    const xs: number[] = [];
-    const ys: number[] = [];
+    // --- Build grid[y][x] (1 = tile, 0 = empty)
+    const grid: number[][] = [];
+    for (let y = 0; y < height; y++) {
+      const row: number[] = [];
+      for (let x = 0; x < width; x++) {
+        row.push(groundLayer.getTileAt(x, y) ? 1 : 0);
+      }
+      grid.push(row);
+    }
 
-    // Step 1: record topmost tile for each column
+    // --- bottommost tile per column (max y), -1 if none
+    const columnBottoms: number[] = new Array(width).fill(-1);
     for (let x = 0; x < width; x++) {
-      xs.push(x);
-      let topY = -1;
+      let bottom = -1;
       for (let y = 0; y < height; y++) {
-        if (groundLayer.getTileAt(x, y)) {
-          topY = y;
-          break;
+        if (grid[y][x] === 1) bottom = y;
+      }
+      columnBottoms[x] = bottom;
+    }
+
+    // --- choose base ground Y as the mode of columnBottoms (ignore -1)
+    const freq = new Map<number, number>();
+    for (const b of columnBottoms) {
+      if (b === -1) continue;
+      freq.set(b, (freq.get(b) ?? 0) + 1);
+    }
+    let baseGroundY: number | null = null;
+    let maxCount = 0;
+    for (const [y, count] of freq.entries()) {
+      if (count > maxCount) {
+        maxCount = count;
+        baseGroundY = y;
+      }
+    }
+
+    // --- Produce base ground runs (Flats) using columnBottoms === baseGroundY
+    if (baseGroundY !== null) {
+      let runStart: number | null = null;
+      for (let x = 0; x < width; x++) {
+        const isBase = columnBottoms[x] === baseGroundY;
+        if (isBase && runStart === null) runStart = x;
+        if (!isBase && runStart !== null) {
+          structures.push(
+            new StructureFact(runStart, x - 1, "Flat", baseGroundY),
+          );
+          runStart = null;
         }
       }
-      ys.push(topY);
-    }
-
-    // Helper: is the tile unsupported below?
-    const isFloating = (x: number, y: number) => {
-      if (y === -1) return false;
-      const belowTile = groundLayer.getTileAt(x, y + 1);
-      return !belowTile;
-    };
-
-    let segStart = 0;
-    let prevType: "Pitfall" | "Platform" | "Flat" | "Ramp" | null = null;
-    let prevHeights: number | number[] | null = null;
-
-    for (let i = 0; i <= xs.length; i++) {
-      const x = xs[i];
-      const y = ys[i] ?? -1;
-
-      // Determine current type and height(s)
-      let type: "Pitfall" | "Platform" | "Flat" | "Ramp";
-      let heightsOrHeight: number | number[];
-
-      if (y === -1) {
-        type = "Pitfall";
-        heightsOrHeight = [-1];
-      } else if (isFloating(x, y)) {
-        type = "Platform";
-        heightsOrHeight = [y];
-      } else {
-        // fully supported
-        type = "Flat";
-        heightsOrHeight = y;
-      }
-
-      // Check if we should split segment
-      const typeChanged =
-        prevType !== null &&
-        (type !== prevType ||
-          (type === "Flat" && heightsOrHeight !== prevHeights));
-
-      if (typeChanged) {
+      if (runStart !== null)
         structures.push(
-          new StructureFact(xs[segStart], xs[i - 1], prevType!, prevHeights!),
+          new StructureFact(runStart, width - 1, "Flat", baseGroundY),
         );
-        segStart = i;
+    }
+
+    // --- Flood-fill to find all connected chunks (4-neighbor)
+    const visited = Array.from({ length: height }, () =>
+      Array(width).fill(false),
+    );
+    const dirs = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ];
+
+    function floodFill(sx: number, sy: number): [number, number][] {
+      const stack: [number, number][] = [[sx, sy]];
+      const cells: [number, number][] = [];
+      visited[sy][sx] = true;
+      while (stack.length > 0) {
+        const [x, y] = stack.pop()!;
+        cells.push([x, y]);
+        for (const [dx, dy] of dirs) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (
+            nx >= 0 &&
+            nx < width &&
+            ny >= 0 &&
+            ny < height &&
+            !visited[ny][nx] &&
+            grid[ny][nx] === 1
+          ) {
+            visited[ny][nx] = true;
+            stack.push([nx, ny]);
+          }
+        }
       }
-
-      prevType = type;
-      prevHeights = heightsOrHeight;
+      return cells;
     }
 
-    // Push final segment
-    if (segStart < xs.length) {
-      structures.push(
-        new StructureFact(
-          xs[segStart],
-          xs[xs.length - 1],
-          prevType!,
-          prevHeights!,
-        ),
-      );
+    // Helper: compute bottommost per column inside a chunk
+    function chunkColumnBottoms(cells: [number, number][]): {
+      xStart: number;
+      xEnd: number;
+      bottoms: number[];
+    } {
+      const xs = cells.map(([x]) => x);
+      const xStart = Math.min(...xs);
+      const xEnd = Math.max(...xs);
+      const bottoms: number[] = [];
+      for (let x = xStart; x <= xEnd; x++) {
+        let b = -1;
+        for (const [cx, cy] of cells) {
+          if (cx === x && cy > b) b = cy;
+        }
+        bottoms.push(b);
+      }
+      return { xStart, xEnd, bottoms };
     }
+
+    // --- Classify non-base chunks (Platforms / Flats / Ramps)
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (!visited[y][x] && grid[y][x] === 1) {
+          const cells = floodFill(x, y);
+          const { xStart, xEnd, bottoms } = chunkColumnBottoms(cells);
+
+          // if this chunk is exactly the base-ground slice we already emitted, skip it
+          const isSameAsBase =
+            baseGroundY !== null && bottoms.every((b) => b === baseGroundY);
+          if (isSameAsBase) continue;
+
+          // check if any column in this chunk is floating (no tile directly below its bottom)
+          let hasFloatingColumn = false;
+          for (let i = 0; i < bottoms.length; i++) {
+            const b = bottoms[i];
+            if (b === -1) continue; // no tile in that column of chunk (shouldn't happen)
+            const belowY = b + 1;
+            if (belowY >= height || grid[belowY][xStart + i] === 0) {
+              hasFloatingColumn = true;
+              break;
+            }
+          }
+
+          if (hasFloatingColumn) {
+            // Platform: report the per-column bottom heights (could be mixed)
+            structures.push(
+              new StructureFact(xStart, xEnd, "Platform", bottoms),
+            );
+            continue;
+          }
+
+          // Fully supported: decide Flat vs Ramp vs Irregular
+          const noMissing = bottoms.every((b) => b !== -1);
+          if (!noMissing) {
+            // treat as platform-ish if there are holes in the chunk's horizontal span
+            structures.push(
+              new StructureFact(xStart, xEnd, "Platform", bottoms),
+            );
+            continue;
+          }
+
+          // compute diffs
+          const diffs: number[] = [];
+          for (let i = 1; i < bottoms.length; i++)
+            diffs.push(bottoms[i] - bottoms[i - 1]);
+          const allDiffEqual = diffs.every((d) => d === diffs[0]);
+
+          if (allDiffEqual && diffs[0] === 0) {
+            if (
+              baseGroundY !== null &&
+              bottoms.every((b) => b === baseGroundY)
+            ) {
+              // true base ground flat
+              structures.push(
+                new StructureFact(xStart, xEnd, "Flat", baseGroundY),
+              );
+            } else {
+              // flat chunk but not base → platform, report min height
+              const minHeight = Math.min(...bottoms);
+              structures.push(
+                new StructureFact(xStart, xEnd, "Platform", minHeight),
+              );
+            }
+          } else if (allDiffEqual && Math.abs(diffs[0]) === 1) {
+            // ramp (consistent slope of +/-1)
+            structures.push(new StructureFact(xStart, xEnd, "Ramp", bottoms));
+          } else {
+            // irregular but supported -> platform, report min height
+            const minHeight = Math.min(...bottoms);
+            structures.push(
+              new StructureFact(xStart, xEnd, "Platform", minHeight),
+            );
+          }
+        }
+      }
+    }
+
+    // --- Pitfalls: columns where the base ground is missing (columnBottoms !== baseGroundY)
+    if (baseGroundY !== null) {
+      let pitStart: number | null = null;
+      for (let x = 0; x < width; x++) {
+        const isPit = columnBottoms[x] !== baseGroundY;
+        if (isPit && pitStart === null) pitStart = x;
+        if (!isPit && pitStart !== null) {
+          structures.push(new StructureFact(pitStart, x - 1, "Pitfall", [-1]));
+          pitStart = null;
+        }
+      }
+      if (pitStart !== null)
+        structures.push(
+          new StructureFact(pitStart, width - 1, "Pitfall", [-1]),
+        );
+    } else {
+      // no dominant base ground found; if you want, treat columns with no tiles as pitfalls:
+      let pitStart: number | null = null;
+      for (let x = 0; x < width; x++) {
+        const isPit = columnBottoms[x] === -1;
+        if (isPit && pitStart === null) pitStart = x;
+        if (!isPit && pitStart !== null) {
+          structures.push(new StructureFact(pitStart, x - 1, "Pitfall", [-1]));
+          pitStart = null;
+        }
+      }
+      if (pitStart !== null)
+        structures.push(
+          new StructureFact(pitStart, width - 1, "Pitfall", [-1]),
+        );
+    }
+
+    // --- Sort facts by xStart for deterministic output
+    structures.sort((a: any, b: any) => a.xStart - b.xStart);
 
     return structures;
   }

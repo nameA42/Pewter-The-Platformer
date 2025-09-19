@@ -25,12 +25,14 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
     x: number,
     y: number,
     map: Phaser.Tilemaps.Tilemap,
+    groundLayer: Phaser.Tilemaps.TilemapLayer,
   ) {
     super(scene, x, y, "spritesheet", 7);
 
     scene.add.existing(this);
     scene.physics.add.existing(this);
     //this.setCollideWorldBounds(true);
+    scene.physics.add.collider(this, groundLayer);
 
     this.pathfinder = new Pathfinding(
       scene,
@@ -52,45 +54,56 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
     ];
   }
 
-  update(player: Phaser.GameObjects.Sprite, playerHealth: number) {
-    this.frameCounter++;
+  update(
+    player: Phaser.GameObjects.Sprite,
+    playerHealth: number,
+    active: boolean,
+  ) {
+    console.log("is inactive");
+    if (active) {
+      console.log("is active");
+      this.frameCounter++;
 
-    // shooting logic
-    if (this.frameCounter % this.fireRate === 0) {
-      this.shootPellet();
-    }
-
-    // pellet collisions with player
-    this.pellets = this.pellets.filter((pellet) => {
-      if (this.scene.physics.overlap(player, pellet)) {
-        playerHealth--;
-        pellet.destroy();
-        return false;
+      // shooting logic
+      if (this.frameCounter % this.fireRate === 0) {
+        this.shootPellet();
       }
-      return true;
-    });
 
-    // --- PATROL LOGIC ---
-    if (this.reachedPoint) {
-      // reached a patrol point → set up next path
-      const start = this.patrolPoints[this.currentPatrolIndex == 1 ? 0 : 1];
-      const target = this.patrolPoints[this.currentPatrolIndex];
+      // pellet collisions with player
+      this.pellets = this.pellets.filter((pellet) => {
+        // skip destroyed pellets
+        if (!pellet || !pellet.body) return false;
 
-      this.pathfinder.findPath(start.x, start.y, target.x, target.y);
-      this.reachedPoint = false;
+        if (this.scene.physics.overlap(player, pellet)) {
+          playerHealth--;
+          pellet.destroy();
+          return false;
+        }
+        return true;
+      });
 
-      // next target in sequence
-      this.currentPatrolIndex++;
-      this.currentPatrolIndex = this.currentPatrolIndex % 2;
-    } else {
-      // continue pathfinding
-      this.reachedPoint = this.pathfinder.pathfind();
-    }
+      // --- PATROL LOGIC ---
+      if (this.reachedPoint) {
+        // reached a patrol point → set up next path
+        const start = this.patrolPoints[this.currentPatrolIndex == 1 ? 0 : 1];
+        const target = this.patrolPoints[this.currentPatrolIndex];
 
-    if (this.currentPatrolIndex == 0) {
-      this.flip(false);
-    } else if (this.currentPatrolIndex == 1) {
-      this.flip(true);
+        this.pathfinder.findPath(start.x, start.y, target.x, target.y);
+        this.reachedPoint = false;
+
+        // next target in sequence
+        this.currentPatrolIndex++;
+        this.currentPatrolIndex = this.currentPatrolIndex % 2;
+      } else {
+        // continue pathfinding
+        this.reachedPoint = this.pathfinder.pathfind();
+      }
+
+      if (this.currentPatrolIndex == 0) {
+        this.flip(false);
+      } else if (this.currentPatrolIndex == 1) {
+        this.flip(true);
+      }
     }
   }
 

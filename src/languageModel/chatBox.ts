@@ -14,8 +14,8 @@ if (typeof window !== "undefined") {
 // Returns formatted HTML for current chat history (excluding system message)
 export function getDisplayChatHistory(): string {
   return currentChatHistory
-    .filter(msg => msg._getType() !== "system")
-    .map(msg => {
+    .filter((msg) => msg._getType() !== "system")
+    .map((msg) => {
       let displayContent = msg.content;
       if (typeof displayContent === "object") {
         displayContent = JSON.stringify(displayContent);
@@ -29,7 +29,9 @@ export function getDisplayChatHistory(): string {
 let currentChatHistory: BaseMessage[] = [];
 
 // Set the active selection box context for chat
-export function setActiveSelectionBox(box: { localContext: { chatHistory: BaseMessage[] } }) {
+export function setActiveSelectionBox(box: {
+  localContext: { chatHistory: BaseMessage[] };
+}) {
   currentChatHistory = box.localContext.chatHistory;
   // Ensure system message is always first
   const sysPrompt =
@@ -39,16 +41,19 @@ export function setActiveSelectionBox(box: { localContext: { chatHistory: BaseMe
     "Tile ID 1 matches with an empty tile. Tile ID 2 matches with a coin. Tile ID 4 matches with a fruit (apple, mango, etc.). Tile ID 5 matches with a platform block. Tile ID 6 matches with a dirt block. Tile ID 7 matches with a item (question mark (?)) block." +
     "Each tool has a description associated to it so make sure to check out each tool. Most of your task will require you to use at lease one of the tools or multiple tools at once so use them. You may use each tool multiple times if instructed. When told specific coordinates, make sure to use them strictly. If told to choose random coordinates or place something in a general viscinity of the selection, make sure to be open to such situations and accomodate what they ask of you." +
     "Be friendly and remember to do what you are told. You may also provide suggestions occasionally if you feel it is right to do so. Account for the fact that the level has to be completable and things look straight.";
-  const isSystemMessage = (msg: any) => msg && msg._getType && msg._getType() === "system";
+  const isSystemMessage = (msg: any) =>
+    msg && msg._getType && msg._getType() === "system";
   if (
     currentChatHistory.length === 0 ||
     !isSystemMessage(currentChatHistory[0]) ||
-    (currentChatHistory[0].content !== sysPrompt)
+    currentChatHistory[0].content !== sysPrompt
   ) {
     // Import SystemMessage from langchain
     // (import already present at top)
     currentChatHistory.unshift(new SystemMessage(sysPrompt));
-    console.log("System prompt injected into chat history for active selection box.");
+    console.log(
+      "System prompt injected into chat history for active selection box.",
+    );
   }
 }
 
@@ -102,14 +107,17 @@ export async function sendUserPrompt(message: string): Promise<string> {
   setBotResponding(true);
 
   try {
-  const reply = await getChatResponse(currentChatHistory);
-  const aiMessage = new AIMessage(reply);
-  currentChatHistory.push(aiMessage);
-    return reply;
+    const reply = await getChatResponse(currentChatHistory);
+    const replyText = Array.isArray(reply.text)
+      ? reply.text.join("\n")
+      : String(reply.text);
+    const aiMessage = new AIMessage(replyText);
+    currentChatHistory.push(aiMessage);
+    return replyText;
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     const fallback = new AIMessage("Error: " + errorMessage);
-  currentChatHistory.push(fallback);
+    currentChatHistory.push(fallback);
     return fallback.content as string;
   } finally {
     setBotResponding(false);
@@ -126,14 +134,17 @@ export async function sendSystemMessage(message: string): Promise<string> {
   setBotResponding(true);
 
   try {
-  const reply = await getChatResponse(currentChatHistory);
-  const aiMessage = new AIMessage(reply);
-  currentChatHistory.push(aiMessage);
-    return reply;
+    const reply = await getChatResponse(currentChatHistory);
+    const replyText = Array.isArray(reply.text)
+      ? reply.text.join("\n")
+      : String(reply.text);
+    const aiMessage = new AIMessage(replyText);
+    currentChatHistory.push(aiMessage);
+    return replyText;
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     const fallback = new AIMessage("Error: " + errorMessage);
-  currentChatHistory.push(fallback);
+    currentChatHistory.push(fallback);
     return fallback.content as string;
   } finally {
     setBotResponding(false);

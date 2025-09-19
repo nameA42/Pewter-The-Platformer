@@ -6,16 +6,18 @@ type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
 };
 import { sendUserPrompt } from "../languageModel/chatBox";
 import { setActiveSelectionBox } from "../languageModel/chatBox";
-import { Slime } from "./EnemyClasses/Slime.ts";
-import { UltraSlime } from "./EnemyClasses/UltraSlime.ts";
+import { Slime } from "./ExternalClasses/Slime.ts";
+import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
 import { UIScene } from "./UIScene.ts";
+import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
 import { SelectionBox } from "./selectionBox.ts";
 
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
   private SCALE = 1.0;
   public map!: Phaser.Tilemaps.Tilemap;
-  private groundLayer!: Phaser.Tilemaps.TilemapLayer;
+  public groundLayer!: Phaser.Tilemaps.TilemapLayer;
+  public collectablesLayer!: Phaser.Tilemaps.TilemapLayer;
   private backgroundLayer!: Phaser.Tilemaps.TilemapLayer;
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private playButton!: Phaser.GameObjects.Text;
@@ -93,6 +95,8 @@ export class EditorScene extends Phaser.Scene {
 
   private currentZLevel: number = 1; // 1 = red, 2 = green, 3 = blue
 
+  public worldFacts!: WorldFacts;
+
   constructor() {
     super({ key: "editorScene" });
   }
@@ -153,6 +157,8 @@ export class EditorScene extends Phaser.Scene {
   create() {
     this.map = this.make.tilemap({ key: "defaultMap" });
 
+    this.worldFacts = new WorldFacts(this);
+
     console.log("Map loaded:", this.map);
     const tileset = this.map.addTilesetImage(
       "pewterPlatformerTileset",
@@ -173,7 +179,12 @@ export class EditorScene extends Phaser.Scene {
     // console.log("LAYER1 added:", this.map);
     this.groundLayer = this.map.createLayer("Ground_Layer", tileset, 0, 0)!;
     // console.log("LAYER2 added:", this.map);
-
+    this.collectablesLayer = this.map.createLayer(
+      "Collectables_Layer",
+      tileset,
+      0,
+      0,
+    )!;
     this.cameras.main.setBounds(
       0,
       0,
@@ -251,6 +262,7 @@ export class EditorScene extends Phaser.Scene {
       this.keyN = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.N);
       this.keyZ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
       this.keyB = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B);
+
       this.keyCtrl = this.input.keyboard.addKey(
         Phaser.Input.Keyboard.KeyCodes.CTRL,
       );
@@ -354,6 +366,8 @@ export class EditorScene extends Phaser.Scene {
       }
     });
     //TODO: handle UI -> Editor communication
+
+    this.worldFacts.refresh();
   }
 
   setupPlayer() {
@@ -472,6 +486,19 @@ export class EditorScene extends Phaser.Scene {
     if (this.gameActive) {
       // Play mode: player movement and camera follow
       // Hide grid and red outline
+
+      this.enemies.forEach((enemy, index) => {
+        if (!enemy || !enemy.active) {
+          enemy.destroy();
+          if (index !== -1) {
+            this.enemies.splice(index, 1); // removes 1 item at that index
+          }
+
+          return;
+        }
+        enemy.update(this.player, 0, this.gameActive);
+      });
+
       if (this.gridGraphics) this.gridGraphics.clear();
       if (this.highlightBox) this.highlightBox.clear();
       //if (this.selectionBox) this.selectionBox.clear();
@@ -597,9 +624,6 @@ export class EditorScene extends Phaser.Scene {
       const pointer = this.input.activePointer;
       this.pasteSelection(pointer);
       console.log("Pasted selection");
-      // } else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
-      //   this.bindMapHistory();
-      //   console.log("Saved map state");
     } else if (
       Phaser.Input.Keyboard.JustDown(this.keyU) &&
       this.keyCtrl.isDown
@@ -968,16 +992,17 @@ export class EditorScene extends Phaser.Scene {
     // Restore minimap
     /*
     if (!this.cameras.cameras.includes(this.minimap)) {
-      this.cameras.add(
-        10,
-        10,
-        this.map.widthInPixels * this.minimapZoom,
-        this.map.heightInPixels * this.minimapZoom,
-      )
-      .setZoom(this.minimapZoom)
-      .setName("minimap")
-      .setBackgroundColor(0x002244)
-      .setBounds(0, 0, this.map.widthInPixels, this.map.heightInPixels);
+      this.cameras
+        .add(
+          10,
+          10,
+          this.map.widthInPixels * this.minimapZoom,
+          this.map.heightInPixels * this.minimapZoom,
+        )
+        .setZoom(this.minimapZoom)
+        .setName("minimap")
+        .setBackgroundColor(0x002244)
+        .setBounds(0, 0, this.map.widthInPixels, this.map.heightInPixels);
     }
     */
 

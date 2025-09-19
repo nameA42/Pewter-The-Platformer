@@ -3,7 +3,7 @@ import { LoadingScene } from "./phaser/loadingScene.ts";
 import { EditorScene } from "./phaser/editorScene.ts";
 import { sendSystemMessage } from "./languageModel/chatBox.ts";
 import { GameScene } from "./phaser/gameScene.ts";
-import { UIScene } from './phaser/UIScene.ts';
+import { UIScene } from "./phaser/UIScene.ts";
 
 //initializeTools();
 
@@ -20,6 +20,7 @@ import { PlaceSingleTile } from "./languageModel/tools/placeSingleTile.ts";
 import { PlaceEnemy } from "./languageModel/tools/placeEnemy.ts";
 import { PlaceGridofTiles } from "./languageModel/tools/placeGridofTiles.ts";
 import { ClearTile } from "./languageModel/tools/clearTile.ts";
+import { WorldFactsTool } from "./languageModel/tools/worldFactsTool.ts";
 
 ////****LLM Tool Setup****////
 // const tools = {
@@ -33,6 +34,7 @@ const tools = {
   placeEnemy: new PlaceEnemy(getScene),
   placeGridofTiles: new PlaceGridofTiles(getScene),
   clearTile: new ClearTile(getScene),
+  WorldFactsTool: new WorldFactsTool(getScene),
 };
 
 // // Register all tools with the LLM
@@ -46,7 +48,7 @@ Object.values(tools).forEach((generator) => {
 initializeTools();
 
 // // Tell the system to introduce itself and explain what it can do
-// sendSystemMessage("Introduce yourself and explain what you can do. ");
+sendSystemMessage("Introduce yourself and explain what you can do. ");
 
 ////****Phaser Game Setup****////
 
@@ -80,4 +82,4 @@ export function getScene(): EditorScene {
   console.log(gameInstance.scene.getScene("editorScene"));
   return gameInstance.scene.getScene("editorScene") as EditorScene;
 }
-sendSystemMessage("Introduce yourself and explain what you can do.");
+//sendSystemMessage("Introduce yourself and explain what you can do.");

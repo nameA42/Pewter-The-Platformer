@@ -52,6 +52,12 @@ export class PlaceSingleTile {
       }
 
       map.putTileAt(tileIndex, x, y, true, layer);
+
+      if (layerName == "Ground_Layer") {
+        scene.worldFacts.setFact("Structure");
+      } else if (layerName == "Collectables_Layer") {
+        scene.worldFacts.setFact("Collectable");
+      }
       return `✅ Placed tile ${tileIndex} at (${x}, ${y}) on layer '${layerName}'.`;
     },
     {
@@ -62,11 +68,7 @@ Places a single tile at the given tile coordinates (x, y) on the specified map l
 
 - tileIndex: numeric ID of the tile to place.
 - x, y: integer tile coordinates (not pixels).
-- layerName: the name of the target map layer.
-
-Examples:
-  { "tileIndex": 3, "x": 5, "y": 7, "layerName": "Ground" }
-  { "tileIndex": 12, "x": 0, "y": 0, "layerName": "Walls" }
+- layerName: the name of the target map layer. Choose between 'Ground_Layer' and 'Collectables_Layer' 
 `,
     },
   );

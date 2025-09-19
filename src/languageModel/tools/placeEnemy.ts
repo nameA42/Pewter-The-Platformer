@@ -1,7 +1,7 @@
 import { tool } from "@langchain/core/tools";
 import type { EditorScene } from "../../phaser/editorScene.ts";
-import { Slime } from "../../phaser/EnemyClasses/Slime.ts";
-import { UltraSlime } from "../../phaser/EnemyClasses/UltraSlime.ts";
+import { Slime } from "../../phaser/ExternalClasses/Slime.ts";
+import { UltraSlime } from "../../phaser/ExternalClasses/UltraSlime.ts";
 import { z } from "zod";
 
 export class PlaceEnemy {
@@ -33,12 +33,26 @@ export class PlaceEnemy {
 
       try {
         if (enemyType === "Slime") {
-          const slime = new Slime(scene, x, y, scene.map);
+          const slime = new Slime(
+            scene,
+            x * scene.map.tileWidth + scene.map.tileWidth / 2,
+            y * scene.map.tileWidth + scene.map.tileWidth / 2,
+            scene.map,
+            scene.groundLayer,
+          );
           enemies.push(slime);
+          scene.worldFacts.setFact("Enemy", x, y, "Slime");
           return `✅ Placed Slime at (${x}, ${y}).`;
         } else if (enemyType === "UltraSlime") {
-          const ultraSlime = new UltraSlime(scene, x, y, scene.map);
+          const ultraSlime = new UltraSlime(
+            scene,
+            x * scene.map.tileWidth + scene.map.tileWidth / 2,
+            y * scene.map.tileWidth + scene.map.tileWidth / 2,
+            scene.map,
+            scene.groundLayer,
+          );
           enemies.push(ultraSlime);
+          scene.worldFacts.setFact("Enemy", x, y, "Ultra Slime");
           return `✅ Placed UltraSlime at (${x}, ${y}).`;
         }
       } catch (e) {
@@ -55,10 +69,6 @@ Places an enemy at the given (x, y) coordinates in the scene.
 - enemyType: must be one of ["Slime", "UltraSlime"].
 - x, y: integer coordinates (starting at 0).
 - The enemy will be added to the scene's active enemies list.
-
-Examples:
-  { "enemyType": "Slime", "x": 10, "y": 5 }
-  { "enemyType": "UltraSlime", "x": 15, "y": 8 }
 `,
     },
   );

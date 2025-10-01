@@ -1,4 +1,4 @@
-import { getChatResponse, initializeLLM } from "./modelConnector.ts";
+import { getChatResponse } from "./modelConnector.ts";
 import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { SystemMessage } from "@langchain/core/messages";
 
@@ -55,6 +55,10 @@ export function setActiveSelectionBox(box: {
       "System prompt injected into chat history for active selection box.",
     );
   }
+  // Notify any UI listeners that the active selection (and its history) changed
+  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
+  }
 }
 
 // Track bot typing state to prevent overlapping responses
@@ -101,23 +105,87 @@ export function isBotResponding(): boolean {
  * Handles error formatting and message history updates.
  */
 export async function sendUserPrompt(message: string): Promise<string> {
+  // Capture the current history reference at send time so replies go to the
+  // same selection box even if the active box changes while the request is in-flight.
+  const historyRef = currentChatHistory;
+
   const userMessage = new HumanMessage(message);
-  currentChatHistory.push(userMessage);
+  historyRef.push(userMessage);
 
   setBotResponding(true);
 
   try {
-    const reply = await getChatResponse(currentChatHistory);
+    const reply = await getChatResponse(historyRef);
     const replyText = Array.isArray(reply.text)
       ? reply.text.join("\n")
       : String(reply.text);
     const aiMessage = new AIMessage(replyText);
-    currentChatHistory.push(aiMessage);
+    historyRef.push(aiMessage);
+
+    // Let UI know new content is available for the active selection
+    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+      window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
+    }
+
     return replyText;
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     const fallback = new AIMessage("Error: " + errorMessage);
-    currentChatHistory.push(fallback);
+    historyRef.push(fallback);
+    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+      window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
+    }
+    return fallback.content as string;
+  } finally {
+    setBotResponding(false);
+  }
+}
+
+/**
+ * Sends a user prompt to the LLM but keeps an optional world/context string
+ * out of the visible chat history. The visible history will contain only the
+ * user's plain message and the AI reply; the world context is appended to a
+ * temporary history passed to the model so it influences the response but is
+ * not stored in the selection's chatHistory array.
+ */
+export async function sendUserPromptWithContext(
+  userMessageText: string,
+  hiddenContext?: string,
+): Promise<string> {
+  const historyRef = currentChatHistory;
+
+  // Push the user's visible message into the active history
+  const userMessage = new HumanMessage(userMessageText);
+  historyRef.push(userMessage);
+
+  setBotResponding(true);
+
+  try {
+    // Build a temporary history for the model that includes the hidden context
+    const tempHistory: BaseMessage[] = historyRef.slice();
+    if (hiddenContext && hiddenContext.trim().length > 0) {
+      tempHistory.push(new HumanMessage(`[WORLD CONTEXT]: ${hiddenContext}`));
+    }
+
+    const reply = await getChatResponse(tempHistory);
+    const replyText = Array.isArray(reply.text)
+      ? reply.text.join("\n")
+      : String(reply.text);
+    const aiMessage = new AIMessage(replyText);
+    historyRef.push(aiMessage);
+
+    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+      window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
+    }
+
+    return replyText;
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    const fallback = new AIMessage("Error: " + errorMessage);
+    historyRef.push(fallback);
+    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+      window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
+    }
     return fallback.content as string;
   } finally {
     setBotResponding(false);
@@ -128,23 +196,32 @@ export async function sendUserPrompt(message: string): Promise<string> {
  * Send a system-level message to the LLM (e.g., instructions or context).
  */
 export async function sendSystemMessage(message: string): Promise<string> {
+  const historyRef = currentChatHistory;
   const systemMessage = new HumanMessage(message);
-  currentChatHistory.push(systemMessage);
+  historyRef.push(systemMessage);
 
   setBotResponding(true);
 
   try {
-    const reply = await getChatResponse(currentChatHistory);
+    const reply = await getChatResponse(historyRef);
     const replyText = Array.isArray(reply.text)
       ? reply.text.join("\n")
       : String(reply.text);
     const aiMessage = new AIMessage(replyText);
-    currentChatHistory.push(aiMessage);
+    historyRef.push(aiMessage);
+
+    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+      window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
+    }
+
     return replyText;
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     const fallback = new AIMessage("Error: " + errorMessage);
-    currentChatHistory.push(fallback);
+    historyRef.push(fallback);
+    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+      window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
+    }
     return fallback.content as string;
   } finally {
     setBotResponding(false);

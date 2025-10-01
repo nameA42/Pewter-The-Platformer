@@ -245,6 +245,16 @@ export class EditorScene extends Phaser.Scene {
     this.scene.launch("UIScene");
     this.scene.bringToTop("UIScene");
 
+    // Listen for a UI request to select the current temporary selection box
+    this.game.events.on('ui:selectCurrentBox', () => {
+      if (this.activeBox) {
+        console.log('ui:selectCurrentBox -> selecting activeBox');
+        this.selectBox(this.activeBox);
+      } else {
+        console.log('ui:selectCurrentBox fired but no active box exists');
+      }
+    });
+
     // Restore keyboard key initialization with null check
     if (this.input.keyboard) {
       this.keyA = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
@@ -608,6 +618,12 @@ export class EditorScene extends Phaser.Scene {
       this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
     }
 
+    // Update selection box tab positions so tabs follow boxes in real-time
+    for (const box of this.selectionBoxes) {
+      box.updateTabPosition?.();
+    }
+    this.activeBox?.updateTabPosition?.();
+
     if (Phaser.Input.Keyboard.JustDown(this.keyC) && this.keyCtrl.isDown) {
       this.copySelection();
       console.log("Copied selection");
@@ -748,6 +764,10 @@ export class EditorScene extends Phaser.Scene {
           this.selectionEnd,
           this.currentZLevel,
           this.groundLayer,
+          (box) => {
+            // When the tab is clicked, make this box active and update chat context
+            this.selectBox(box);
+          },
         );
       }
     } else {
@@ -778,6 +798,16 @@ export class EditorScene extends Phaser.Scene {
     }
     // If overlap does occur, do not make a box
     if (overlap) {
+      // If the click lands inside an existing finalized box, select it instead
+      for (const box of this.selectionBoxes) {
+        const bound = box.getBounds();
+        if (Phaser.Geom.Intersects.RectangleToRectangle(candidate, bound)) {
+          // Select this box
+          console.log("Clicked existing selection — activating it.");
+          this.selectBox(box);
+          return;
+        }
+      }
       console.log("Cannot create box there!! Overlap detected!!");
       this.isSelecting = false;
       return;
@@ -792,7 +822,12 @@ export class EditorScene extends Phaser.Scene {
           this.selectionEnd,
           this.currentZLevel,
           this.groundLayer,
+          (box) => {
+            this.selectBox(box);
+          },
         );
+        // Immediately make this new box active (visual + chat)
+        this.selectBox(this.activeBox);
       } else {
         // If overlap does not occur, continue working with the existing active box
         this.selectionStart.set(x, y);
@@ -858,9 +893,12 @@ export class EditorScene extends Phaser.Scene {
     // Swap chatbox context to this selection box
     setActiveSelectionBox(this.activeBox);
 
+  // Make visuals reflect the selection
+  this.selectBox(this.activeBox);
+
     // Add to permanent list
     if (!this.selectionBoxes.includes(this.activeBox)) {
-      this.selectionBoxes.push(this.activeBox);
+  this.selectionBoxes.push(this.activeBox);
     }
 
     // These define the height and width of the selection box
@@ -1110,10 +1148,30 @@ export class EditorScene extends Phaser.Scene {
 
     // Push it to the array
     this.selectionBoxes.push(this.activeBox);
+    // mark it as finalized (permanent) so it can't be redrawn; it can still be dragged via its tab
+    this.activeBox.finalize?.();
 
     // Clear references
     this.activeBox = null;
     this.isSelecting = false;
+  }
+
+  // Helper to set a selection box as active and update visuals/chat
+  selectBox(box: SelectionBox | null) {
+    if (!box) return;
+    // Deactivate all boxes we know about (selectionBoxes and any current activeBox)
+    for (const b of this.selectionBoxes) {
+      b.setActive?.(false);
+    }
+    if (this.activeBox) {
+      this.activeBox.setActive?.(false);
+    }
+
+    // activate the new box
+    this.activeBox = box;
+    console.log('EditorScene.selectBox activating box', box.getBounds());
+    box.setActive?.(true);
+    setActiveSelectionBox(box);
   }
 
   // Match Highlight Color with Z-Level

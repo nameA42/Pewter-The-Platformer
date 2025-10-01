@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { sendUserPrompt, getDisplayChatHistory } from "../languageModel/chatBox";
+import { sendUserPromptWithContext, getDisplayChatHistory } from "../languageModel/chatBox";
 import { EditorScene } from "./editorScene.ts";
 
 export class UIScene extends Phaser.Scene {
@@ -135,6 +135,19 @@ export class UIScene extends Phaser.Scene {
     const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
     const log = this.chatBox.getChildByID("chat-log") as HTMLDivElement;
 
+    // Listen for changes to the active selection so we always render only the
+    // currently-active selection box history.
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+      window.addEventListener("activeSelectionChanged", () => {
+        try {
+          log.innerHTML = getDisplayChatHistory();
+          log.scrollTop = log.scrollHeight;
+        } catch (e) {
+          console.warn("Failed to render active selection history:", e);
+        }
+      });
+    }
+
     
     input.addEventListener("keydown", (e: KeyboardEvent) => {
       // Prevent Phaser from capturing WASD and other keys when typing in chat
@@ -148,19 +161,43 @@ export class UIScene extends Phaser.Scene {
         if (!userMsg) return;
 
         input.value = "";
-        let contextMsg = userMsg;
-        if (this.latestSelectionContext) {
-          contextMsg = `[WORLD CONTEXT]: ${this.latestSelectionContext}\n[USER MESSAGE]: ${userMsg}`;
-        }
-        log.innerHTML += `<p><strong>You:</strong> ${userMsg}</p>`;
-        const reply = await this.sendToGemini(contextMsg);
-        log.innerHTML += `<p><strong>Pewter:</strong> ${reply}</p>`;
-        log.scrollTop = log.scrollHeight;
+        const sendPromise = sendUserPromptWithContext(userMsg, this.latestSelectionContext);
+  // Render the user's message immediately (sendUserPrompt pushes it sync).
+  log.innerHTML = getDisplayChatHistory();
+  log.scrollTop = log.scrollHeight;
+
+  // Wait for the reply to complete; the activeSelectionChanged listener
+  // will re-render the full history (including AI reply), so we don't
+  // render again here to avoid double-render or double-push issues.
+  await sendPromise;
       }
     });
     
     // Play mode button - Shawn
     this.createPlayButton();
+
+    // Add a small helper button to select the current temporary selection box
+    const selectBoxBtn = this.createButton(
+      this,
+      220, // x position
+      this.cameras.main.height - 50,
+      'Select Box',
+      () => {
+        // Emit an event the EditorScene can listen to
+        this.game.events.emit('ui:selectCurrentBox');
+      },
+      {
+        fill: 0x1a1a1a,
+        hoverFill: 0x2b6bff,
+        downFill: 0x1f4fcf,
+        textColor: '#ffffff',
+        fontSize: 14,
+        paddingX: 10,
+        paddingY: 6,
+        fixedWidth: 120,
+      },
+    );
+    selectBoxBtn.setDepth(1001);
   }
     // Receives selection info from EditorScene and displays it in the chatbox
   public handleSelectionInfo(msg: string) {
@@ -268,9 +305,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   //Working Code - Manvir (Helper Functions)
-  private async sendToGemini(prompt: string): Promise<string> {
-    return await sendUserPrompt(prompt);
-  }
+  // ...existing code...
 
   public showChatboxAt(x: number, y: number): void {
   this.chatBox.setPosition(x, y);

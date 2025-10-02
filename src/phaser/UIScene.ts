@@ -181,7 +181,7 @@ export class UIScene extends Phaser.Scene {
       this,
       220, // x position
       this.cameras.main.height - 50,
-      'Select Box',
+      'Deselect Box',
       () => {
         // Emit an event the EditorScene can listen to; per request this will deselect all boxes
         this.game.events.emit('ui:deselectAllBoxes');

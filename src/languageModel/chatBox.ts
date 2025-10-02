@@ -29,10 +29,20 @@ export function getDisplayChatHistory(): string {
 let currentChatHistory: BaseMessage[] = [];
 
 // Set the active selection box context for chat
-export function setActiveSelectionBox(box: {
-  localContext: { chatHistory: BaseMessage[] };
-}) {
+export function setActiveSelectionBox(box: { localContext: { chatHistory: BaseMessage[] } } | null) {
+  if (!box) {
+    // Clear active context
+    currentChatHistory = [];
+    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+      window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
+    }
+    return;
+  }
+
   currentChatHistory = box.localContext.chatHistory;
+  // Keep the original SelectionBox object reference if present so
+  // we can finalize it when tools are invoked.
+  // (no local object stored here; editor listens for tool events)
   // Ensure system message is always first
   const sysPrompt =
     "You are 'Pewter, an expert tile-based map designer by day, but an incredible video game player by night. " +

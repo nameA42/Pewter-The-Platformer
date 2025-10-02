@@ -27,8 +27,14 @@ export class SelectionBox {
   private _dragInitialEnd?: Phaser.Math.Vector2;
   private _dragInitialContainerX?: number;
   private _dragInitialContainerY?: number;
+  private _dragPointerTileX?: number;
+  private _dragPointerTileY?: number;
+  private _dragPointerOffsetX?: number;
+  private _dragPointerOffsetY?: number;
   private _dragStartHandler?: (pointer: Phaser.Input.Pointer, obj: any) => void;
   private _dragHandler?: (pointer: Phaser.Input.Pointer, obj: any, dragX: number, dragY: number) => void;
+  private _pointerMoveHandler?: (pointer: Phaser.Input.Pointer) => void;
+  private _pointerUpHandler?: (pointer: Phaser.Input.Pointer) => void;
 
   constructor(
     scene: Phaser.Scene,
@@ -97,51 +103,62 @@ export class SelectionBox {
     );
 
     // Draw dashed border
-    this.graphics.lineStyle(2, color, 1);
-    this.graphics.beginPath();
+  this.graphics.lineStyle(2, color, 1);
+  this.graphics.beginPath();
 
     const width = endX - startX + 1;
     const height = endY - startY + 1;
     const dashLength = 8;
     const gapLength = 4;
 
-    // Top border
-    for (let i = 0; i < width * 16; i += dashLength + gapLength) {
-      this.graphics.moveTo(startX * 16 + i, startY * 16);
-      this.graphics.lineTo(
-        Math.min(startX * 16 + i + dashLength, endX * 16 + 16),
-        startY * 16,
-      );
-    }
-
-    // Bottom border
-    for (let i = 0; i < width * 16; i += dashLength + gapLength) {
-      this.graphics.moveTo(startX * 16 + i, endY * 16 + 16);
-      this.graphics.lineTo(
-        Math.min(startX * 16 + i + dashLength, endX * 16 + 16),
-        endY * 16 + 16,
-      );
-    }
-
-    // Left border
-    for (let i = 0; i < height * 16; i += dashLength + gapLength) {
-      this.graphics.moveTo(startX * 16, startY * 16 + i);
-      this.graphics.lineTo(
+    if (this.isFinalized) {
+      // Solid rectangle border for finalized boxes
+      this.graphics.strokeRect(
         startX * 16,
-        Math.min(startY * 16 + i + dashLength, endY * 16 + 16),
+        startY * 16,
+        (endX - startX + 1) * 16,
+        (endY - startY + 1) * 16,
       );
-    }
+    } else {
+      // Dashed border for temporary boxes
+      // Top border
+      for (let i = 0; i < width * 16; i += dashLength + gapLength) {
+        this.graphics.moveTo(startX * 16 + i, startY * 16);
+        this.graphics.lineTo(
+          Math.min(startX * 16 + i + dashLength, endX * 16 + 16),
+          startY * 16,
+        );
+      }
 
-    // Right border
-    for (let i = 0; i < height * 16; i += dashLength + gapLength) {
-      this.graphics.moveTo(endX * 16 + 16, startY * 16 + i);
-      this.graphics.lineTo(
-        endX * 16 + 16,
-        Math.min(startY * 16 + i + dashLength, endY * 16 + 16),
-      );
-    }
+      // Bottom border
+      for (let i = 0; i < width * 16; i += dashLength + gapLength) {
+        this.graphics.moveTo(startX * 16 + i, endY * 16 + 16);
+        this.graphics.lineTo(
+          Math.min(startX * 16 + i + dashLength, endX * 16 + 16),
+          endY * 16 + 16,
+        );
+      }
 
-    this.graphics.strokePath();
+      // Left border
+      for (let i = 0; i < height * 16; i += dashLength + gapLength) {
+        this.graphics.moveTo(startX * 16, startY * 16 + i);
+        this.graphics.lineTo(
+          startX * 16,
+          Math.min(startY * 16 + i + dashLength, endY * 16 + 16),
+        );
+      }
+
+      // Right border
+      for (let i = 0; i < height * 16; i += dashLength + gapLength) {
+        this.graphics.moveTo(endX * 16 + 16, startY * 16 + i);
+        this.graphics.lineTo(
+          endX * 16 + 16,
+          Math.min(startY * 16 + i + dashLength, endY * 16 + 16),
+        );
+      }
+
+      this.graphics.strokePath();
+    }
 
     this.updateTabPosition();
   }
@@ -196,37 +213,104 @@ export class SelectionBox {
       if (this.onSelect) this.onSelect(this);
     });
 
-    // Make draggable so finalized boxes can be moved around by dragging the tab.
+    // Implement pointer-driven drag so the box follows the mouse without snapping
     try {
-      this.scene.input.setDraggable(bg);
+      let dragging = false;
 
-      // Drag start: capture initial coordinates
-  const dragStart = (_pointer: Phaser.Input.Pointer, obj: any) => {
-        if (obj !== bg) return;
+      const pointerMove = (pointer: Phaser.Input.Pointer) => {
+        if (!dragging) return;
+        if (!this._dragInitialStart || !this._dragInitialEnd) return;
+        const cam = (this.scene.cameras && this.scene.cameras.main) ? this.scene.cameras.main : null;
+        const world = cam ? cam.getWorldPoint(pointer.x, pointer.y) : { x: pointer.worldX, y: pointer.worldY };
+        const currentTileX = Math.floor(world.x / 16);
+        const currentTileY = Math.floor(world.y / 16);
+
+        const startTileX = this._dragPointerTileX ?? currentTileX;
+        const startTileY = this._dragPointerTileY ?? currentTileY;
+        const tileDX = currentTileX - startTileX;
+        const tileDY = currentTileY - startTileY;
+
+        const newStart = this._dragInitialStart.clone().add(new Phaser.Math.Vector2(tileDX, tileDY));
+        const newEnd = this._dragInitialEnd.clone().add(new Phaser.Math.Vector2(tileDX, tileDY));
+
+        const boxWidth = Math.max(newEnd.x, newStart.x) - Math.min(newStart.x, newEnd.x) + 1;
+        const boxHeight = Math.max(newEnd.y, newStart.y) - Math.min(newStart.y, newEnd.y) + 1;
+
+        let newStartX = newStart.x;
+        let newStartY = newStart.y;
+
+        const worldMinX = 0;
+        const worldMinY = 0;
+        const worldMaxX = cam ? Math.floor((cam.worldView.width + cam.worldView.x) / 16) : Number.MAX_SAFE_INTEGER;
+        const worldMaxY = cam ? Math.floor((cam.worldView.height + cam.worldView.y) / 16) : Number.MAX_SAFE_INTEGER;
+
+        if (newStartX < worldMinX) newStartX = worldMinX;
+        if (newStartY < worldMinY) newStartY = worldMinY;
+        if (newStartX + boxWidth - 1 > worldMaxX) newStartX = worldMaxX - (boxWidth - 1);
+        if (newStartY + boxHeight - 1 > worldMaxY) newStartY = worldMaxY - (boxHeight - 1);
+
+        const candidateStart = new Phaser.Math.Vector2(newStartX, newStartY);
+        const candidateEnd = new Phaser.Math.Vector2(newStartX + boxWidth - 1, newStartY + boxHeight - 1);
+
+        // Prevent intersection with other boxes on same z-level
+        try {
+          const editor = (this.scene as any) as any;
+          const boxes: any[] = editor.selectionBoxes || [];
+          let intersects = false;
+          const candRect = new Phaser.Geom.Rectangle(candidateStart.x, candidateStart.y, candidateEnd.x - candidateStart.x, candidateEnd.y - candidateStart.y);
+          for (const b of boxes) {
+            if (b === this) continue;
+            if (b.getZLevel && b.getZLevel() === this.zLevel) {
+              const br = b.getBounds();
+              if (Phaser.Geom.Intersects.RectangleToRectangle(candRect, br)) {
+                intersects = true;
+                break;
+              }
+            }
+          }
+          if (!intersects) {
+            this.start = candidateStart;
+            this.end = candidateEnd;
+            this.redraw();
+          }
+        } catch (e) {
+          this.start = candidateStart;
+          this.end = candidateEnd;
+          this.redraw();
+        }
+      };
+
+      const pointerUp = (_pointer: Phaser.Input.Pointer) => {
+        dragging = false;
+        try {
+          if (this._pointerMoveHandler) this.scene.input.off('pointermove', this._pointerMoveHandler);
+        } catch (e) {}
+        try {
+          if (this._pointerUpHandler) this.scene.input.off('pointerup', this._pointerUpHandler);
+        } catch (e) {}
+      };
+
+      // Start drag on pointerdown on the tab if finalized
+      bg.on('pointerdown', (pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: any) => {
+        try { if (event && typeof event.stopPropagation === 'function') event.stopPropagation(); } catch (e) {}
+        if (this.onSelect) this.onSelect(this);
+        if (!this.isFinalized) return;
+        // prepare drag
         this._dragInitialStart = this.start.clone();
         this._dragInitialEnd = this.end.clone();
-        this._dragInitialContainerX = this.tabContainer?.x;
-        this._dragInitialContainerY = this.tabContainer?.y;
-      };
-
-  const drag = (_pointer: Phaser.Input.Pointer, obj: any, dragX: number, dragY: number) => {
-        if (obj !== bg) return;
-        if (!this._dragInitialStart || !this._dragInitialEnd || this._dragInitialContainerX === undefined) return;
-        const dx = dragX - (this._dragInitialContainerX || 0);
-        const dy = dragY - (this._dragInitialContainerY || 0);
-        const tileDX = Math.round(dx / 16);
-        const tileDY = Math.round(dy / 16);
-
-        // Update start/end based on integer tile delta
-        this.start = this._dragInitialStart.clone().add(new Phaser.Math.Vector2(tileDX, tileDY));
-        this.end = this._dragInitialEnd.clone().add(new Phaser.Math.Vector2(tileDX, tileDY));
-        this.redraw();
-      };
-
-      this._dragStartHandler = dragStart;
-      this._dragHandler = drag;
-      this.scene.input.on('dragstart', this._dragStartHandler);
-      this.scene.input.on('drag', this._dragHandler);
+        const cam = (this.scene.cameras && this.scene.cameras.main) ? this.scene.cameras.main : null;
+        const world = cam ? cam.getWorldPoint(pointer.x, pointer.y) : { x: pointer.worldX, y: pointer.worldY };
+  const pTileX = Math.floor(world.x / 16);
+  const pTileY = Math.floor(world.y / 16);
+  // store pointer-start tile so subsequent moves compute a delta from this origin
+  this._dragPointerTileX = pTileX;
+  this._dragPointerTileY = pTileY;
+        dragging = true;
+        this._pointerMoveHandler = pointerMove;
+        this._pointerUpHandler = pointerUp;
+        this.scene.input.on('pointermove', this._pointerMoveHandler);
+        this.scene.input.on('pointerup', this._pointerUpHandler);
+      });
     } catch (e) {
       // ignore if input system not available
     }
@@ -364,6 +448,16 @@ export class SelectionBox {
   // prevents further resizing via updateStart/updateEnd.
   public finalize() {
     this.isFinalized = true;
+    // Update visuals immediately so dashed -> solid border swap happens
+    this.redraw();
+    // Update tab visuals to a finalized (gray) style
+    if (this.tabBg) {
+      this.tabBg.setFillStyle(0x2b2b2b);
+      this.tabBg.setStrokeStyle(1, 0x111111);
+    }
+    if (this.tabText) {
+      this.tabText.setStyle({ color: '#ffffff' });
+    }
     // ensure tab is activeable for dragging
     // nothing else needed for now
   }

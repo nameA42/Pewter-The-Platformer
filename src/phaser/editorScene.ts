@@ -255,6 +255,46 @@ export class EditorScene extends Phaser.Scene {
       }
     });
 
+    // Deselect all boxes when UI asks
+    this.game.events.on('ui:deselectAllBoxes', () => {
+      console.log('ui:deselectAllBoxes -> deselecting all boxes');
+      for (const b of this.selectionBoxes) {
+        b.setActive?.(false);
+      }
+      if (this.activeBox) {
+        this.activeBox.setActive?.(false);
+      }
+      this.activeBox = null;
+      // Also notify chatBox to clear active selection context
+      try {
+        setActiveSelectionBox(null);
+      } catch (e) {
+        // ignore
+      }
+    });
+
+    // When the LLM invokes a tool, finalize the active selection box (if any)
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('toolCalled', (_ev: any) => {
+        console.log('toolCalled event received; finalizing active box if present');
+        if (this.activeBox) {
+          this.activeBox.finalize?.();
+          if (!this.selectionBoxes.includes(this.activeBox)) {
+            this.selectionBoxes.push(this.activeBox);
+          }
+          // ensure visuals update
+          this.activeBox.setActive?.(false);
+          this.activeBox = null;
+          // Clear chat context
+          try {
+            setActiveSelectionBox(null);
+          } catch (e) {
+            // ignore
+          }
+        }
+      });
+    }
+
     // Restore keyboard key initialization with null check
     if (this.input.keyboard) {
       this.keyA = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);

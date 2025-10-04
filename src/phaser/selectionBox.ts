@@ -908,6 +908,105 @@ export class SelectionBox {
     });
   }
 
+  // STEP 8: Collaborative Context Merging - Chat system integration
+
+  /**
+   * Get collaborative context information for the language model
+   * This provides rich context about the box and its neighbors
+   */
+  public getCollaborativeContextForChat(): string {
+    const contextLines: string[] = [];
+
+    // Basic box info
+    contextLines.push(`=== Box Context ===`);
+    contextLines.push(`Box ID: ${this.localContext.id}`);
+    contextLines.push(`Z-Level: ${this.zLevel}`);
+    contextLines.push(
+      `Position: (${this.start.x}, ${this.start.y}) to (${this.end.x}, ${this.end.y})`,
+    );
+    contextLines.push(`Neighbors: ${this.neighbors.size} connected boxes`);
+
+    // Own data
+    if (this.localContext.data.size > 0) {
+      contextLines.push(`\n=== My Data ===`);
+      this.localContext.data.forEach((data, key) => {
+        contextLines.push(
+          `${key}: ${JSON.stringify(data.value)} (${data.canShare ? "shareable" : "private"})`,
+        );
+      });
+    }
+
+    // Network data summary
+    const networkSummary = this.getNetworkDataSummary();
+    if (networkSummary.neighborsShareable.length > 0) {
+      contextLines.push(`\n=== Available from Neighbors ===`);
+      networkSummary.neighborsShareable.forEach((key) => {
+        const value = this.findData(key);
+        if (value !== null) {
+          contextLines.push(`${key}: ${JSON.stringify(value)} (from neighbor)`);
+        }
+      });
+    }
+
+    // Neighbor details
+    if (this.neighbors.size > 0) {
+      contextLines.push(`\n=== Neighbor Details ===`);
+      this.neighbors.forEach((neighbor) => {
+        const neighborInfo = neighbor.getDebugInfo();
+        contextLines.push(
+          `Neighbor ${neighborInfo.id}: Z${neighborInfo.zLevel}, ${neighborInfo.dataKeys.length} data items`,
+        );
+      });
+    }
+
+    return contextLines.join("\n");
+  }
+
+  /**
+   * Add a chat message and optionally share it with neighbors
+   * @param msg - The message to add
+   * @param shareWithNeighbors - Whether to share this message with touching boxes
+   */
+  public addCollaborativeChatMessage(
+    msg: any,
+    shareWithNeighbors: boolean = false,
+  ): void {
+    // Add to our own chat history
+    this.localContext.chatHistory.push(msg);
+
+    // Optionally share with neighbors
+    if (shareWithNeighbors && typeof msg.content === "string") {
+      this.shareData(
+        "last_chat_message",
+        {
+          content: msg.content,
+          timestamp: Date.now(),
+          from: this.localContext.id,
+        },
+        true,
+      );
+    }
+  }
+
+  /**
+   * Get shared chat messages from neighbors
+   */
+  public getSharedChatMessages(): any[] {
+    const sharedMessages: any[] = [];
+
+    this.neighbors.forEach((neighbor) => {
+      const sharedMsg = neighbor.getContextData("last_chat_message");
+      if (sharedMsg) {
+        sharedMessages.push({
+          ...sharedMsg,
+          fromNeighbor: neighbor.localContext.id,
+        });
+      }
+    });
+
+    return sharedMessages.sort((a, b) => a.timestamp - b.timestamp);
+  }
+
   // Chat history management for this selection box
   addChatMessage(msg: any) {
     this.localContext.chatHistory.push(msg);

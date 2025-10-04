@@ -1,5 +1,23 @@
 import Phaser from "phaser";
 
+// STEP 1: Collaborative Context Merging - Basic interfaces and ownership structure
+// Interface for collaborative context data
+interface BoxContextData {
+  value: any;
+  owner: string; // box id that owns this data
+  version: number;
+  lastModified: number;
+  canShare: boolean; // whether this data can be shared with neighbors
+}
+
+// Interface for box context with ownership tracking
+interface BoxContext {
+  id: string;
+  data: Map<string, BoxContextData>;
+  chatHistory: any[];
+  version: number;
+}
+
 export class SelectionBox {
   private graphics: Phaser.GameObjects.Graphics;
   private start: Phaser.Math.Vector2;
@@ -14,13 +32,18 @@ export class SelectionBox {
   private zLevel: number;
   public selectedTiles: number[][] = [];
   private layer: Phaser.Tilemaps.TilemapLayer;
-  public localContext: { chatHistory: any[] };
+  public localContext: BoxContext;
   private tabContainer: Phaser.GameObjects.Container | null = null;
   private onSelect?: (box: SelectionBox) => void;
   private tabBg: Phaser.GameObjects.Rectangle | null = null;
   private tabText: Phaser.GameObjects.Text | null = null;
   private isActive: boolean = false;
   private isFinalized: boolean = false;
+
+  // STEP 3: Collaborative Context Merging - Neighbor tracking
+  private neighbors: Set<SelectionBox> = new Set();
+  private lastNeighborCheck: number = 0;
+  private neighborCheckInterval: number = 500; // Check every 500ms
 
   // Drag helpers
   private _dragInitialStart?: Phaser.Math.Vector2;
@@ -32,7 +55,12 @@ export class SelectionBox {
   private _dragPointerOffsetX?: number;
   private _dragPointerOffsetY?: number;
   private _dragStartHandler?: (pointer: Phaser.Input.Pointer, obj: any) => void;
-  private _dragHandler?: (pointer: Phaser.Input.Pointer, obj: any, dragX: number, dragY: number) => void;
+  private _dragHandler?: (
+    pointer: Phaser.Input.Pointer,
+    obj: any,
+    dragX: number,
+    dragY: number,
+  ) => void;
   private _pointerMoveHandler?: (pointer: Phaser.Input.Pointer) => void;
   private _pointerUpHandler?: (pointer: Phaser.Input.Pointer) => void;
 
@@ -54,11 +82,242 @@ export class SelectionBox {
     this.graphics.setDepth(100);
     this.redraw();
 
-    // Initialize localContext with its own chatHistory
-    this.localContext = { chatHistory: [] };
+    // Initialize localContext with proper structure
+    this.localContext = {
+      id: `box_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      data: new Map(),
+      chatHistory: [],
+      version: 1,
+    };
     this.onSelect = onSelect;
     // create tab after initial draw
     this.createTab();
+  }
+
+  // STEP 2: Collaborative Context Merging - Basic data management methods
+
+  /**
+   * Set data in this box's context with ownership tracking
+   */
+  public setContextData(
+    key: string,
+    value: any,
+    canShare: boolean = false,
+  ): void {
+    const contextData: BoxContextData = {
+      value,
+      owner: this.localContext.id,
+      version: 1,
+      lastModified: Date.now(),
+      canShare,
+    };
+
+    this.localContext.data.set(key, contextData);
+    this.localContext.version++;
+  }
+
+  /**
+   * Get data from this box's context
+   */
+  public getContextData(key: string): any {
+    const contextData = this.localContext.data.get(key);
+    return contextData ? contextData.value : null;
+  }
+
+  /**
+   * Check if this box owns a specific piece of data
+   */
+  public ownsData(key: string): boolean {
+    const contextData = this.localContext.data.get(key);
+    return contextData ? contextData.owner === this.localContext.id : false;
+  }
+
+  /**
+   * Get all shareable data from this box
+   */
+  public getShareableData(): Map<string, BoxContextData> {
+    const shareableData = new Map<string, BoxContextData>();
+    this.localContext.data.forEach((data, key) => {
+      if (data.canShare) {
+        shareableData.set(key, data);
+      }
+    });
+    return shareableData;
+  }
+
+  // STEP 3: Collaborative Context Merging - Neighbor detection and management
+
+  /**
+   * Check if this box is touching another box (adjacent or overlapping)
+   */
+  public isTouching(other: SelectionBox): boolean {
+    if (other === this || other.getZLevel() !== this.zLevel) {
+      return false;
+    }
+
+    const myBounds = this.getBounds();
+    const otherBounds = other.getBounds();
+
+    // Check if boxes are adjacent (touching edges) or overlapping
+    const touching =
+      // Overlapping
+      Phaser.Geom.Intersects.RectangleToRectangle(myBounds, otherBounds) ||
+      // Adjacent horizontally
+      ((myBounds.right + 1 === otherBounds.left ||
+        otherBounds.right + 1 === myBounds.left) &&
+        !(
+          myBounds.bottom < otherBounds.top || otherBounds.bottom < myBounds.top
+        )) ||
+      // Adjacent vertically
+      ((myBounds.bottom + 1 === otherBounds.top ||
+        otherBounds.bottom + 1 === myBounds.top) &&
+        !(
+          myBounds.right < otherBounds.left || otherBounds.right < myBounds.left
+        ));
+
+    return touching;
+  }
+
+  /**
+   * Update neighbor list by checking all boxes in the scene
+   */
+  public updateNeighbors(allBoxes: SelectionBox[]): void {
+    const now = Date.now();
+    if (now - this.lastNeighborCheck < this.neighborCheckInterval) {
+      return; // Don't check too frequently
+    }
+
+    this.lastNeighborCheck = now;
+    const previousNeighbors = new Set(this.neighbors);
+    this.neighbors.clear();
+
+    // Find current neighbors
+    for (const box of allBoxes) {
+      if (this.isTouching(box)) {
+        this.neighbors.add(box);
+      }
+    }
+
+    // Notify about new neighbors
+    this.neighbors.forEach((neighbor) => {
+      if (!previousNeighbors.has(neighbor)) {
+        this.onNeighborAdded(neighbor);
+      }
+    });
+
+    // Notify about lost neighbors
+    previousNeighbors.forEach((previousNeighbor) => {
+      if (!this.neighbors.has(previousNeighbor)) {
+        this.onNeighborRemoved(previousNeighbor);
+      }
+    });
+  }
+
+  /**
+   * Called when a new neighbor is detected
+   */
+  private onNeighborAdded(neighbor: SelectionBox): void {
+    console.log(
+      `Box ${this.localContext.id} gained neighbor ${neighbor.localContext.id}`,
+    );
+    // Share our shareable data with the new neighbor
+    this.shareDataWithNeighbor(neighbor);
+  }
+
+  /**
+   * Called when a neighbor is no longer touching
+   */
+  private onNeighborRemoved(neighbor: SelectionBox): void {
+    console.log(
+      `Box ${this.localContext.id} lost neighbor ${neighbor.localContext.id}`,
+    );
+  }
+
+  /**
+   * Share shareable data with a specific neighbor
+   */
+  private shareDataWithNeighbor(neighbor: SelectionBox): void {
+    const shareableData = this.getShareableData();
+    shareableData.forEach((data, key) => {
+      neighbor.receiveSharedData(key, data);
+    });
+  }
+
+  /**
+   * Get current neighbors
+   */
+  public getNeighbors(): SelectionBox[] {
+    return Array.from(this.neighbors);
+  }
+
+  // STEP 4: Collaborative Context Merging - Data sharing and merging methods
+
+  /**
+   * Receive shared data from a neighbor - implements collaborative merging
+   */
+  public receiveSharedData(key: string, incomingData: BoxContextData): void {
+    const existingData = this.localContext.data.get(key);
+
+    if (!existingData) {
+      // We don't have this data, accept it if it's shareable
+      if (incomingData.canShare) {
+        this.localContext.data.set(key, {
+          ...incomingData,
+          // Don't change ownership when receiving shared data
+        });
+        this.localContext.version++;
+      }
+      return;
+    }
+
+    // We have this data - apply collaborative merging rules
+    if (existingData.owner === this.localContext.id) {
+      // We own this data - only update if incoming is newer from same owner
+      if (
+        incomingData.owner === existingData.owner &&
+        incomingData.version > existingData.version
+      ) {
+        this.localContext.data.set(key, incomingData);
+        this.localContext.version++;
+      }
+      // Otherwise, keep our version (we're the owner)
+    } else {
+      // We don't own this data - accept updates from the rightful owner
+      if (
+        incomingData.owner === existingData.owner &&
+        incomingData.version > existingData.version
+      ) {
+        this.localContext.data.set(key, incomingData);
+        this.localContext.version++;
+      }
+    }
+  }
+
+  /**
+   * Broadcast shareable data to all current neighbors
+   */
+  public broadcastToNeighbors(): void {
+    const shareableData = this.getShareableData();
+    this.neighbors.forEach((neighbor) => {
+      shareableData.forEach((data, key) => {
+        neighbor.receiveSharedData(key, data);
+      });
+    });
+  }
+
+  /**
+   * Request specific data from neighbors
+   */
+  public requestDataFromNeighbors(key: string): BoxContextData | null {
+    for (const neighbor of this.neighbors) {
+      const data = neighbor.localContext.data.get(key);
+      if (data && data.canShare) {
+        // Receive this data through normal merging process
+        this.receiveSharedData(key, data);
+        return data;
+      }
+    }
+    return null;
   }
 
   getZLevel(): number {
@@ -103,8 +362,8 @@ export class SelectionBox {
     );
 
     // Draw dashed border
-  this.graphics.lineStyle(2, color, 1);
-  this.graphics.beginPath();
+    this.graphics.lineStyle(2, color, 1);
+    this.graphics.beginPath();
 
     const width = endX - startX + 1;
     const height = endY - startY + 1;
@@ -180,15 +439,21 @@ export class SelectionBox {
     const initialFill = this.isActive
       ? 0x127803
       : this.isFinalized
-      ? 0x2b2b2b
-      : 0x2b6bff; // bright blue for temporary non-selected box
-    const initialStroke = this.isActive ? 0x0f3800 : this.isFinalized ? 0x111111 : 0x123a66;
+        ? 0x2b2b2b
+        : 0x2b6bff; // bright blue for temporary non-selected box
+    const initialStroke = this.isActive
+      ? 0x0f3800
+      : this.isFinalized
+        ? 0x111111
+        : 0x123a66;
 
-    const bg = this.scene
-      .add.rectangle(0, 0, w, h, initialFill)
+    const bg = this.scene.add
+      .rectangle(0, 0, w, h, initialFill)
       .setOrigin(0, 0.5);
     bg.setStrokeStyle(1, initialStroke);
-    const txt = this.scene.add.text(6, 0, `Box`, { fontSize: '10px', color: '#ffffff' }).setOrigin(0, 0.5);
+    const txt = this.scene.add
+      .text(6, 0, `Box`, { fontSize: "10px", color: "#ffffff" })
+      .setOrigin(0, 0.5);
 
     const container = this.scene.add.container(worldX, worldY - 10, [bg, txt]);
     container.setDepth(1001);
@@ -200,18 +465,26 @@ export class SelectionBox {
 
     // Make interactive on the background rectangle
     bg.setInteractive({ useHandCursor: true });
-    bg.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: any) => {
-      // Prevent global pointer handlers (like EditorScene startSelection)
-      // from also reacting to this click.
-      try {
-        if (event && typeof event.stopPropagation === 'function') {
-          event.stopPropagation();
+    bg.on(
+      "pointerdown",
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: any,
+      ) => {
+        // Prevent global pointer handlers (like EditorScene startSelection)
+        // from also reacting to this click.
+        try {
+          if (event && typeof event.stopPropagation === "function") {
+            event.stopPropagation();
+          }
+        } catch (e) {
+          // ignore
         }
-      } catch (e) {
-        // ignore
-      }
-      if (this.onSelect) this.onSelect(this);
-    });
+        if (this.onSelect) this.onSelect(this);
+      },
+    );
 
     // Implement pointer-driven drag so the box follows the mouse without snapping
     try {
@@ -220,8 +493,13 @@ export class SelectionBox {
       const pointerMove = (pointer: Phaser.Input.Pointer) => {
         if (!dragging) return;
         if (!this._dragInitialStart || !this._dragInitialEnd) return;
-        const cam = (this.scene.cameras && this.scene.cameras.main) ? this.scene.cameras.main : null;
-        const world = cam ? cam.getWorldPoint(pointer.x, pointer.y) : { x: pointer.worldX, y: pointer.worldY };
+        const cam =
+          this.scene.cameras && this.scene.cameras.main
+            ? this.scene.cameras.main
+            : null;
+        const world = cam
+          ? cam.getWorldPoint(pointer.x, pointer.y)
+          : { x: pointer.worldX, y: pointer.worldY };
         const currentTileX = Math.floor(world.x / 16);
         const currentTileY = Math.floor(world.y / 16);
 
@@ -230,34 +508,54 @@ export class SelectionBox {
         const tileDX = currentTileX - startTileX;
         const tileDY = currentTileY - startTileY;
 
-        const newStart = this._dragInitialStart.clone().add(new Phaser.Math.Vector2(tileDX, tileDY));
-        const newEnd = this._dragInitialEnd.clone().add(new Phaser.Math.Vector2(tileDX, tileDY));
+        const newStart = this._dragInitialStart
+          .clone()
+          .add(new Phaser.Math.Vector2(tileDX, tileDY));
+        const newEnd = this._dragInitialEnd
+          .clone()
+          .add(new Phaser.Math.Vector2(tileDX, tileDY));
 
-        const boxWidth = Math.max(newEnd.x, newStart.x) - Math.min(newStart.x, newEnd.x) + 1;
-        const boxHeight = Math.max(newEnd.y, newStart.y) - Math.min(newStart.y, newEnd.y) + 1;
+        const boxWidth =
+          Math.max(newEnd.x, newStart.x) - Math.min(newStart.x, newEnd.x) + 1;
+        const boxHeight =
+          Math.max(newEnd.y, newStart.y) - Math.min(newStart.y, newEnd.y) + 1;
 
         let newStartX = newStart.x;
         let newStartY = newStart.y;
 
         const worldMinX = 0;
         const worldMinY = 0;
-        const worldMaxX = cam ? Math.floor((cam.worldView.width + cam.worldView.x) / 16) : Number.MAX_SAFE_INTEGER;
-        const worldMaxY = cam ? Math.floor((cam.worldView.height + cam.worldView.y) / 16) : Number.MAX_SAFE_INTEGER;
+        const worldMaxX = cam
+          ? Math.floor((cam.worldView.width + cam.worldView.x) / 16)
+          : Number.MAX_SAFE_INTEGER;
+        const worldMaxY = cam
+          ? Math.floor((cam.worldView.height + cam.worldView.y) / 16)
+          : Number.MAX_SAFE_INTEGER;
 
         if (newStartX < worldMinX) newStartX = worldMinX;
         if (newStartY < worldMinY) newStartY = worldMinY;
-        if (newStartX + boxWidth - 1 > worldMaxX) newStartX = worldMaxX - (boxWidth - 1);
-        if (newStartY + boxHeight - 1 > worldMaxY) newStartY = worldMaxY - (boxHeight - 1);
+        if (newStartX + boxWidth - 1 > worldMaxX)
+          newStartX = worldMaxX - (boxWidth - 1);
+        if (newStartY + boxHeight - 1 > worldMaxY)
+          newStartY = worldMaxY - (boxHeight - 1);
 
         const candidateStart = new Phaser.Math.Vector2(newStartX, newStartY);
-        const candidateEnd = new Phaser.Math.Vector2(newStartX + boxWidth - 1, newStartY + boxHeight - 1);
+        const candidateEnd = new Phaser.Math.Vector2(
+          newStartX + boxWidth - 1,
+          newStartY + boxHeight - 1,
+        );
 
         // Prevent intersection with other boxes on same z-level
         try {
-          const editor = (this.scene as any) as any;
+          const editor = this.scene as any as any;
           const boxes: any[] = editor.selectionBoxes || [];
           let intersects = false;
-          const candRect = new Phaser.Geom.Rectangle(candidateStart.x, candidateStart.y, candidateEnd.x - candidateStart.x, candidateEnd.y - candidateStart.y);
+          const candRect = new Phaser.Geom.Rectangle(
+            candidateStart.x,
+            candidateStart.y,
+            candidateEnd.x - candidateStart.x,
+            candidateEnd.y - candidateStart.y,
+          );
           for (const b of boxes) {
             if (b === this) continue;
             if (b.getZLevel && b.getZLevel() === this.zLevel) {
@@ -283,38 +581,56 @@ export class SelectionBox {
       const pointerUp = (_pointer: Phaser.Input.Pointer) => {
         dragging = false;
         try {
-          if (this._pointerMoveHandler) this.scene.input.off('pointermove', this._pointerMoveHandler);
+          if (this._pointerMoveHandler)
+            this.scene.input.off("pointermove", this._pointerMoveHandler);
         } catch (e) {}
         try {
-          if (this._pointerUpHandler) this.scene.input.off('pointerup', this._pointerUpHandler);
+          if (this._pointerUpHandler)
+            this.scene.input.off("pointerup", this._pointerUpHandler);
         } catch (e) {}
       };
 
       // Start drag on pointerdown on the tab if finalized
-      bg.on('pointerdown', (pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: any) => {
-        try { if (event && typeof event.stopPropagation === 'function') event.stopPropagation(); } catch (e) {}
-        if (this.onSelect) this.onSelect(this);
-        if (!this.isFinalized) return;
-        // prepare drag
-        this._dragInitialStart = this.start.clone();
-        this._dragInitialEnd = this.end.clone();
-        const cam = (this.scene.cameras && this.scene.cameras.main) ? this.scene.cameras.main : null;
-        const world = cam ? cam.getWorldPoint(pointer.x, pointer.y) : { x: pointer.worldX, y: pointer.worldY };
-  const pTileX = Math.floor(world.x / 16);
-  const pTileY = Math.floor(world.y / 16);
-  // store pointer-start tile so subsequent moves compute a delta from this origin
-  this._dragPointerTileX = pTileX;
-  this._dragPointerTileY = pTileY;
-        dragging = true;
-        this._pointerMoveHandler = pointerMove;
-        this._pointerUpHandler = pointerUp;
-        this.scene.input.on('pointermove', this._pointerMoveHandler);
-        this.scene.input.on('pointerup', this._pointerUpHandler);
-      });
+      bg.on(
+        "pointerdown",
+        (
+          pointer: Phaser.Input.Pointer,
+          _lx: number,
+          _ly: number,
+          event: any,
+        ) => {
+          try {
+            if (event && typeof event.stopPropagation === "function")
+              event.stopPropagation();
+          } catch (e) {}
+          if (this.onSelect) this.onSelect(this);
+          if (!this.isFinalized) return;
+          // prepare drag
+          this._dragInitialStart = this.start.clone();
+          this._dragInitialEnd = this.end.clone();
+          const cam =
+            this.scene.cameras && this.scene.cameras.main
+              ? this.scene.cameras.main
+              : null;
+          const world = cam
+            ? cam.getWorldPoint(pointer.x, pointer.y)
+            : { x: pointer.worldX, y: pointer.worldY };
+          const pTileX = Math.floor(world.x / 16);
+          const pTileY = Math.floor(world.y / 16);
+          // store pointer-start tile so subsequent moves compute a delta from this origin
+          this._dragPointerTileX = pTileX;
+          this._dragPointerTileY = pTileY;
+          dragging = true;
+          this._pointerMoveHandler = pointerMove;
+          this._pointerUpHandler = pointerUp;
+          this.scene.input.on("pointermove", this._pointerMoveHandler);
+          this.scene.input.on("pointerup", this._pointerUpHandler);
+        },
+      );
     } catch (e) {
       // ignore if input system not available
     }
-    bg.on('pointerover', () => {
+    bg.on("pointerover", () => {
       if (!this.isActive) {
         if (this.isFinalized) {
           bg.setFillStyle(0x3d3d3d);
@@ -324,7 +640,7 @@ export class SelectionBox {
         }
       }
     });
-    bg.on('pointerout', () => {
+    bg.on("pointerout", () => {
       if (!this.isActive) {
         if (this.isFinalized) {
           bg.setFillStyle(0x2b2b2b);
@@ -354,7 +670,7 @@ export class SelectionBox {
     if (active) {
       this.tabBg.setFillStyle(0x127803); // green when active
       this.tabBg.setStrokeStyle(1, 0x0f3800);
-      this.tabText.setStyle({ color: '#ffffff' });
+      this.tabText.setStyle({ color: "#ffffff" });
     } else {
       // Not active: if temporary (not finalized) use blue glowing style, otherwise default gray
       if (!this.isFinalized) {
@@ -364,7 +680,7 @@ export class SelectionBox {
         this.tabBg.setFillStyle(0x2b2b2b);
         this.tabBg.setStrokeStyle(1, 0x111111);
       }
-      this.tabText.setStyle({ color: '#ffffff' });
+      this.tabText.setStyle({ color: "#ffffff" });
     }
   }
 
@@ -440,8 +756,9 @@ export class SelectionBox {
       this.tabContainer = null;
     }
     // Remove drag listeners
-    if (this._dragStartHandler) this.scene.input.off('dragstart', this._dragStartHandler);
-    if (this._dragHandler) this.scene.input.off('drag', this._dragHandler);
+    if (this._dragStartHandler)
+      this.scene.input.off("dragstart", this._dragStartHandler);
+    if (this._dragHandler) this.scene.input.off("drag", this._dragHandler);
   }
 
   // Mark this selection as finalized (permanent). Keeps a tab for dragging but
@@ -456,7 +773,7 @@ export class SelectionBox {
       this.tabBg.setStrokeStyle(1, 0x111111);
     }
     if (this.tabText) {
-      this.tabText.setStyle({ color: '#ffffff' });
+      this.tabText.setStyle({ color: "#ffffff" });
     }
     // ensure tab is activeable for dragging
     // nothing else needed for now

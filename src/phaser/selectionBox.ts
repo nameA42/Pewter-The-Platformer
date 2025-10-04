@@ -779,6 +779,135 @@ export class SelectionBox {
     // nothing else needed for now
   }
 
+  // STEP 6: Collaborative Context Merging - Helper methods for easy usage
+
+  /**
+   * Share a piece of data with all current neighbors
+   * @param key - The data key
+   * @param value - The data value
+   * @param canShare - Whether neighbors can further share this data (default: true)
+   */
+  public shareData(key: string, value: any, canShare: boolean = true): void {
+    this.setContextData(key, value, canShare);
+    this.broadcastToNeighbors();
+  }
+
+  /**
+   * Get data, checking neighbors if we don't have it locally
+   * @param key - The data key to look for
+   * @returns The data value or null if not found
+   */
+  public findData(key: string): any {
+    // Check our own data first
+    const localData = this.getContextData(key);
+    if (localData !== null) {
+      return localData;
+    }
+
+    // Request from neighbors if we don't have it
+    const neighborData = this.requestDataFromNeighbors(key);
+    return neighborData ? neighborData.value : null;
+  }
+
+  /**
+   * Check if any box in our network (us or neighbors) has specific data
+   * @param key - The data key to check for
+   * @returns true if any connected box has this data
+   */
+  public networkHasData(key: string): boolean {
+    // Check ourselves first
+    if (this.localContext.data.has(key)) {
+      return true;
+    }
+
+    // Check neighbors
+    for (const neighbor of this.neighbors) {
+      if (neighbor.localContext.data.has(key)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Get a summary of all data available in our network
+   * @returns Object with our data and neighbors' shareable data
+   */
+  public getNetworkDataSummary(): {
+    own: string[];
+    neighborsShareable: string[];
+  } {
+    const own = Array.from(this.localContext.data.keys());
+    const neighborsShareable = new Set<string>();
+
+    this.neighbors.forEach((neighbor) => {
+      neighbor.localContext.data.forEach((data, key) => {
+        if (data.canShare) {
+          neighborsShareable.add(key);
+        }
+      });
+    });
+
+    return {
+      own,
+      neighborsShareable: Array.from(neighborsShareable),
+    };
+  }
+
+  /**
+   * Get basic info about this box for debugging
+   */
+  public getDebugInfo(): any {
+    return {
+      id: this.localContext.id,
+      zLevel: this.zLevel,
+      bounds: this.getBounds(),
+      neighbors: this.neighbors.size,
+      dataKeys: Array.from(this.localContext.data.keys()),
+      version: this.localContext.version,
+    };
+  }
+
+  // STEP 7: Collaborative Context Merging - Demo/Test methods
+
+  /**
+   * Demo method: Set some test data and share it with neighbors
+   * This shows how the collaborative system works
+   */
+  public demoCollaborativeSharing(): void {
+    console.log(`Box ${this.localContext.id} starting demo...`);
+
+    // Set some shareable data
+    this.shareData("demo_message", `Hello from ${this.localContext.id}!`, true);
+    this.shareData("timestamp", Date.now(), true);
+    this.shareData("box_color", this.getColorForZLevel(this.zLevel), true);
+
+    // Set some private data (not shareable)
+    this.setContextData("private_note", "This is private data", false);
+
+    console.log(
+      `Box ${this.localContext.id} shared data with ${this.neighbors.size} neighbors`,
+    );
+  }
+
+  /**
+   * Demo method: Log all available data in the network
+   */
+  public demoLogNetworkData(): void {
+    console.log(`=== Network Data for Box ${this.localContext.id} ===`);
+    console.log("My data:", Array.from(this.localContext.data.entries()));
+    console.log("Network summary:", this.getNetworkDataSummary());
+    console.log("Debug info:", this.getDebugInfo());
+
+    this.neighbors.forEach((neighbor) => {
+      console.log(
+        `Neighbor ${neighbor.localContext.id}:`,
+        neighbor.getDebugInfo(),
+      );
+    });
+  }
+
   // Chat history management for this selection box
   addChatMessage(msg: any) {
     this.localContext.chatHistory.push(msg);

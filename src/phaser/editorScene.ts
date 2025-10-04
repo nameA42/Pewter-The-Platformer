@@ -246,18 +246,18 @@ export class EditorScene extends Phaser.Scene {
     this.scene.bringToTop("UIScene");
 
     // Listen for a UI request to select the current temporary selection box
-    this.game.events.on('ui:selectCurrentBox', () => {
+    this.game.events.on("ui:selectCurrentBox", () => {
       if (this.activeBox) {
-        console.log('ui:selectCurrentBox -> selecting activeBox');
+        console.log("ui:selectCurrentBox -> selecting activeBox");
         this.selectBox(this.activeBox);
       } else {
-        console.log('ui:selectCurrentBox fired but no active box exists');
+        console.log("ui:selectCurrentBox fired but no active box exists");
       }
     });
 
     // Deselect all boxes when UI asks
-    this.game.events.on('ui:deselectAllBoxes', () => {
-      console.log('ui:deselectAllBoxes -> deselecting all boxes');
+    this.game.events.on("ui:deselectAllBoxes", () => {
+      console.log("ui:deselectAllBoxes -> deselecting all boxes");
       for (const b of this.selectionBoxes) {
         b.setActive?.(false);
       }
@@ -274,9 +274,14 @@ export class EditorScene extends Phaser.Scene {
     });
 
     // When the LLM invokes a tool, finalize the active selection box (if any)
-    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-      window.addEventListener('toolCalled', (_ev: any) => {
-        console.log('toolCalled event received; finalizing active box if present');
+    if (
+      typeof window !== "undefined" &&
+      typeof window.addEventListener === "function"
+    ) {
+      window.addEventListener("toolCalled", (_ev: any) => {
+        console.log(
+          "toolCalled event received; finalizing active box if present",
+        );
         if (this.activeBox) {
           this.activeBox.finalize?.();
           if (!this.selectionBoxes.includes(this.activeBox)) {
@@ -664,6 +669,16 @@ export class EditorScene extends Phaser.Scene {
     }
     this.activeBox?.updateTabPosition?.();
 
+    // STEP 5: Collaborative Context Merging - Update neighbor detection for all boxes
+    for (const box of this.selectionBoxes) {
+      if (box.updateNeighbors) {
+        box.updateNeighbors(this.selectionBoxes);
+      }
+    }
+    if (this.activeBox && this.activeBox.updateNeighbors) {
+      this.activeBox.updateNeighbors(this.selectionBoxes);
+    }
+
     if (Phaser.Input.Keyboard.JustDown(this.keyC) && this.keyCtrl.isDown) {
       this.copySelection();
       console.log("Copied selection");
@@ -933,12 +948,12 @@ export class EditorScene extends Phaser.Scene {
     // Swap chatbox context to this selection box
     setActiveSelectionBox(this.activeBox);
 
-  // Make visuals reflect the selection
-  this.selectBox(this.activeBox);
+    // Make visuals reflect the selection
+    this.selectBox(this.activeBox);
 
     // Add to permanent list
     if (!this.selectionBoxes.includes(this.activeBox)) {
-  this.selectionBoxes.push(this.activeBox);
+      this.selectionBoxes.push(this.activeBox);
     }
 
     // These define the height and width of the selection box
@@ -1209,7 +1224,7 @@ export class EditorScene extends Phaser.Scene {
 
     // activate the new box
     this.activeBox = box;
-    console.log('EditorScene.selectBox activating box', box.getBounds());
+    console.log("EditorScene.selectBox activating box", box.getBounds());
     box.setActive?.(true);
     setActiveSelectionBox(box);
   }

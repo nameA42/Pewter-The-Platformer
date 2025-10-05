@@ -98,37 +98,15 @@ export class EditorScene extends Phaser.Scene {
   public worldFacts!: WorldFacts;
 
   constructor() {
-    super({ key: "editorScene" });
+    super({ key: "EditorScene" });
+  }
 
-    // STEP 10: Expose testing functions to browser console
+  // STEP 9: Collaborative Context Merging - Expose active box for chat system
+  private setupGlobalActiveBoxAccess(): void {
+    // Expose active selection box to the chat system
     if (typeof window !== "undefined") {
-      (window as any).testCollaborativeContext = () => {
-        console.log("🧪 Testing Collaborative Context System");
-
-        if (this.activeBox) {
-          console.log("Active box found:", this.activeBox.localContext.id);
-          this.activeBox.testCollaborativeSharing();
-          this.activeBox.testChatContext();
-        } else {
-          console.log("❌ No active box selected");
-        }
-
-        console.log(`📊 Total boxes: ${this.selectionBoxes.length}`);
-        this.selectionBoxes.forEach((box) => {
-          console.log(
-            `Box ${box.localContext.id}: ${box.getNeighbors().length} neighbors`,
-          );
-        });
-      };
-
-      (window as any).showNetworkStatus = () => {
-        console.log("🌐 Network Status:");
-        this.selectionBoxes.forEach((box) => {
-          const debug = box.getDebugInfo();
-          console.log(
-            `Box ${debug.id}: ${debug.neighbors} neighbors, ${debug.dataKeys.length} data items`,
-          );
-        });
+      (window as any).getActiveSelectionBox = () => {
+        return this.activeBox;
       };
     }
   }
@@ -187,6 +165,9 @@ export class EditorScene extends Phaser.Scene {
   }
 
   create() {
+    // STEP 9: Setup global access for collaborative context
+    this.setupGlobalActiveBoxAccess();
+
     this.map = this.make.tilemap({ key: "defaultMap" });
 
     this.worldFacts = new WorldFacts(this);

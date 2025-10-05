@@ -35,9 +35,6 @@ let currentActiveBox: any = null; // Store reference to active selection box
 export function setActiveSelectionBox(
   box: { localContext: { chatHistory: BaseMessage[] } } | null,
 ) {
-  // STEP 9: Store reference to the active box for collaborative context
-  currentActiveBox = box;
-
   if (!box) {
     // Clear active context
     currentChatHistory = [];
@@ -278,39 +275,159 @@ export function clearChatHistory(): void {
   console.log("Chat history cleared.");
 }
 
-// STEP 9: Collaborative Context Merging - Safe chat integration
+// STEP 9: Collaborative Context Merging - Enhanced chat functions with neighbor context
 
 /**
- * Get collaborative context from the currently active selection box (if any)
+ * Send a user prompt with collaborative context from the active selection box.
+ * This includes data from the box and its neighbors to provide richer context to the AI.
  */
-function getCollaborativeContext(): string {
+export async function sendUserPromptWithCollaborativeContext(
+  userMessageText: string,
+): Promise<string> {
+  const historyRef = currentChatHistory;
+
+  // Get the current active selection box (if any)
+  let collaborativeContext = "";
+
+  // Try to get collaborative context from the active box
+  // We need to access the active box through the editor scene
   try {
+    // Access the active selection box through the global window object
+    // This assumes the EditorScene sets window.activeSelectionBox or similar
+    const activeBox = (window as any).getActiveSelectionBox?.();
+
     if (
-      currentActiveBox &&
-      typeof currentActiveBox.getCollaborativeContextForChat === "function"
+      activeBox &&
+      typeof activeBox.getCollaborativeContextForChat === "function"
     ) {
-      return currentActiveBox.getCollaborativeContextForChat();
+      collaborativeContext = activeBox.getCollaborativeContextForChat();
+      console.log("Including collaborative context from active selection box");
     }
   } catch (error) {
     console.warn("Could not retrieve collaborative context:", error);
   }
-  return "";
+
+  // Push the user's visible message into the active history
+  const userMessage = new HumanMessage(userMessageText);
+  historyRef.push(userMessage);
+
+  setBotResponding(true);
+
+  try {
+    // Build a temporary history for the model that includes the collaborative context
+    const tempHistory: BaseMessage[] = historyRef.slice();
+
+    if (collaborativeContext && collaborativeContext.trim().length > 0) {
+      tempHistory.push(
+        new HumanMessage(`[COLLABORATIVE CONTEXT]: ${collaborativeContext}`),
+      );
+    }
+
+    const reply = await getChatResponse(tempHistory);
+    const replyText = Array.isArray(reply.text)
+      ? reply.text.join("\n")
+      : String(reply.text);
+    const aiMessage = new AIMessage(replyText);
+    historyRef.push(aiMessage);
+
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
+      window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
+    }
+
+    return replyText;
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    const fallback = new AIMessage("Error: " + errorMessage);
+    historyRef.push(fallback);
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
+      window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
+    }
+    return fallback.content as string;
+  } finally {
+    setBotResponding(false);
+  }
 }
 
 /**
- * Enhanced sendUserPrompt that includes collaborative context when available
- * This is a safer alternative that doesn't break existing functionality
+ * Enhanced version of sendUserPromptWithContext that also includes collaborative context
  */
-export async function sendUserPromptWithCollaborativeContext(
-  message: string,
+export async function sendUserPromptWithFullContext(
+  userMessageText: string,
+  additionalContext?: string,
 ): Promise<string> {
-  const collaborativeContext = getCollaborativeContext();
+  const historyRef = currentChatHistory;
 
-  if (collaborativeContext.trim().length > 0) {
-    // Use existing sendUserPromptWithContext function
-    return sendUserPromptWithContext(message, collaborativeContext);
-  } else {
-    // Fall back to regular sendUserPrompt
-    return sendUserPrompt(message);
+  // Get collaborative context
+  let collaborativeContext = "";
+  try {
+    const activeBox = (window as any).getActiveSelectionBox?.();
+    if (
+      activeBox &&
+      typeof activeBox.getCollaborativeContextForChat === "function"
+    ) {
+      collaborativeContext = activeBox.getCollaborativeContextForChat();
+    }
+  } catch (error) {
+    console.warn("Could not retrieve collaborative context:", error);
+  }
+
+  // Push the user's visible message into the active history
+  const userMessage = new HumanMessage(userMessageText);
+  historyRef.push(userMessage);
+
+  setBotResponding(true);
+
+  try {
+    // Build a temporary history that includes both types of context
+    const tempHistory: BaseMessage[] = historyRef.slice();
+
+    // Add additional context first (world data, etc.)
+    if (additionalContext && additionalContext.trim().length > 0) {
+      tempHistory.push(
+        new HumanMessage(`[WORLD CONTEXT]: ${additionalContext}`),
+      );
+    }
+
+    // Add collaborative context second (neighbor data, etc.)
+    if (collaborativeContext && collaborativeContext.trim().length > 0) {
+      tempHistory.push(
+        new HumanMessage(`[COLLABORATIVE CONTEXT]: ${collaborativeContext}`),
+      );
+    }
+
+    const reply = await getChatResponse(tempHistory);
+    const replyText = Array.isArray(reply.text)
+      ? reply.text.join("\n")
+      : String(reply.text);
+    const aiMessage = new AIMessage(replyText);
+    historyRef.push(aiMessage);
+
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
+      window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
+    }
+
+    return replyText;
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    const fallback = new AIMessage("Error: " + errorMessage);
+    historyRef.push(fallback);
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
+      window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
+    }
+    return fallback.content as string;
+  } finally {
+    setBotResponding(false);
   }
 }

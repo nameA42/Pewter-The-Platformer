@@ -222,6 +222,8 @@ export class SelectionBox {
     );
     // Share our shareable data with the new neighbor
     this.shareDataWithNeighbor(neighbor);
+    // Update visual indicator
+    this.updateTabWithNetworkInfo();
   }
 
   /**
@@ -231,6 +233,8 @@ export class SelectionBox {
     console.log(
       `Box ${this.localContext.id} lost neighbor ${neighbor.localContext.id}`,
     );
+    // Update visual indicator
+    this.updateTabWithNetworkInfo();
   }
 
   /**
@@ -1005,6 +1009,74 @@ export class SelectionBox {
     });
 
     return sharedMessages.sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  // STEP 10: Testing and Verification Methods
+
+  /**
+   * Quick test: Set some test data and verify neighbors can see it
+   */
+  public testCollaborativeSharing(): void {
+    console.log(
+      `🧪 Testing collaborative sharing for Box ${this.localContext.id}`,
+    );
+
+    // Set some test data
+    this.shareData(
+      "test_message",
+      `Hello from Box ${this.localContext.id}!`,
+      true,
+    );
+    this.shareData("test_number", Math.floor(Math.random() * 100), true);
+    this.shareData("test_timestamp", new Date().toISOString(), true);
+
+    console.log(`📤 Box ${this.localContext.id} shared 3 test items`);
+    console.log(`👥 Connected to ${this.neighbors.size} neighbors`);
+
+    // Log what we can see from neighbors
+    setTimeout(() => {
+      const summary = this.getNetworkDataSummary();
+      console.log(
+        `📥 Box ${this.localContext.id} can see from neighbors:`,
+        summary.neighborsShareable,
+      );
+    }, 100);
+  }
+
+  /**
+   * Verify the collaborative context is working for chat
+   */
+  public testChatContext(): string {
+    console.log(`💬 Testing chat context for Box ${this.localContext.id}`);
+    const context = this.getCollaborativeContextForChat();
+    console.log("Generated context:", context);
+    return context;
+  }
+
+  /**
+   * Visual indicator: Change tab color based on neighbor count
+   */
+  public updateTabWithNetworkInfo(): void {
+    if (!this.tabText) return;
+
+    const neighborCount = this.neighbors.size;
+    const dataCount = this.localContext.data.size;
+
+    // Update tab text to show network info
+    this.tabText.setText(`Box (${neighborCount}n, ${dataCount}d)`);
+
+    // Change color based on connectivity
+    if (this.tabBg) {
+      if (neighborCount > 0) {
+        // Connected - use cyan to indicate network activity
+        this.tabBg.setFillStyle(this.isActive ? 0x00ff88 : 0x00aaff);
+      } else {
+        // Not connected - use original colors
+        this.tabBg.setFillStyle(
+          this.isActive ? 0x127803 : this.isFinalized ? 0x2b2b2b : 0x2b6bff,
+        );
+      }
+    }
   }
 
   // Chat history management for this selection box

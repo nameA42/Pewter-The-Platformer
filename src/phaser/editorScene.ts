@@ -99,6 +99,38 @@ export class EditorScene extends Phaser.Scene {
 
   constructor() {
     super({ key: "editorScene" });
+
+    // STEP 10: Expose testing functions to browser console
+    if (typeof window !== "undefined") {
+      (window as any).testCollaborativeContext = () => {
+        console.log("🧪 Testing Collaborative Context System");
+
+        if (this.activeBox) {
+          console.log("Active box found:", this.activeBox.localContext.id);
+          this.activeBox.testCollaborativeSharing();
+          this.activeBox.testChatContext();
+        } else {
+          console.log("❌ No active box selected");
+        }
+
+        console.log(`📊 Total boxes: ${this.selectionBoxes.length}`);
+        this.selectionBoxes.forEach((box) => {
+          console.log(
+            `Box ${box.localContext.id}: ${box.getNeighbors().length} neighbors`,
+          );
+        });
+      };
+
+      (window as any).showNetworkStatus = () => {
+        console.log("🌐 Network Status:");
+        this.selectionBoxes.forEach((box) => {
+          const debug = box.getDebugInfo();
+          console.log(
+            `Box ${debug.id}: ${debug.neighbors} neighbors, ${debug.dataKeys.length} data items`,
+          );
+        });
+      };
+    }
   }
 
   preload() {

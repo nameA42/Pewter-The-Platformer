@@ -28,12 +28,23 @@ export function getDisplayChatHistory(): string {
 // Swappable reference to the current chat history array
 let currentChatHistory: BaseMessage[] = [];
 
+// STEP 9: Collaborative Context Merging - Safe active box storage
+let currentActiveBox: any = null; // Store reference to active selection box
+
 // Set the active selection box context for chat
-export function setActiveSelectionBox(box: { localContext: { chatHistory: BaseMessage[] } } | null) {
+export function setActiveSelectionBox(
+  box: { localContext: { chatHistory: BaseMessage[] } } | null,
+) {
+  // STEP 9: Store reference to the active box for collaborative context
+  currentActiveBox = box;
+
   if (!box) {
     // Clear active context
     currentChatHistory = [];
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
     return;
@@ -66,7 +77,10 @@ export function setActiveSelectionBox(box: { localContext: { chatHistory: BaseMe
     );
   }
   // Notify any UI listeners that the active selection (and its history) changed
-  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+  if (
+    typeof window !== "undefined" &&
+    typeof window.dispatchEvent === "function"
+  ) {
     window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
   }
 }
@@ -133,7 +147,10 @@ export async function sendUserPrompt(message: string): Promise<string> {
     historyRef.push(aiMessage);
 
     // Let UI know new content is available for the active selection
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
 
@@ -142,7 +159,10 @@ export async function sendUserPrompt(message: string): Promise<string> {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     const fallback = new AIMessage("Error: " + errorMessage);
     historyRef.push(fallback);
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
     return fallback.content as string;
@@ -184,7 +204,10 @@ export async function sendUserPromptWithContext(
     const aiMessage = new AIMessage(replyText);
     historyRef.push(aiMessage);
 
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
 
@@ -193,7 +216,10 @@ export async function sendUserPromptWithContext(
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     const fallback = new AIMessage("Error: " + errorMessage);
     historyRef.push(fallback);
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
     return fallback.content as string;
@@ -220,7 +246,10 @@ export async function sendSystemMessage(message: string): Promise<string> {
     const aiMessage = new AIMessage(replyText);
     historyRef.push(aiMessage);
 
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
 
@@ -229,7 +258,10 @@ export async function sendSystemMessage(message: string): Promise<string> {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     const fallback = new AIMessage("Error: " + errorMessage);
     historyRef.push(fallback);
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
     return fallback.content as string;
@@ -244,4 +276,41 @@ export async function sendSystemMessage(message: string): Promise<string> {
 export function clearChatHistory(): void {
   currentChatHistory.length = 0;
   console.log("Chat history cleared.");
+}
+
+// STEP 9: Collaborative Context Merging - Safe chat integration
+
+/**
+ * Get collaborative context from the currently active selection box (if any)
+ */
+function getCollaborativeContext(): string {
+  try {
+    if (
+      currentActiveBox &&
+      typeof currentActiveBox.getCollaborativeContextForChat === "function"
+    ) {
+      return currentActiveBox.getCollaborativeContextForChat();
+    }
+  } catch (error) {
+    console.warn("Could not retrieve collaborative context:", error);
+  }
+  return "";
+}
+
+/**
+ * Enhanced sendUserPrompt that includes collaborative context when available
+ * This is a safer alternative that doesn't break existing functionality
+ */
+export async function sendUserPromptWithCollaborativeContext(
+  message: string,
+): Promise<string> {
+  const collaborativeContext = getCollaborativeContext();
+
+  if (collaborativeContext.trim().length > 0) {
+    // Use existing sendUserPromptWithContext function
+    return sendUserPromptWithContext(message, collaborativeContext);
+  } else {
+    // Fall back to regular sendUserPrompt
+    return sendUserPrompt(message);
+  }
 }

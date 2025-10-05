@@ -27,7 +27,7 @@ export class PlaceGridofTiles {
       .number()
       .int()
       .min(0)
-      .describe("Maximum X (rightmost column index, exclusive)."),
+      .describe("Maximum X (rightmost column index, inclusive)."),
 
     yMin: z
       .number()
@@ -39,7 +39,7 @@ export class PlaceGridofTiles {
       .number()
       .int()
       .min(0)
-      .describe("Maximum Y (bottommost row index, exclusive)."),
+      .describe("Maximum Y (bottommost row index, inclusive)."),
 
     layerName: z
       .string()
@@ -64,8 +64,8 @@ export class PlaceGridofTiles {
       }
 
       try {
-        for (let x = xMin; x < xMax; x++) {
-          for (let y = yMin; y < yMax; y++) {
+        for (let x = xMin; x <= xMax; x++) {
+          for (let y = yMin; y <= yMax; y++) {
             map.putTileAt(tileIndex, x, y, true, layer);
           }
         }

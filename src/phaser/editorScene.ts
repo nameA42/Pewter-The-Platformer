@@ -53,6 +53,8 @@ export class EditorScene extends Phaser.Scene {
 
   private selectedTiles: number[][] = []; // Selected Tiles
 
+  private clipboard: number[][] = []; // Global clipboard for copy and paste
+
   //Selection Box Properties
   private highlightBox!: Phaser.GameObjects.Graphics;
   public selectionStart!: Phaser.Math.Vector2;
@@ -246,18 +248,18 @@ export class EditorScene extends Phaser.Scene {
     this.scene.bringToTop("UIScene");
 
     // Listen for a UI request to select the current temporary selection box
-    this.game.events.on('ui:selectCurrentBox', () => {
+    this.game.events.on("ui:selectCurrentBox", () => {
       if (this.activeBox) {
-        console.log('ui:selectCurrentBox -> selecting activeBox');
+        console.log("ui:selectCurrentBox -> selecting activeBox");
         this.selectBox(this.activeBox);
       } else {
-        console.log('ui:selectCurrentBox fired but no active box exists');
+        console.log("ui:selectCurrentBox fired but no active box exists");
       }
     });
 
     // Deselect all boxes when UI asks
-    this.game.events.on('ui:deselectAllBoxes', () => {
-      console.log('ui:deselectAllBoxes -> deselecting all boxes');
+    this.game.events.on("ui:deselectAllBoxes", () => {
+      console.log("ui:deselectAllBoxes -> deselecting all boxes");
       for (const b of this.selectionBoxes) {
         b.setActive?.(false);
       }
@@ -274,9 +276,14 @@ export class EditorScene extends Phaser.Scene {
     });
 
     // When the LLM invokes a tool, finalize the active selection box (if any)
-    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-      window.addEventListener('toolCalled', (_ev: any) => {
-        console.log('toolCalled event received; finalizing active box if present');
+    if (
+      typeof window !== "undefined" &&
+      typeof window.addEventListener === "function"
+    ) {
+      window.addEventListener("toolCalled", (_ev: any) => {
+        console.log(
+          "toolCalled event received; finalizing active box if present",
+        );
         if (this.activeBox) {
           this.activeBox.finalize?.();
           if (!this.selectionBoxes.includes(this.activeBox)) {
@@ -933,12 +940,12 @@ export class EditorScene extends Phaser.Scene {
     // Swap chatbox context to this selection box
     setActiveSelectionBox(this.activeBox);
 
-  // Make visuals reflect the selection
-  this.selectBox(this.activeBox);
+    // Make visuals reflect the selection
+    this.selectBox(this.activeBox);
 
     // Add to permanent list
     if (!this.selectionBoxes.includes(this.activeBox)) {
-  this.selectionBoxes.push(this.activeBox);
+      this.selectionBoxes.push(this.activeBox);
     }
 
     // These define the height and width of the selection box
@@ -976,21 +983,58 @@ export class EditorScene extends Phaser.Scene {
 
   // Copy selection of tiles function
   copySelection() {
-    if (this.activeBox) {
-      this.activeBox.copyTiles();
+    if (!this.activeBox) {
+      console.log("No active box to copy");
+      return;
     }
+
+    this.activeBox.copyTiles();
+    const tiles = this.activeBox.getSelectedTiles();
+
+    if (tiles.length === 0 || tiles[0].length === 0) {
+      console.log("No tiles to copy");
+      return;
+    }
+
+    this.clipboard = tiles.map((row) => [...row]);
+    console.log(
+      "Copied to clipboard:",
+      this.clipboard.length,
+      "x",
+      this.clipboard[0]?.length,
+    );
   }
 
   // Cutting selection of tiles function
   cutSelection() {
-    this.copySelection();
-    if (!this.activeBox) return;
+    if (!this.activeBox) {
+      console.log("No active box to cut");
+      return;
+    }
+
+    this.activeBox.copyTiles();
+    const tiles = this.activeBox.getSelectedTiles();
+
+    if (tiles.length === 0 || tiles[0].length === 0) {
+      console.log("No tiles to cut");
+      return;
+    }
+
+    this.clipboard = tiles.map((row) => [...row]);
+    console.log(
+      "Cut to clipboard:",
+      this.clipboard.length,
+      "x",
+      this.clipboard[0]?.length,
+    );
+
     const start = this.activeBox.getStart();
     const end = this.activeBox.getEnd();
     const sX = Math.min(start.x, end.x);
     const sY = Math.min(start.y, end.y);
     const eX = Math.max(start.x, end.x);
     const eY = Math.max(start.y, end.y);
+
     for (let y = sY; y <= eY; y++) {
       for (let x = sX; x <= eX; x++) {
         this.placeTile(this.groundLayer, x, y, -1); // Remove tile
@@ -1000,21 +1044,49 @@ export class EditorScene extends Phaser.Scene {
 
   // Pasting selection of tiles function
   pasteSelection(pointer: Phaser.Input.Pointer) {
-    if (!this.activeBox) return;
-    const copied = this.activeBox.getSelectedTiles();
-    if (!copied || copied.length === 0) return;
+    if (this.clipboard.length === 0) {
+      console.log("No clipboard to paste");
+      return;
+    }
 
-    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const pasteX = Math.floor(worldPoint.x / this.TILE_SIZE);
-    const pasteY = Math.floor(worldPoint.y / this.TILE_SIZE);
+    if (!this.activeBox) {
+      console.log("No active selection box to paste");
+      return;
+    }
 
-    for (let y = 0; y < copied.length; y++) {
-      for (let x = 0; x < copied[y].length; x++) {
-        const tileIndex = copied[y][x];
+    const start = this.activeBox.getStart();
+    const end = this.activeBox.getEnd();
+    const sX = Math.min(start.x, end.x);
+    const sY = Math.min(start.y, end.y);
+
+    // Map bounds to not exceed
+    const mapWidth = this.map.width;
+    const mapHeight = this.map.height;
+
+    for (let y = 0; y < this.clipboard.length; y++) {
+      for (let x = 0; x < this.clipboard[y].length; x++) {
+        const tileIndex = this.clipboard[y][x];
         if (tileIndex === -1) continue;
-        this.placeTile(this.groundLayer, pasteX + x, pasteY + y, tileIndex);
+
+        const pasteX = sX + x;
+        const pasteY = sY + y;
+
+        if (
+          pasteX >= 0 &&
+          pasteX < mapWidth &&
+          pasteY >= 0 &&
+          pasteY < mapHeight
+        ) {
+          this.placeTile(this.groundLayer, pasteX, pasteY, tileIndex);
+        }
       }
     }
+    console.log(
+      "Pasted to clipboard:",
+      this.clipboard.length,
+      "x",
+      this.clipboard[0]?.length,
+    );
   }
 
   // Removed duplicate setupInput logic (all hotkey setup is handled in create)
@@ -1192,7 +1264,7 @@ export class EditorScene extends Phaser.Scene {
     this.activeBox.finalize?.();
 
     // Clear references
-    this.activeBox = null;
+    // this.activeBox = null;
     this.isSelecting = false;
   }
 
@@ -1209,7 +1281,7 @@ export class EditorScene extends Phaser.Scene {
 
     // activate the new box
     this.activeBox = box;
-    console.log('EditorScene.selectBox activating box', box.getBounds());
+    console.log("EditorScene.selectBox activating box", box.getBounds());
     box.setActive?.(true);
     setActiveSelectionBox(box);
   }

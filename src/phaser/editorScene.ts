@@ -98,7 +98,7 @@ export class EditorScene extends Phaser.Scene {
   public worldFacts!: WorldFacts;
 
   constructor() {
-    super({ key: "EditorScene" });
+    super({ key: "editorScene" });
   }
 
   // STEP 9: Collaborative Context Merging - Expose active box for chat system
@@ -166,10 +166,9 @@ export class EditorScene extends Phaser.Scene {
 
   create() {
     // STEP 9: Setup global access for collaborative context
-    this.setupGlobalActiveBoxAccess();
+    // this.setupGlobalActiveBoxAccess(); // Temporarily commented out to fix loading issue
 
     this.map = this.make.tilemap({ key: "defaultMap" });
-
     this.worldFacts = new WorldFacts(this);
 
     console.log("Map loaded:", this.map);

@@ -206,6 +206,16 @@ export class UIScene extends Phaser.Scene {
       },
     );
     selectBoxBtn.setDepth(1001);
+
+    this.input.keyboard!.on('keydown-H', () => {
+      const editorScene = this.scene.get('editorScene') as EditorScene;
+      const activeBox = editorScene.activeBox;
+      if (activeBox) {
+        activeBox.printPlacedTiles();
+      } else {
+        console.log('No active selection box.');
+      }
+    });
   }
   // Receives selection info from EditorScene and displays it in the chatbox
   public handleSelectionInfo(msg: string) {

@@ -67,6 +67,11 @@ export class PlaceGridofTiles {
         for (let x = xMin; x <= xMax; x++) {
           for (let y = yMin; y <= yMax; y++) {
             map.putTileAt(tileIndex, x, y, true, layer);
+
+            //Record the placement
+            if (scene.activeBox) {
+              scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
+            }
           }
         }
         if (layerName == "Ground_Layer") {

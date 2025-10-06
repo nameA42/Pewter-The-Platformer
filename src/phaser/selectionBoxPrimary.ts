@@ -15,7 +15,6 @@ export class SelectionBox {
   public selectedTiles: number[][] = [];
   private layer: Phaser.Tilemaps.TilemapLayer;
   public localContext: { chatHistory: any[] };
-  public placedTiles: { tileIndex: number; x: number; y: number; layerName: string}[] = [];
   private tabContainer: Phaser.GameObjects.Container | null = null;
   private onSelect?: (box: SelectionBox) => void;
   private tabBg: Phaser.GameObjects.Rectangle | null = null;
@@ -476,28 +475,10 @@ export class SelectionBox {
     this.localContext.chatHistory.length = 0;
   }
 
-  //Working Code - Jason Cho
   printChatHistory() {
-    console.log("Chat History for this SelectionBox:");
-    this.localContext.chatHistory.forEach((msg, index) => {
-      console.log(`${index + 1}: ${JSON.stringify(msg)}`);
-    });
-  }
-
-  //TODO: clear placed tiles accordingly, especially with user actions
-  public addPlacedTile(tileIndex: number, x: number, y: number, layerName: string) {
-    this.placedTiles.push({ tileIndex, x, y, layerName });
-    console.log("Added placed tile:", { tileIndex, x, y, layerName });
-  }
-
-  public getPlacedTiles() {
-    return this.placedTiles;
-  }
-
-  public printPlacedTiles() {
-    console.log("Placed Tiles for this SelectionBox:");
-    this.placedTiles.forEach((tile, index) => {
-      console.log(`${index + 1}: ${JSON.stringify(tile)}`);
+    console.log("Chat History for SelectionBox:", this.localContext.chatHistory);
+    this.localContext.chatHistory.forEach((msg) => {
+      console.log(msg);
     });
   }
 }

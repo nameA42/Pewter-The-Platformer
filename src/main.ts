@@ -21,6 +21,7 @@ import { PlaceEnemy } from "./languageModel/tools/placeEnemy.ts";
 import { PlaceGridofTiles } from "./languageModel/tools/placeGridofTiles.ts";
 import { ClearTile } from "./languageModel/tools/clearTile.ts";
 import { WorldFactsTool } from "./languageModel/tools/worldFactsTool.ts";
+import { GetPlacedTiles } from "./languageModel/tools/getPlacedTiles.ts";
 
 ////****LLM Tool Setup****////
 // const tools = {
@@ -35,6 +36,7 @@ const tools = {
   placeGridofTiles: new PlaceGridofTiles(getScene),
   clearTile: new ClearTile(getScene),
   WorldFactsTool: new WorldFactsTool(getScene),
+  getPlacedTiles: new GetPlacedTiles(getScene),
 };
 
 // // Register all tools with the LLM

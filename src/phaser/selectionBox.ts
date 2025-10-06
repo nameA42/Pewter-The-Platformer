@@ -488,7 +488,7 @@ export class SelectionBox {
   public addPlacedTile(tileIndex: number, x: number, y: number, layerName: string) {
     this.placedTiles.push({ tileIndex, x, y, layerName });
     console.log("Added placed tile:", { tileIndex, x, y, layerName });
-  }
+  } 
 
   public getPlacedTiles() {
     return this.placedTiles;

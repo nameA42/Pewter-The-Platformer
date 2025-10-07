@@ -83,6 +83,8 @@ export class EditorScene extends Phaser.Scene {
   private keyN!: Phaser.Input.Keyboard.Key;
   private keyZ!: Phaser.Input.Keyboard.Key;
   private keyB!: Phaser.Input.Keyboard.Key;
+  private keyO!: Phaser.Input.Keyboard.Key;
+  private keyP!: Phaser.Input.Keyboard.Key;
   private keyCtrl!: Phaser.Input.Keyboard.Key;
 
   private setPointerOverUI = (v: boolean) =>
@@ -318,6 +320,8 @@ export class EditorScene extends Phaser.Scene {
       this.keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
       this.keyN = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.N);
       this.keyZ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
+      this.keyO = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.O);
+      this.keyP = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.P);
       this.keyB = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B);
 
       this.keyCtrl = this.input.keyboard.addKey(
@@ -699,8 +703,10 @@ export class EditorScene extends Phaser.Scene {
     ) {
       this.redoLastAction();
       console.log("Redid last action");
-    } else if (Phaser.Input.Keyboard.JustDown(this.keyZ)) {
-      this.cycleZLevel();
+    } else if (Phaser.Input.Keyboard.JustDown(this.keyO)) {
+      this.increaseZLevel();
+    } else if (Phaser.Input.Keyboard.JustDown(this.keyP)) {
+      this.decreaseZLevel();
     } else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
       this.finalizeSelectBox();
     }
@@ -1212,6 +1218,7 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
+  /*
   // Goes through each Z Level
   cycleZLevel() {
     if (!this.activeBox) return;
@@ -1253,6 +1260,103 @@ export class EditorScene extends Phaser.Scene {
       this.activeBox.setZLevel(this.currentZLevel);
     }
   }
+  */
+
+  // Increases the Z Level
+  increaseZLevel() {
+    if (!this.activeBox) return;
+
+    this.currentZLevel++;
+
+    let overlap = this.checkLevelOverlap(
+      this.activeBox,
+      this.selectionBoxes,
+      this.currentZLevel,
+    );
+
+    while (overlap) {
+      console.log("Skipping one Z-Level Upward");
+      this.currentZLevel++;
+      overlap = this.checkLevelOverlap(
+        this.activeBox,
+        this.selectionBoxes,
+        this.currentZLevel,
+      );
+    }
+
+    console.log("Z-Level changed to:", this.currentZLevel);
+
+    // If a box is being drawn, update its z-level immediately
+    if (this.activeBox) {
+      this.activeBox.setZLevel(this.currentZLevel);
+    }
+  }
+
+  // Decreases the Z Level
+  decreaseZLevel() {
+    if (!this.activeBox) return;
+    if (this.currentZLevel === 1) return;
+
+    let ogZLevel = this.currentZLevel;
+    this.currentZLevel--;
+
+    let overlap = this.checkLevelOverlap(
+      this.activeBox,
+      this.selectionBoxes,
+      this.currentZLevel,
+    );
+
+    while (overlap) {
+      if (this.currentZLevel === 0) {
+        break;
+      }
+      console.log("Skipping one Z-Level Downward");
+      this.currentZLevel--;
+      overlap = this.checkLevelOverlap(
+        this.activeBox,
+        this.selectionBoxes,
+        this.currentZLevel,
+      );
+    }
+
+    if (this.currentZLevel === 0) {
+      console.log(
+        "Impossible to decrement to available level. Going back to original.",
+      );
+      this.currentZLevel = ogZLevel;
+    }
+
+    console.log("Z-Level changed to:", this.currentZLevel);
+
+    // If a box is being drawn, update its z-level immediately
+    if (this.activeBox) {
+      this.activeBox.setZLevel(this.currentZLevel);
+    }
+  }
+
+  // Helper function: Check overlap of boxes between its Z-Levels
+  checkLevelOverlap(
+    activeBox: SelectionBox,
+    boxes: SelectionBox[],
+    zLevel: number,
+  ): boolean {
+    // Proposed rectangle of the active box
+    const checkedRect = activeBox.getBounds();
+
+    for (const box of boxes) {
+      if (box === activeBox) continue;
+
+      if (box.getZLevel() === zLevel) {
+        // only check boxes on same level
+        const bound = box.getBounds(); // MUST be tile-space rectangle
+        if (Phaser.Geom.Intersects.RectangleToRectangle(checkedRect, bound)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
 
   // Finalize the box whenever user wants a brand new box
   finalizeSelectBox() {
@@ -1288,15 +1392,9 @@ export class EditorScene extends Phaser.Scene {
 
   // Match Highlight Color with Z-Level
   getHighlightColorForZLevel(zLevel: number): number {
-    switch (zLevel) {
-      case 1:
-        return 0xff5555; // red
-      case 2:
-        return 0x55ff55; // green
-      case 3:
-        return 0x5555ff; // blue
-      default:
-        return 0xffffff; // white (This is not gonna happen)
-    }
+    // Rotate color hue based on z-level
+    const hue = (zLevel * 47) % 360;
+    const colorObj = Phaser.Display.Color.HSVToRGB(hue / 360, 1, 1);
+    return colorObj.color;
   }
 }

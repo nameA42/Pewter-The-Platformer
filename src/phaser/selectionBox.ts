@@ -1,5 +1,7 @@
 import Phaser from "phaser";
 
+import { Z_LEVEL_COLORS } from "./colors";
+
 export class SelectionBox {
   private graphics: Phaser.GameObjects.Graphics;
   private start: Phaser.Math.Vector2;
@@ -204,7 +206,7 @@ export class SelectionBox {
       .setOrigin(0, 0.5);
     bg.setStrokeStyle(1, initialStroke);
     const txt = this.scene.add
-      .text(6, 0, `Box`, { fontSize: "10px", color: "#ffffff" })
+      .text(6, 0, `Box `, { fontSize: "10px", color: "#ffffff" })
       .setOrigin(0, 0.5);
 
     const container = this.scene.add.container(worldX, worldY - 10, [bg, txt]);
@@ -453,13 +455,6 @@ export class SelectionBox {
     }
   }
 
-  private getColorForZLevel(zLevel: number): number {
-    // Rotate color hue based on z-level
-    const hue = (zLevel * 47) % 360;
-    const colorObj = Phaser.Display.Color.HSVToRGB(hue / 360, 1, 1);
-    return colorObj.color;
-  }
-
   // Checking the possible bounds without finalizing the update
   tempBounds(possibleEnd: Phaser.Math.Vector2): Phaser.Geom.Rectangle {
     const startX = Math.min(this.start.x, possibleEnd.x);
@@ -566,5 +561,10 @@ export class SelectionBox {
     this.placedTiles.forEach((tile, index) => {
       console.log(`${index + 1}: ${JSON.stringify(tile)}`);
     });
+  }
+
+  private getColorForZLevel(zLevel: number): number {
+    // Cycle through the colors endlessly
+    return Z_LEVEL_COLORS[(zLevel - 1) % Z_LEVEL_COLORS.length];
   }
 }

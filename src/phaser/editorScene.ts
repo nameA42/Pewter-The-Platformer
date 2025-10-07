@@ -11,6 +11,7 @@ import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
 import { UIScene } from "./UIScene.ts";
 import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
 import { SelectionBox } from "./selectionBox.ts";
+import { Z_LEVEL_COLORS } from "./colors";
 
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
@@ -1392,9 +1393,7 @@ export class EditorScene extends Phaser.Scene {
 
   // Match Highlight Color with Z-Level
   getHighlightColorForZLevel(zLevel: number): number {
-    // Rotate color hue based on z-level
-    const hue = (zLevel * 47) % 360;
-    const colorObj = Phaser.Display.Color.HSVToRGB(hue / 360, 1, 1);
-    return colorObj.color;
+    // Cycle through the colors endlessly
+    return Z_LEVEL_COLORS[(zLevel - 1) % Z_LEVEL_COLORS.length];
   }
 }

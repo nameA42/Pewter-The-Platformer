@@ -703,9 +703,9 @@ export class EditorScene extends Phaser.Scene {
     ) {
       this.redoLastAction();
       console.log("Redid last action");
-    } else if (Phaser.Input.Keyboard.JustDown(this.keyO)) {
-      this.increaseZLevel();
     } else if (Phaser.Input.Keyboard.JustDown(this.keyP)) {
+      this.increaseZLevel();
+    } else if (Phaser.Input.Keyboard.JustDown(this.keyO)) {
       this.decreaseZLevel();
     } else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
       this.finalizeSelectBox();

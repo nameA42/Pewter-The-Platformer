@@ -1,10 +1,13 @@
 // Pewter Platformer EditorScene - Cleaned and consolidated after merge
 import Phaser from "phaser";
 
+// After imports, before the class:
+type FactCounts = Record<string, number>;
+
 type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
   isFalling?: boolean;
 };
-import { sendUserPrompt } from "../languageModel/chatBox";
+// removed: sendUserPrompt (unused)
 import { setActiveSelectionBox } from "../languageModel/chatBox";
 import { Slime } from "./ExternalClasses/Slime.ts";
 import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
@@ -20,7 +23,7 @@ export class EditorScene extends Phaser.Scene {
   public collectablesLayer!: Phaser.Tilemaps.TilemapLayer;
   private backgroundLayer!: Phaser.Tilemaps.TilemapLayer;
   private gridGraphics!: Phaser.GameObjects.Graphics;
-  private playButton!: Phaser.GameObjects.Text;
+  // removed: playButton (unused)
   private mapHistory: Phaser.Tilemaps.Tilemap[] = [];
   private currentMapIteration: number = 0;
 
@@ -28,15 +31,14 @@ export class EditorScene extends Phaser.Scene {
   private maxZoomLevel = 10;
   private zoomLevel = 2.25;
 
-  //private currentTileId = 1; // What tile to place
-  private isEditMode = false; // Toggle between drag mode and edit mode
+  // removed: isEditMode (unused)
 
   private minimap: Phaser.Cameras.Scene2D.Camera | null = null;
   private minimapZoom = 0.15;
 
   private scrollDeadzone = 50; // pixels from the edge of the camera view to stop scrolling
 
-  private editorButton!: Phaser.GameObjects.Container;
+  // removed: editorButton (unused)
   private scrollSpeed = 10; // pixels per second
 
   /// Game Variables.
@@ -60,12 +62,7 @@ export class EditorScene extends Phaser.Scene {
   public selectionStart!: Phaser.Math.Vector2;
   public selectionEnd!: Phaser.Math.Vector2;
   private isSelecting: boolean = false;
-  private selectionBounds: {
-    startX: number;
-    startY: number;
-    endX: number;
-    endY: number;
-  } | null = null;
+  // removed: selectionBounds (unused)
   public activeBox: SelectionBox | null = null;
   private selectionBoxes: SelectionBox[] = [];
 
@@ -85,19 +82,232 @@ export class EditorScene extends Phaser.Scene {
   private keyB!: Phaser.Input.Keyboard.Key;
   private keyCtrl!: Phaser.Input.Keyboard.Key;
 
-  private setPointerOverUI = (v: boolean) =>
-    this.registry.set("uiPointerOver", v);
+  // removed: setPointerOverUI (unused)
 
   // Removed chatBox from EditorScene
 
   public enemies: (Slime | UltraSlime)[] = [];
 
-  private damageKey!: Phaser.Input.Keyboard.Key;
-  private flipKey!: Phaser.Input.Keyboard.Key;
+  // removed: damageKey, flipKey (unused)
 
   private currentZLevel: number = 1; // 1 = red, 2 = green, 3 = blue
 
   public worldFacts!: WorldFacts;
+
+  // --- Selection + nesting state ---
+  private allSelections = new Map<string, SelectionBox>();
+
+  // tile -> selections that cover that tile (tile coords, not pixels)
+  private tileSelIndex = new Map<string, Set<SelectionBox>>();
+  private tkey(x: number, y: number) {
+    return `${x},${y}`;
+  }
+
+  // removed: currentSelection (unused)
+
+  private onFinalizeBox(box: SelectionBox) {
+    this.snapshotSelection(box);
+    this.indexSelection(box);
+    this.linkNestingFor(box);
+    this.recomputeAggFactsUpwards(box.id);
+    console.log("Finalized selection:", box.id, {
+      own: box.ownFacts,
+      agg: box.aggFacts,
+    });
+  }
+
+  private indexSelection(sel: SelectionBox) {
+    const { x0, y0, x1, y1 } = sel.getTileRect();
+    for (let ty = y0; ty <= y1; ty++) {
+      for (let tx = x0; tx <= x1; tx++) {
+        const k = this.tkey(tx, ty);
+        if (!this.tileSelIndex.has(k)) this.tileSelIndex.set(k, new Set());
+        this.tileSelIndex.get(k)!.add(sel);
+      }
+    }
+  }
+
+  // --- parent/child linking (tightest container wins) ---
+  // Got this from GPT
+  private linkNestingFor(sel: SelectionBox) {
+    const others = Array.from(this.allSelections.values()).filter(
+      (s) => s.id !== sel.id,
+    );
+
+    // find containers
+    const containers = others.filter((s) => s.containsBox(sel));
+    let parent: SelectionBox | null = null;
+    let minArea = Number.POSITIVE_INFINITY;
+    for (const c of containers) {
+      const r = c.getTileRect();
+      const area = r.w * r.h;
+      if (area < minArea) {
+        minArea = area;
+        parent = c;
+      }
+    }
+
+    if (parent) {
+      if (sel.parentId) {
+        const old = this.allSelections.get(sel.parentId);
+        old?.childIds.delete(sel.id);
+      }
+      sel.parentId = parent.id;
+      parent.childIds.add(sel.id);
+    }
+  }
+  //Got this from GPT
+  private recomputeAggFactsUpwards(selId: string) {
+    let curId: string | null = selId;
+    while (curId) {
+      const cur: SelectionBox = this.allSelections.get(curId)!;
+      const childFacts = Array.from(cur.childIds).map(
+        (id) => this.allSelections.get(id)!.aggFacts,
+      );
+      cur.aggFacts = this.sumFacts(cur.ownFacts, ...childFacts);
+      curId = cur.parentId;
+    }
+  }
+
+  // Sums fact objects (e.g., {coin: 2, enemy: 1}) into a single aggregate object
+  private sumFacts(
+    ...facts: Array<Record<string, number>>
+  ): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const factObj of facts) {
+      for (const key in factObj) {
+        if (factObj.hasOwnProperty(key)) {
+          result[key] = (result[key] ?? 0) + factObj[key];
+        }
+      }
+    }
+    return result;
+  }
+
+  // --- tools/editor call these to record content changes ---
+  private pickDeepestSelection(selections: Set<SelectionBox>): SelectionBox {
+    let best: SelectionBox | null = null;
+    let minArea = Number.POSITIVE_INFINITY;
+    for (const s of selections) {
+      const r = s.getTileRect();
+      const area = r.w * r.h;
+      if (area < minArea) {
+        minArea = area;
+        best = s;
+      }
+    }
+    return best!;
+  }
+
+  private bumpOwnFacts(sel: SelectionBox, kind: string, delta: 1 | -1) {
+    sel.ownFacts[kind] = (sel.ownFacts[kind] ?? 0) + delta;
+    if (sel.ownFacts[kind] <= 0) delete sel.ownFacts[kind];
+  }
+
+  public registerPlacement(tx: number, ty: number, kind: string) {
+    const k = this.tkey(tx, ty);
+    const selections = this.tileSelIndex.get(k);
+    if (!selections || selections.size === 0) return;
+    const target = this.pickDeepestSelection(selections);
+    this.bumpOwnFacts(target, kind, +1);
+    this.recomputeAggFactsUpwards(target.id);
+  }
+
+  public registerRemoval(tx: number, ty: number, kind: string) {
+    const k = this.tkey(tx, ty);
+    const selections = this.tileSelIndex.get(k);
+    if (!selections || selections.size === 0) return;
+    const target = this.pickDeepestSelection(selections);
+    this.bumpOwnFacts(target, kind, -1);
+    this.recomputeAggFactsUpwards(target.id);
+  }
+
+  // Count existing content inside sel at finalize-time (so pre-finalize edits are captured)
+  /*private seedOwnFactsFromMap(sel: SelectionBox) {
+    const { x0, y0, x1, y1 } = sel.getTileRect();
+
+    // If you want to categorize tiles, do that here. For now: any non-empty ground tile = "platform"
+    let platform = 0;
+    for (let ty = y0; ty <= y1; ty++) {
+      for (let tx = x0; tx <= x1; tx++) {
+        const t = this.groundLayer?.getTileAt(tx, ty);
+        if (t && t.index !== -1) platform++;
+      }
+    }
+
+    // You can add other layers/kinds here (e.g., enemies) similarly.
+
+    sel.ownFacts = {};
+    if (platform > 0) sel.ownFacts["platform"] = platform;
+  }*/
+
+  // === Snap-shot the current world state inside a selection (tile coords) ===
+  private scanSelectionFacts(sel: SelectionBox): FactCounts {
+    const { x0, y0, x1, y1 } = sel.getTileRect();
+    const facts: FactCounts = {};
+    const bump = (k: string, n = 1) => (facts[k] = (facts[k] ?? 0) + n);
+
+    // Count ground tiles (treat any non-empty as "platform")
+    if (this.groundLayer) {
+      for (let ty = y0; ty <= y1; ty++) {
+        for (let tx = x0; tx <= x1; tx++) {
+          const t = this.groundLayer.getTileAt(tx, ty);
+          if (t && t.index !== -1) bump("platform");
+        }
+      }
+    }
+
+    // Count collectables (optional)
+    if (this.collectablesLayer) {
+      for (let ty = y0; ty <= y1; ty++) {
+        for (let tx = x0; tx <= x1; tx++) {
+          const t = this.collectablesLayer.getTileAt(tx, ty);
+          if (t && t.index !== -1) bump("collectable");
+        }
+      }
+    }
+
+    // Count enemies by tile position (enemy.x/y are world pixels)
+    if (this.enemies?.length) {
+      for (const e of this.enemies) {
+        if (!e || !e.active) continue;
+        const tx = Math.floor(e.x / this.TILE_SIZE);
+        const ty = Math.floor(e.y / this.TILE_SIZE);
+        if (tx >= x0 && tx <= x1 && ty >= y0 && ty <= y1) bump("enemy");
+      }
+    }
+
+    // strip zeros (just in case)
+    for (const [k, v] of Object.entries(facts)) if (v <= 0) delete facts[k];
+    return facts;
+  }
+
+  // Apply a fresh snapshot to a selection and reset its aggregates to match
+  private snapshotSelection(sel: SelectionBox) {
+    const facts = this.scanSelectionFacts(sel); // you already added scanSelectionFacts
+    sel.ownFacts = facts;
+    sel.aggFacts = { ...facts };
+  }
+
+  private describeFacts(facts: Record<string, number>): string {
+    const parts: string[] = [];
+    const plural = (n: number, s: string, p: string) => (n === 1 ? s : p);
+
+    if (facts.platform)
+      parts.push(
+        `${facts.platform} ${plural(facts.platform, "platform", "platforms")}`,
+      );
+    if (facts.collectable)
+      parts.push(
+        `${facts.collectable} ${plural(facts.collectable, "collectable", "collectables")}`,
+      );
+    if (facts.enemy)
+      parts.push(`${facts.enemy} ${plural(facts.enemy, "enemy", "enemies")}`);
+
+    return parts.length
+      ? `Inside this selection: ${parts.join(", ")}.`
+      : `No notable objects inside this selection.`;
+  }
 
   constructor() {
     super({ key: "editorScene" });
@@ -235,13 +445,6 @@ export class EditorScene extends Phaser.Scene {
     if (this.input.mouse) {
       this.input.mouse.disableContextMenu();
     }
-
-    // scrolling + tile placement
-    // How to use it is to first press e which turns on the edit mode,
-    // then you can use the number keys to select a tile to place, 2-5
-    // you can also right click to delete a tile in edit mode.
-    // you can move the3 camera still by dragging the mouse around when in edit mode.
-    // make sure to not be moving the mouse too fast or it will not register and not place the tile.
 
     //UI Scene setup
     this.scene.launch("UIScene");
@@ -460,9 +663,7 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
-  private async sendToGemini(prompt: string): Promise<string> {
-    return await sendUserPrompt(prompt);
-  }
+  // removed: sendToGemini (unused)
 
   // Removed showChatboxAt from EditorScene
 
@@ -534,9 +735,27 @@ export class EditorScene extends Phaser.Scene {
       0,
       layer.tilemap.tilesets[0].total - 1,
     );
-    tileIndex = tileIndex === 0 ? -1 : tileIndex; // Allow -1 for erasing tiles
-    console.log(`Placing tile at (${x}, ${y}) with index ${tileIndex}`);
+    tileIndex = tileIndex === 0 ? -1 : tileIndex; // 0 -> empty
+
+    const prev = layer.getTileAt(x, y);
+    const prevIndex = prev ? prev.index : -1;
+
     layer.putTileAt(tileIndex, x, y);
+
+    const kind = "platform"; // use other kinds for other layers/types if you want
+
+    if (prevIndex !== -1 && tileIndex === -1) {
+      this.registerRemoval(x, y, kind);
+    } else if (prevIndex === -1 && tileIndex !== -1) {
+      this.registerPlacement(x, y, kind);
+    } else if (
+      prevIndex !== -1 &&
+      tileIndex !== -1 &&
+      prevIndex !== tileIndex
+    ) {
+      this.registerRemoval(x, y, kind);
+      this.registerPlacement(x, y, kind);
+    }
   }
 
   update() {
@@ -638,24 +857,14 @@ export class EditorScene extends Phaser.Scene {
           player.setVelocity(0, 0);
         }
       }
-      // update the play button's position to the camera
-      if (this.playButton) {
-        const cam = this.cameras.main;
-        this.playButton.x = cam.worldView.x + cam.worldView.width - 550;
-        this.playButton.y = cam.worldView.y + 250;
-      }
-      // No grid/camera/block placement/editing in play mode
+      // removed: playButton reposition (unused)
       return;
     }
 
     // Editor mode: normal controls
     this.drawGrid();
     this.cameraMotion();
-    if (this.playButton) {
-      const cam = this.cameras.main;
-      this.playButton.x = cam.worldView.x + cam.worldView.width - 550;
-      this.playButton.y = cam.worldView.y + 250;
-    }
+    // removed: playButton reposition (unused)
 
     // Continuous Block Placement
     if (this.isPlacing) {
@@ -783,50 +992,7 @@ export class EditorScene extends Phaser.Scene {
 
     // Begin the selection
     this.isSelecting = true;
-    /*
-    if (!this.activeBox) {
-      // Checking Overlapping
-      const candidate = new Phaser.Geom.Rectangle(x, y, 1, 1);
-      let overlap = false;
-      for (const box of this.selectionBoxes) {
-        const bound = box.getBounds(); // MUST be tile-space rectangle
-        if (Phaser.Geom.Intersects.RectangleToRectangle(candidate, bound)) {
-          console.log("Cannot create box here — overlap detected");
-          overlap = true;
-          break;
-        }
-      }
-      // If overlap does occur, do not make a box
-      if (overlap) {
-        console.log("Cannot create box there!! Overlap detected!!");
-        this.isSelecting = false;
-        return;
-      } else {
-        // If overlap does not occur, do make a box
-        console.log("Made a new box!");
-        this.currentZLevel = 1;
-        this.activeBox = new SelectionBox(
-          this,
-          this.selectionStart,
-          this.selectionEnd,
-          this.currentZLevel,
-          this.groundLayer,
-          (box) => {
-            // When the tab is clicked, make this box active and update chat context
-            this.selectBox(box);
-          },
-        );
-      }
-    } else {
-      // Continue working with the existing active box
-      this.selectionStart.set(x, y);
-      this.selectionEnd.set(x, y);
-      this.activeBox.updateEnd(this.selectionEnd);
-    }
-      this.activeBox.updateStart(this.selectionStart);
-      this.activeBox.updateEnd(this.selectionEnd);
-    }
-    */
+
     // Checking Overlapping
     const candidate = new Phaser.Geom.Rectangle(x, y, 1, 1);
     let overlap = false;
@@ -869,12 +1035,11 @@ export class EditorScene extends Phaser.Scene {
           this.selectionEnd,
           this.currentZLevel,
           this.groundLayer,
-          (box) => {
-            this.selectBox(box);
-          },
+          (box) => this.selectBox(box), // onSelect
+          (box) => this.onFinalizeBox(box), // <-- onFinalize (NEW)
         );
-        // Immediately make this new box active (visual + chat)
-        this.selectBox(this.activeBox);
+        // Keep using selectionBoxes for your UI, but also index it by id for nesting/facts
+        this.allSelections.set(this.activeBox.id, this.activeBox);
       } else {
         // If overlap does not occur, continue working with the existing active box
         this.selectionStart.set(x, y);
@@ -934,44 +1099,36 @@ export class EditorScene extends Phaser.Scene {
     const eX = Math.max(this.selectionStart.x, this.selectionEnd.x);
     const eY = Math.max(this.selectionStart.y, this.selectionEnd.y);
 
-    // Finalize the box
+    // Finalize geometry of the box (but not the box itself; N will finalize)
     this.activeBox.updateEnd(this.selectionEnd);
     this.activeBox.copyTiles();
+
     // Swap chatbox context to this selection box
     setActiveSelectionBox(this.activeBox);
 
     // Make visuals reflect the selection
     this.selectBox(this.activeBox);
 
-    // Add to permanent list
+    // Add to permanent list (guard against duplicates)
     if (!this.selectionBoxes.includes(this.activeBox)) {
       this.selectionBoxes.push(this.activeBox);
     }
 
-    // These define the height and width of the selection box
+    // === NEW: snapshot what's currently inside the selection and describe it
+    // (This works regardless of inner/outer selections.)
+    this.snapshotSelection(this.activeBox); // populates ownFacts/aggFacts from a fresh scan
+    const factsSummary = this.describeFacts(this.activeBox.ownFacts);
+
+    // Size and summary
     const selectionWidth = eX - sX + 1;
     const selectionHeight = eY - sY + 1;
 
-    // Helper to convert any global (x, y) to selection-local coordinates
-    const toSelectionCoordinates = (x: number, y: number) => {
-      return {
-        x: x - sX,
-        y: eY - y,
-      };
-    };
-
     let msg: string;
-
     if (sX === eX && sY === eY) {
-      const { x: localX, y: localY } = toSelectionCoordinates(sX, sY);
-      msg = `User has selected a single tile at (${localX}, ${localY}) relative to the bottom-left of the selection box.`;
+      // Single-tile selection: bottom-left relative coords are (0,0)
+      msg = `User selected a single tile at (0, 0) relative to the bottom-left of the selection box. ${factsSummary}`;
     } else {
-      msg =
-        `User has selected a rectangular region that is this size: ${selectionWidth}x${selectionHeight}. Here are the global coordinates for the selection box: [${sX}, ${sY}] to [${eX}, ${eY}].` +
-        `There are no notable points of interest in this selection` +
-        `Be sure to re-explain what is in the selection box. If there are objects in the selection, specify the characteristics of the object. ` +
-        `If no objects are inside the selection, then do not mention anything else.`;
-      console.log(msg);
+      msg = `User selected a ${selectionWidth}x${selectionHeight} region with global coords [${sX}, ${sY}] to [${eX}, ${eY}]. ${factsSummary}`;
     }
 
     // Send selection info to UIScene
@@ -1259,7 +1416,10 @@ export class EditorScene extends Phaser.Scene {
     if (!this.activeBox) return;
 
     // Push it to the array
-    this.selectionBoxes.push(this.activeBox);
+    if (!this.selectionBoxes.includes(this.activeBox)) {
+      this.selectionBoxes.push(this.activeBox);
+    }
+
     // mark it as finalized (permanent) so it can't be redrawn; it can still be dragged via its tab
     this.activeBox.finalize?.();
 
@@ -1269,21 +1429,32 @@ export class EditorScene extends Phaser.Scene {
   }
 
   // Helper to set a selection box as active and update visuals/chat
+  // Helper to set a selection box as active and update visuals/chat
   selectBox(box: SelectionBox | null) {
     if (!box) return;
-    // Deactivate all boxes we know about (selectionBoxes and any current activeBox)
-    for (const b of this.selectionBoxes) {
-      b.setActive?.(false);
-    }
-    if (this.activeBox) {
-      this.activeBox.setActive?.(false);
-    }
 
-    // activate the new box
+    // Deactivate others
+    for (const b of this.selectionBoxes) b.setActive?.(false);
+    if (this.activeBox) this.activeBox.setActive?.(false);
+
+    // Activate new box
     this.activeBox = box;
-    console.log("EditorScene.selectBox activating box", box.getBounds());
     box.setActive?.(true);
     setActiveSelectionBox(box);
+
+    // Re-scan facts for the newly active box and push a fresh description to UI
+    this.snapshotSelection(box); // <- scan tiles/enemies now
+    const factsSummary = this.describeFacts(box.ownFacts); // <- make human-readable text
+
+    const r = box.getTileRect();
+    const selectionWidth = r.w,
+      selectionHeight = r.h;
+    const msg = `Active selection is ${selectionWidth}x${selectionHeight} at [${r.x0}, ${r.y0}]-[${r.x1}, ${r.y1}]. ${factsSummary}`;
+
+    const uiScene = this.scene.get("UIScene") as UIScene;
+    if (uiScene && typeof uiScene.handleSelectionInfo === "function") {
+      uiScene.handleSelectionInfo(msg);
+    }
   }
 
   // Match Highlight Color with Z-Level

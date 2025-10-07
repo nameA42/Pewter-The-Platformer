@@ -32,9 +32,25 @@ export class SelectionBox {
   private _dragPointerOffsetX?: number;
   private _dragPointerOffsetY?: number;
   private _dragStartHandler?: (pointer: Phaser.Input.Pointer, obj: any) => void;
-  private _dragHandler?: (pointer: Phaser.Input.Pointer, obj: any, dragX: number, dragY: number) => void;
+  private _dragHandler?: (
+    pointer: Phaser.Input.Pointer,
+    obj: any,
+    dragX: number,
+    dragY: number,
+  ) => void;
   private _pointerMoveHandler?: (pointer: Phaser.Input.Pointer) => void;
   private _pointerUpHandler?: (pointer: Phaser.Input.Pointer) => void;
+
+  // --- NESTING + FACTS (add these fields) ---
+  public id: string; // stable identity for graph ops
+  public parentId: string | null = null; // null = root
+  public childIds: Set<string> = new Set(); // direct children
+
+  // Facts: own facts (what this box directly placed/owns) and aggregated facts (own + descendants)
+  public ownFacts: Record<string, number> = {};
+  public aggFacts: Record<string, number> = {};
+
+  private onFinalize?: (box: SelectionBox) => void; // <-- add this line with the other private fields
 
   constructor(
     scene: Phaser.Scene,
@@ -43,6 +59,7 @@ export class SelectionBox {
     zLevel: number = 1,
     layer: Phaser.Tilemaps.TilemapLayer,
     onSelect?: (box: SelectionBox) => void,
+    onFinalize?: (box: SelectionBox) => void, // <-- NEW (optional)
   ) {
     this.scene = scene;
     this.start = start.clone();
@@ -50,19 +67,46 @@ export class SelectionBox {
     this.zLevel = zLevel;
     this.layer = layer;
 
+    // simple stable-ish id (good enough for editor sessions)
+    this.id = `sel_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`;
+
     this.graphics = scene.add.graphics();
     this.graphics.setDepth(100);
     this.redraw();
 
-    // Initialize localContext with its own chatHistory
     this.localContext = { chatHistory: [] };
     this.onSelect = onSelect;
-    // create tab after initial draw
+    this.onFinalize = onFinalize; // <-- capture hook
+
     this.createTab();
   }
 
   getZLevel(): number {
     return this.zLevel;
+  }
+
+  /** Inclusive tile rect info (x0..x1, y0..y1) + width/height in tiles */
+  public getTileRect() {
+    const x0 = Math.min(this.start.x, this.end.x);
+    const y0 = Math.min(this.start.y, this.end.y);
+    const x1 = Math.max(this.start.x, this.end.x);
+    const y1 = Math.max(this.start.y, this.end.y);
+    const w = x1 - x0 + 1;
+    const h = y1 - y0 + 1;
+    return { x0, y0, x1, y1, w, h };
+  }
+
+  /** True if this selection fully contains the other selection (inclusive edges) */
+  public containsBox(other: SelectionBox): boolean {
+    const a = this.getTileRect();
+    const b = other.getTileRect();
+    return b.x0 >= a.x0 && b.y0 >= a.y0 && b.x1 <= a.x1 && b.y1 <= a.y1;
+  }
+
+  /** True if this selection covers a specific tile (tx, ty) */
+  public coversTile(tx: number, ty: number): boolean {
+    const r = this.getTileRect();
+    return tx >= r.x0 && tx <= r.x1 && ty >= r.y0 && ty <= r.y1;
   }
 
   updateStart(start: Phaser.Math.Vector2) {
@@ -103,8 +147,8 @@ export class SelectionBox {
     );
 
     // Draw dashed border
-  this.graphics.lineStyle(2, color, 1);
-  this.graphics.beginPath();
+    this.graphics.lineStyle(2, color, 1);
+    this.graphics.beginPath();
 
     const width = endX - startX + 1;
     const height = endY - startY + 1;
@@ -180,15 +224,21 @@ export class SelectionBox {
     const initialFill = this.isActive
       ? 0x127803
       : this.isFinalized
-      ? 0x2b2b2b
-      : 0x2b6bff; // bright blue for temporary non-selected box
-    const initialStroke = this.isActive ? 0x0f3800 : this.isFinalized ? 0x111111 : 0x123a66;
+        ? 0x2b2b2b
+        : 0x2b6bff; // bright blue for temporary non-selected box
+    const initialStroke = this.isActive
+      ? 0x0f3800
+      : this.isFinalized
+        ? 0x111111
+        : 0x123a66;
 
-    const bg = this.scene
-      .add.rectangle(0, 0, w, h, initialFill)
+    const bg = this.scene.add
+      .rectangle(0, 0, w, h, initialFill)
       .setOrigin(0, 0.5);
     bg.setStrokeStyle(1, initialStroke);
-    const txt = this.scene.add.text(6, 0, `Box`, { fontSize: '10px', color: '#ffffff' }).setOrigin(0, 0.5);
+    const txt = this.scene.add
+      .text(6, 0, `Box`, { fontSize: "10px", color: "#ffffff" })
+      .setOrigin(0, 0.5);
 
     const container = this.scene.add.container(worldX, worldY - 10, [bg, txt]);
     container.setDepth(1001);
@@ -200,18 +250,26 @@ export class SelectionBox {
 
     // Make interactive on the background rectangle
     bg.setInteractive({ useHandCursor: true });
-    bg.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: any) => {
-      // Prevent global pointer handlers (like EditorScene startSelection)
-      // from also reacting to this click.
-      try {
-        if (event && typeof event.stopPropagation === 'function') {
-          event.stopPropagation();
+    bg.on(
+      "pointerdown",
+      (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: any,
+      ) => {
+        // Prevent global pointer handlers (like EditorScene startSelection)
+        // from also reacting to this click.
+        try {
+          if (event && typeof event.stopPropagation === "function") {
+            event.stopPropagation();
+          }
+        } catch (e) {
+          // ignore
         }
-      } catch (e) {
-        // ignore
-      }
-      if (this.onSelect) this.onSelect(this);
-    });
+        if (this.onSelect) this.onSelect(this);
+      },
+    );
 
     // Implement pointer-driven drag so the box follows the mouse without snapping
     try {
@@ -220,8 +278,13 @@ export class SelectionBox {
       const pointerMove = (pointer: Phaser.Input.Pointer) => {
         if (!dragging) return;
         if (!this._dragInitialStart || !this._dragInitialEnd) return;
-        const cam = (this.scene.cameras && this.scene.cameras.main) ? this.scene.cameras.main : null;
-        const world = cam ? cam.getWorldPoint(pointer.x, pointer.y) : { x: pointer.worldX, y: pointer.worldY };
+        const cam =
+          this.scene.cameras && this.scene.cameras.main
+            ? this.scene.cameras.main
+            : null;
+        const world = cam
+          ? cam.getWorldPoint(pointer.x, pointer.y)
+          : { x: pointer.worldX, y: pointer.worldY };
         const currentTileX = Math.floor(world.x / 16);
         const currentTileY = Math.floor(world.y / 16);
 
@@ -230,34 +293,54 @@ export class SelectionBox {
         const tileDX = currentTileX - startTileX;
         const tileDY = currentTileY - startTileY;
 
-        const newStart = this._dragInitialStart.clone().add(new Phaser.Math.Vector2(tileDX, tileDY));
-        const newEnd = this._dragInitialEnd.clone().add(new Phaser.Math.Vector2(tileDX, tileDY));
+        const newStart = this._dragInitialStart
+          .clone()
+          .add(new Phaser.Math.Vector2(tileDX, tileDY));
+        const newEnd = this._dragInitialEnd
+          .clone()
+          .add(new Phaser.Math.Vector2(tileDX, tileDY));
 
-        const boxWidth = Math.max(newEnd.x, newStart.x) - Math.min(newStart.x, newEnd.x) + 1;
-        const boxHeight = Math.max(newEnd.y, newStart.y) - Math.min(newStart.y, newEnd.y) + 1;
+        const boxWidth =
+          Math.max(newEnd.x, newStart.x) - Math.min(newStart.x, newEnd.x) + 1;
+        const boxHeight =
+          Math.max(newEnd.y, newStart.y) - Math.min(newStart.y, newEnd.y) + 1;
 
         let newStartX = newStart.x;
         let newStartY = newStart.y;
 
         const worldMinX = 0;
         const worldMinY = 0;
-        const worldMaxX = cam ? Math.floor((cam.worldView.width + cam.worldView.x) / 16) : Number.MAX_SAFE_INTEGER;
-        const worldMaxY = cam ? Math.floor((cam.worldView.height + cam.worldView.y) / 16) : Number.MAX_SAFE_INTEGER;
+        const worldMaxX = cam
+          ? Math.floor((cam.worldView.width + cam.worldView.x) / 16)
+          : Number.MAX_SAFE_INTEGER;
+        const worldMaxY = cam
+          ? Math.floor((cam.worldView.height + cam.worldView.y) / 16)
+          : Number.MAX_SAFE_INTEGER;
 
         if (newStartX < worldMinX) newStartX = worldMinX;
         if (newStartY < worldMinY) newStartY = worldMinY;
-        if (newStartX + boxWidth - 1 > worldMaxX) newStartX = worldMaxX - (boxWidth - 1);
-        if (newStartY + boxHeight - 1 > worldMaxY) newStartY = worldMaxY - (boxHeight - 1);
+        if (newStartX + boxWidth - 1 > worldMaxX)
+          newStartX = worldMaxX - (boxWidth - 1);
+        if (newStartY + boxHeight - 1 > worldMaxY)
+          newStartY = worldMaxY - (boxHeight - 1);
 
         const candidateStart = new Phaser.Math.Vector2(newStartX, newStartY);
-        const candidateEnd = new Phaser.Math.Vector2(newStartX + boxWidth - 1, newStartY + boxHeight - 1);
+        const candidateEnd = new Phaser.Math.Vector2(
+          newStartX + boxWidth - 1,
+          newStartY + boxHeight - 1,
+        );
 
         // Prevent intersection with other boxes on same z-level
         try {
-          const editor = (this.scene as any) as any;
+          const editor = this.scene as any as any;
           const boxes: any[] = editor.selectionBoxes || [];
           let intersects = false;
-          const candRect = new Phaser.Geom.Rectangle(candidateStart.x, candidateStart.y, candidateEnd.x - candidateStart.x, candidateEnd.y - candidateStart.y);
+          const candRect = new Phaser.Geom.Rectangle(
+            candidateStart.x,
+            candidateStart.y,
+            candidateEnd.x - candidateStart.x,
+            candidateEnd.y - candidateStart.y,
+          );
           for (const b of boxes) {
             if (b === this) continue;
             if (b.getZLevel && b.getZLevel() === this.zLevel) {
@@ -283,38 +366,56 @@ export class SelectionBox {
       const pointerUp = (_pointer: Phaser.Input.Pointer) => {
         dragging = false;
         try {
-          if (this._pointerMoveHandler) this.scene.input.off('pointermove', this._pointerMoveHandler);
+          if (this._pointerMoveHandler)
+            this.scene.input.off("pointermove", this._pointerMoveHandler);
         } catch (e) {}
         try {
-          if (this._pointerUpHandler) this.scene.input.off('pointerup', this._pointerUpHandler);
+          if (this._pointerUpHandler)
+            this.scene.input.off("pointerup", this._pointerUpHandler);
         } catch (e) {}
       };
 
       // Start drag on pointerdown on the tab if finalized
-      bg.on('pointerdown', (pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: any) => {
-        try { if (event && typeof event.stopPropagation === 'function') event.stopPropagation(); } catch (e) {}
-        if (this.onSelect) this.onSelect(this);
-        if (!this.isFinalized) return;
-        // prepare drag
-        this._dragInitialStart = this.start.clone();
-        this._dragInitialEnd = this.end.clone();
-        const cam = (this.scene.cameras && this.scene.cameras.main) ? this.scene.cameras.main : null;
-        const world = cam ? cam.getWorldPoint(pointer.x, pointer.y) : { x: pointer.worldX, y: pointer.worldY };
-  const pTileX = Math.floor(world.x / 16);
-  const pTileY = Math.floor(world.y / 16);
-  // store pointer-start tile so subsequent moves compute a delta from this origin
-  this._dragPointerTileX = pTileX;
-  this._dragPointerTileY = pTileY;
-        dragging = true;
-        this._pointerMoveHandler = pointerMove;
-        this._pointerUpHandler = pointerUp;
-        this.scene.input.on('pointermove', this._pointerMoveHandler);
-        this.scene.input.on('pointerup', this._pointerUpHandler);
-      });
+      bg.on(
+        "pointerdown",
+        (
+          pointer: Phaser.Input.Pointer,
+          _lx: number,
+          _ly: number,
+          event: any,
+        ) => {
+          try {
+            if (event && typeof event.stopPropagation === "function")
+              event.stopPropagation();
+          } catch (e) {}
+          if (this.onSelect) this.onSelect(this);
+          if (!this.isFinalized) return;
+          // prepare drag
+          this._dragInitialStart = this.start.clone();
+          this._dragInitialEnd = this.end.clone();
+          const cam =
+            this.scene.cameras && this.scene.cameras.main
+              ? this.scene.cameras.main
+              : null;
+          const world = cam
+            ? cam.getWorldPoint(pointer.x, pointer.y)
+            : { x: pointer.worldX, y: pointer.worldY };
+          const pTileX = Math.floor(world.x / 16);
+          const pTileY = Math.floor(world.y / 16);
+          // store pointer-start tile so subsequent moves compute a delta from this origin
+          this._dragPointerTileX = pTileX;
+          this._dragPointerTileY = pTileY;
+          dragging = true;
+          this._pointerMoveHandler = pointerMove;
+          this._pointerUpHandler = pointerUp;
+          this.scene.input.on("pointermove", this._pointerMoveHandler);
+          this.scene.input.on("pointerup", this._pointerUpHandler);
+        },
+      );
     } catch (e) {
       // ignore if input system not available
     }
-    bg.on('pointerover', () => {
+    bg.on("pointerover", () => {
       if (!this.isActive) {
         if (this.isFinalized) {
           bg.setFillStyle(0x3d3d3d);
@@ -324,7 +425,7 @@ export class SelectionBox {
         }
       }
     });
-    bg.on('pointerout', () => {
+    bg.on("pointerout", () => {
       if (!this.isActive) {
         if (this.isFinalized) {
           bg.setFillStyle(0x2b2b2b);
@@ -354,7 +455,7 @@ export class SelectionBox {
     if (active) {
       this.tabBg.setFillStyle(0x127803); // green when active
       this.tabBg.setStrokeStyle(1, 0x0f3800);
-      this.tabText.setStyle({ color: '#ffffff' });
+      this.tabText.setStyle({ color: "#ffffff" });
     } else {
       // Not active: if temporary (not finalized) use blue glowing style, otherwise default gray
       if (!this.isFinalized) {
@@ -364,7 +465,7 @@ export class SelectionBox {
         this.tabBg.setFillStyle(0x2b2b2b);
         this.tabBg.setStrokeStyle(1, 0x111111);
       }
-      this.tabText.setStyle({ color: '#ffffff' });
+      this.tabText.setStyle({ color: "#ffffff" });
     }
   }
 
@@ -440,26 +541,31 @@ export class SelectionBox {
       this.tabContainer = null;
     }
     // Remove drag listeners
-    if (this._dragStartHandler) this.scene.input.off('dragstart', this._dragStartHandler);
-    if (this._dragHandler) this.scene.input.off('drag', this._dragHandler);
+    if (this._dragStartHandler)
+      this.scene.input.off("dragstart", this._dragStartHandler);
+    if (this._dragHandler) this.scene.input.off("drag", this._dragHandler);
   }
 
   // Mark this selection as finalized (permanent). Keeps a tab for dragging but
   // prevents further resizing via updateStart/updateEnd.
   public finalize() {
     this.isFinalized = true;
-    // Update visuals immediately so dashed -> solid border swap happens
     this.redraw();
-    // Update tab visuals to a finalized (gray) style
+
     if (this.tabBg) {
       this.tabBg.setFillStyle(0x2b2b2b);
       this.tabBg.setStrokeStyle(1, 0x111111);
     }
     if (this.tabText) {
-      this.tabText.setStyle({ color: '#ffffff' });
+      this.tabText.setStyle({ color: "#ffffff" });
     }
-    // ensure tab is activeable for dragging
-    // nothing else needed for now
+
+    // NEW: notify editor so it can index & link nesting
+    if (this.onFinalize) {
+      try {
+        this.onFinalize(this);
+      } catch {}
+    }
   }
 
   // Chat history management for this selection box

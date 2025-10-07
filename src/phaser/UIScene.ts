@@ -138,6 +138,32 @@ export class UIScene extends Phaser.Scene {
     const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
     const log = this.chatBox.getChildByID("chat-log") as HTMLDivElement;
 
+    // Blur input when clicking/tapping outside the chatbox
+    try {
+      const rootNode = (this.chatBox.node as HTMLElement) || null;
+      const onPointerDown = (e: PointerEvent) => {
+        try {
+          const target = e.target as Node | null;
+          if (!rootNode || !target) return;
+          if (!rootNode.contains(target)) {
+            input.blur();
+          }
+        } catch (err) {
+          // ignore
+        }
+      };
+      window.addEventListener("pointerdown", onPointerDown);
+
+      // clean up when scene shuts down to avoid leaks
+      this.events.on("shutdown", () => {
+        try {
+          window.removeEventListener("pointerdown", onPointerDown);
+        } catch (e) {}
+      });
+    } catch (e) {
+      // ignore if DOM not available
+    }
+
     // Listen for changes to the active selection so we always render only the
     // currently-active selection box history.
     if (

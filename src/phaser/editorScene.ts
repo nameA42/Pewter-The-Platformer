@@ -84,6 +84,8 @@ export class EditorScene extends Phaser.Scene {
   private keyZ!: Phaser.Input.Keyboard.Key;
   private keyB!: Phaser.Input.Keyboard.Key;
   private keyCtrl!: Phaser.Input.Keyboard.Key;
+  private keyDelete!: Phaser.Input.Keyboard.Key;
+
 
   private setPointerOverUI = (v: boolean) =>
     this.registry.set("uiPointerOver", v);
@@ -281,23 +283,19 @@ export class EditorScene extends Phaser.Scene {
       typeof window.addEventListener === "function"
     ) {
       window.addEventListener("toolCalled", (_ev: any) => {
-        console.log(
-          "toolCalled event received; finalizing active box if present",
-        );
+        console.log("toolCalled event received; finalizing active box if present");
         if (this.activeBox) {
+          // Mark the box as finalized (permanent)
           this.activeBox.finalize?.();
+
+          // Ensure it's in the permanent list
           if (!this.selectionBoxes.includes(this.activeBox)) {
             this.selectionBoxes.push(this.activeBox);
           }
-          // ensure visuals update
-          this.activeBox.setActive?.(false);
-          this.activeBox = null;
-          // Clear chat context
-          try {
-            setActiveSelectionBox(null);
-          } catch (e) {
-            // ignore
-          }
+
+          // Keep the box active/selected so the UI and chat context remain tied to it.
+          // Do NOT clear this.activeBox or call setActiveSelectionBox(null) here.
+          this.activeBox.setActive?.(true);
         }
       });
     }
@@ -319,10 +317,8 @@ export class EditorScene extends Phaser.Scene {
       this.keyN = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.N);
       this.keyZ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
       this.keyB = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B);
-
-      this.keyCtrl = this.input.keyboard.addKey(
-        Phaser.Input.Keyboard.KeyCodes.CTRL,
-      );
+      this.keyDelete = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.DELETE);
+      this.keyCtrl = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.CTRL);
     }
 
     // scrolling
@@ -421,6 +417,26 @@ export class EditorScene extends Phaser.Scene {
           this.groundLayer.getTileAtWorldXY(pointer.worldX, pointer.worldY)
             ?.index || 0;
       }
+    });
+    
+    this.keyDelete.on("down", () => {
+      if (!this.activeBox) return;
+      // remove from permanent list if present
+      const idx = this.selectionBoxes.indexOf(this.activeBox);
+      if (idx !== -1) {
+        this.selectionBoxes.splice(idx, 1);
+      }
+      // destroy visuals and resources
+      this.activeBox.destroy?.();
+      // clear active reference and notify any external context
+      this.activeBox = null;
+      try {
+        // call global helper if present (legacy code referenced this earlier)
+        (window as any).setActiveSelectionBox?.(null);
+      } catch (e) {
+        // ignore
+      }
+      console.log("Active selection box deleted");
     });
     //TODO: handle UI -> Editor communication
 

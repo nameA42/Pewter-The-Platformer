@@ -270,8 +270,24 @@ export class WorldFacts {
   private enemyFacts: EnemyFact[] = [];
   private scene: EditorScene;
 
-  constructor(scene: EditorScene) {
+  private width: number;
+  private height: number;
+
+  private startXCoord: number;
+  private startYCoord: number;
+
+  constructor(
+    scene: EditorScene,
+    startXCoord: number,
+    startYCoord: number,
+    endXCoord: number,
+    endYCoord: number,
+  ) {
     this.scene = scene;
+    this.startXCoord = startXCoord;
+    this.startYCoord = startYCoord;
+    this.width = endXCoord - startXCoord;
+    this.height = endYCoord - startYCoord;
     this.refresh();
   }
 
@@ -294,8 +310,8 @@ export class WorldFacts {
       const ys: number[] = [];
       const types: number[] = [];
 
-      for (let x = 0; x < collectablesLayer.width; x++) {
-        for (let y = 0; y < collectablesLayer.height; y++) {
+      for (let x = this.startXCoord; x < this.width; x++) {
+        for (let y = this.startYCoord; y < this.height; y++) {
           const tile = collectablesLayer.getTileAt(x, y);
           if (tile) {
             xs.push(x);
@@ -320,48 +336,51 @@ export class WorldFacts {
     const groundLayer = scene.map.getLayer("Ground_Layer")?.tilemapLayer;
     if (!groundLayer) return structures;
 
-    const width = groundLayer.width;
-    const height = groundLayer.height;
+    const xEnd = this.startXCoord + this.width;
+    const yEnd = this.startYCoord + this.height;
 
     const hasTile = (x: number, y: number) =>
-      x >= 0 &&
-      x < width &&
-      y >= 0 &&
-      y < height &&
+      x >= this.startXCoord &&
+      x < xEnd &&
+      y >= this.startYCoord &&
+      y < yEnd &&
       !!groundLayer.getTileAt(x, y);
 
-    // --- topmost tile per column (min y) or -1
-    const columnTop: number[] = new Array(width).fill(-1);
-    for (let x = 0; x < width; x++) {
-      let t = -1;
-      for (let y = 0; y < height; y++) {
+    // --- topmost (smallest y) and bottommost (largest y) tile per column
+    const columnTop: Record<number, number> = {};
+    const columnBottom: Record<number, number> = {};
+
+    for (let x = this.startXCoord; x < xEnd; x++) {
+      let topY = -1;
+      let bottomY = -1;
+
+      // Find topmost
+      for (let y = this.startYCoord; y < yEnd; y++) {
         if (hasTile(x, y)) {
-          t = y;
+          topY = y;
           break;
         }
       }
-      columnTop[x] = t;
-    }
 
-    // --- bottommost tile per column (max y) or -1
-    const columnBottoms: number[] = new Array(width).fill(-1);
-    for (let x = 0; x < width; x++) {
-      let b = -1;
-      for (let y = height - 1; y >= 0; y--) {
+      // Find bottommost
+      for (let y = yEnd - 1; y >= this.startYCoord; y--) {
         if (hasTile(x, y)) {
-          b = y;
+          bottomY = y;
           break;
         }
       }
-      columnBottoms[x] = b;
+
+      columnTop[x] = topY;
+      columnBottom[x] = bottomY;
     }
 
-    // --- base ground Y = mode of columnBottoms (ignore -1)
+    // --- Determine base ground level (mode of bottoms)
     const freq = new Map<number, number>();
-    for (const b of columnBottoms) {
-      if (b === -1) continue;
-      freq.set(b, (freq.get(b) ?? 0) + 1);
+    for (let x = this.startXCoord; x < xEnd; x++) {
+      const b = columnBottom[x];
+      if (b !== -1) freq.set(b, (freq.get(b) ?? 0) + 1);
     }
+
     let baseGroundY: number | null = null;
     let maxCount = 0;
     for (const [y, count] of freq.entries()) {
@@ -371,96 +390,89 @@ export class WorldFacts {
       }
     }
 
-    // --- 1) Build flats/platforms by scanning topmost (break when top changes)
+    // --- Identify flat/platform segments
     let runStart: number | null = null;
     let runTop: number | null = null;
 
-    function flushTopRun(endX: number) {
-      if (runStart === null) return;
+    const flushRun = (endX: number) => {
+      if (runStart === null || runTop === null) return;
       const x0 = runStart;
       const x1 = endX;
-
-      // if the run has no tiles at all (top = -1) -> skip here (pitfalls are handled below)
-      if (runTop === -1 || runTop === null) {
+      if (runTop === -1) {
         runStart = null;
         runTop = null;
         return;
       }
 
-      // Determine if any column in run is unsupported OR missing base ground
-      let isPlatform = false;
       const heights: number[] = [];
+      let isPlatform = false;
+
       for (let x = x0; x <= x1; x++) {
         const topY = columnTop[x];
         heights.push(topY);
+
         const belowY = topY + 1;
-        const supported =
-          topY !== -1 && (belowY >= height || hasTile(x, belowY));
+        const supported = topY !== -1 && hasTile(x, belowY);
         const baseMissing =
           baseGroundY !== null
-            ? columnBottoms[x] !== baseGroundY
-            : columnBottoms[x] === -1;
+            ? columnBottom[x] !== baseGroundY
+            : columnBottom[x] === -1;
+
         if (!supported || baseMissing) {
           isPlatform = true;
         }
       }
 
       if (isPlatform) {
-        // platform: provide per-column heights (cleaner output)
         structures.push(new StructureFact(x0, x1, "Platform", heights));
       } else {
-        // flat: report single height
         structures.push(new StructureFact(x0, x1, "Flat", runTop));
       }
 
       runStart = null;
       runTop = null;
-    }
+    };
 
-    for (let x = 0; x < width; x++) {
+    for (let x = this.startXCoord; x < xEnd; x++) {
       const top = columnTop[x];
       if (runStart === null) {
         runStart = x;
         runTop = top;
         continue;
       }
-      if (top === runTop) {
-        // continue
-        continue;
+      if (top !== runTop) {
+        flushRun(x - 1);
+        runStart = x;
+        runTop = top;
       }
-      // changed
-      flushTopRun(x - 1);
-      runStart = x;
-      runTop = top;
     }
-    // final flush
-    flushTopRun(width - 1);
+    flushRun(xEnd - 1);
 
-    // --- 2) Pitfalls: contiguous ranges where base ground is missing
-    // If we have a determined baseGroundY, consider columnBottoms[x] !== baseGroundY as pit.
-    // Otherwise, treat columns with no bottom (=== -1) as pit.
+    // --- Identify pitfalls
     let pitStart: number | null = null;
     const baseExists = baseGroundY !== null;
-    for (let x = 0; x < width; x++) {
+    for (let x = this.startXCoord; x < xEnd; x++) {
       const isPit = baseExists
-        ? columnBottoms[x] !== baseGroundY
-        : columnBottoms[x] === -1;
+        ? columnBottom[x] !== baseGroundY
+        : columnBottom[x] === -1;
+
       if (isPit) {
         if (pitStart === null) pitStart = x;
       } else {
         if (pitStart !== null) {
-          structures.push(new StructureFact(pitStart, x - 1, "Pitfall", -1));
+          structures.push(new StructureFact(pitStart, x - 1, "Pitfall"));
           pitStart = null;
         }
       }
     }
-    if (pitStart !== null)
-      structures.push(new StructureFact(pitStart, width - 1, "Pitfall", -1));
+    if (pitStart !== null) {
+      structures.push(new StructureFact(pitStart, xEnd - 1, "Pitfall"));
+    }
 
-    // Sort for deterministic output (optional)
-    structures.sort((a: any, b: any) => a.xStart - b.xStart);
+    // Sort deterministically
+    structures.sort((a, b) => a.xStart - b.xStart);
 
-    return structures.slice(0, -1);
+    return structures;
   }
 
   setFact(category: FactCategory, x?: number, y?: number, type?: string): void {
@@ -513,6 +525,8 @@ export class WorldFacts {
         break;
       }
     }
+
+    console.log(this.toString());
   }
 
   getFact(category: FactCategory): Fact[] {

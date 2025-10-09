@@ -86,7 +86,6 @@ export class EditorScene extends Phaser.Scene {
   private keyCtrl!: Phaser.Input.Keyboard.Key;
   private keyDelete!: Phaser.Input.Keyboard.Key;
 
-
   private setPointerOverUI = (v: boolean) =>
     this.registry.set("uiPointerOver", v);
 
@@ -160,8 +159,6 @@ export class EditorScene extends Phaser.Scene {
 
   create() {
     this.map = this.make.tilemap({ key: "defaultMap" });
-
-    this.worldFacts = new WorldFacts(this);
 
     console.log("Map loaded:", this.map);
     const tileset = this.map.addTilesetImage(
@@ -283,7 +280,9 @@ export class EditorScene extends Phaser.Scene {
       typeof window.addEventListener === "function"
     ) {
       window.addEventListener("toolCalled", (_ev: any) => {
-        console.log("toolCalled event received; finalizing active box if present");
+        console.log(
+          "toolCalled event received; finalizing active box if present",
+        );
         if (this.activeBox) {
           // Mark the box as finalized (permanent)
           this.activeBox.finalize?.();
@@ -317,8 +316,12 @@ export class EditorScene extends Phaser.Scene {
       this.keyN = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.N);
       this.keyZ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
       this.keyB = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B);
-      this.keyDelete = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.DELETE);
-      this.keyCtrl = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.CTRL);
+      this.keyDelete = this.input.keyboard!.addKey(
+        Phaser.Input.Keyboard.KeyCodes.DELETE,
+      );
+      this.keyCtrl = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.CTRL,
+      );
     }
 
     // scrolling
@@ -418,7 +421,7 @@ export class EditorScene extends Phaser.Scene {
             ?.index || 0;
       }
     });
-    
+
     this.keyDelete.on("down", () => {
       if (!this.activeBox) return;
       // remove from permanent list if present
@@ -439,6 +442,14 @@ export class EditorScene extends Phaser.Scene {
       console.log("Active selection box deleted");
     });
     //TODO: handle UI -> Editor communication
+
+    this.worldFacts = new WorldFacts(
+      this,
+      0,
+      0,
+      this.groundLayer.width / this.TILE_SIZE,
+      this.groundLayer.height / this.TILE_SIZE,
+    );
 
     this.worldFacts.refresh();
   }

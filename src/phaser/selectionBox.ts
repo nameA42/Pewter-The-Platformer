@@ -93,6 +93,7 @@ export class SelectionBox {
   setZLevel(zLevel: number) {
     this.zLevel = zLevel;
     this.redraw();
+    this.updateTabText();
   }
 
   private redraw() {
@@ -206,7 +207,7 @@ export class SelectionBox {
       .setOrigin(0, 0.5);
     bg.setStrokeStyle(1, initialStroke);
     const txt = this.scene.add
-      .text(6, 0, `Box `, { fontSize: "10px", color: "#ffffff" })
+      .text(6, 0, `Box L1`, { fontSize: "10px", color: "#ffffff" })
       .setOrigin(0, 0.5);
 
     const container = this.scene.add.container(worldX, worldY - 10, [bg, txt]);
@@ -405,6 +406,12 @@ export class SelectionBox {
     });
 
     this.tabContainer = container;
+  }
+
+  public updateTabText() {
+    if (this.tabText) {
+      this.tabText.setText(`Box L${this.zLevel}`);
+    }
   }
 
   public updateTabPosition() {

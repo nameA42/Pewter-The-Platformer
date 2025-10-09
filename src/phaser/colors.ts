@@ -21,23 +21,16 @@ export const Z_LEVEL_COLORS: number[] = [
   0xa52a2a, // Auburn
 
   // --- Bright & Secondary Variants ---
-  0xff4500, // Red Orange
-  0xff8c00, // Dark Orange
   0x00ffff, // Cyan
   0x40e0d0, // Turquoise
-  0x00bfff, // Capri
+  0x000080, // Navy
   0x008000, // Emerald
   0x00a000, // Dark Green
   0x8a2be2, // Blue Violet
   0xff7f50, // Coral
-  0xffd700, // Gold
-  0x000080, // Navy
-  0x007fff, // Azure
-  0x4d4dff, // Neon Blue
   0x993cf3, // Neon Purple
   0x7f00ff, // Violet
   0xff0080, // Bright Pink
   0x800080, // Purple
-  0xff69b4, // Hot Pink
   0xf000ff, // Alt Pink
 ];

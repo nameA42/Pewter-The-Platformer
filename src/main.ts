@@ -1,3 +1,5 @@
+// Import and run the selection box test for runtime console output
+import "./phaser/selectionBox.test.ts";
 import "./style.css";
 import { LoadingScene } from "./phaser/loadingScene.ts";
 import { EditorScene } from "./phaser/editorScene.ts";

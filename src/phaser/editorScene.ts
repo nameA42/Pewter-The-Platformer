@@ -105,6 +105,16 @@ export class EditorScene extends Phaser.Scene {
     super({ key: "editorScene" });
   }
 
+  // STEP 9: Collaborative Context Merging - Expose active box for chat system
+  private setupGlobalActiveBoxAccess(): void {
+    // Expose active selection box to the chat system
+    if (typeof window !== "undefined") {
+      (window as any).getActiveSelectionBox = () => {
+        return this.activeBox;
+      };
+    }
+  }
+
   preload() {
     this.load.setPath("phaserAssets/");
     //this.load.image("tilemap_tiles", "tilemap_packed.png");
@@ -159,8 +169,10 @@ export class EditorScene extends Phaser.Scene {
   }
 
   create() {
-    this.map = this.make.tilemap({ key: "defaultMap" });
+    // STEP 9: Setup global access for collaborative context
+    // this.setupGlobalActiveBoxAccess(); // Temporarily commented out to fix loading issue
 
+    this.map = this.make.tilemap({ key: "defaultMap" });
     this.worldFacts = new WorldFacts(this);
 
     console.log("Map loaded:", this.map);
@@ -283,7 +295,9 @@ export class EditorScene extends Phaser.Scene {
       typeof window.addEventListener === "function"
     ) {
       window.addEventListener("toolCalled", (_ev: any) => {
-        console.log("toolCalled event received; finalizing active box if present");
+        console.log(
+          "toolCalled event received; finalizing active box if present",
+        );
         if (this.activeBox) {
           // Mark the box as finalized (permanent)
           this.activeBox.finalize?.();
@@ -686,6 +700,16 @@ export class EditorScene extends Phaser.Scene {
       box.updateTabPosition?.();
     }
     this.activeBox?.updateTabPosition?.();
+
+    // STEP 5: Collaborative Context Merging - Update neighbor detection for all boxes
+    for (const box of this.selectionBoxes) {
+      if (box.updateNeighbors) {
+        box.updateNeighbors(this.selectionBoxes);
+      }
+    }
+    if (this.activeBox && this.activeBox.updateNeighbors) {
+      this.activeBox.updateNeighbors(this.selectionBoxes);
+    }
 
     if (Phaser.Input.Keyboard.JustDown(this.keyC) && this.keyCtrl.isDown) {
       this.copySelection();

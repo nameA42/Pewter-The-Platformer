@@ -1,5 +1,23 @@
 import Phaser from "phaser";
 
+// STEP 1: Collaborative Context Merging - Basic interfaces and ownership structure
+// Interface for collaborative context data
+interface BoxContextData {
+  value: any;
+  owner: string; // box id that owns this data
+  version: number;
+  lastModified: number;
+  canShare: boolean; // whether this data can be shared with neighbors
+}
+
+// Interface for box context with ownership tracking
+interface BoxContext {
+  id: string;
+  data: Map<string, BoxContextData>;
+  chatHistory: any[];
+  version: number;
+}
+
 export class SelectionBox {
   /**
    * Summarize the chat log into a single keyword using the InformationClass (which uses the LLM).
@@ -49,7 +67,7 @@ export class SelectionBox {
   private zLevel: number;
   public selectedTiles: number[][] = [];
   private layer: Phaser.Tilemaps.TilemapLayer;
-  public localContext: { chatHistory: any[] };
+  public localContext: BoxContext;
   public placedTiles: { tileIndex: number; x: number; y: number; layerName: string}[] = [];
   private tabContainer: Phaser.GameObjects.Container | null = null;
   private onSelect?: (box: SelectionBox) => void;
@@ -57,6 +75,11 @@ export class SelectionBox {
   private tabText: Phaser.GameObjects.Text | null = null;
   private isActive: boolean = false;
   private isFinalized: boolean = false;
+
+  // STEP 3: Collaborative Context Merging - Neighbor tracking
+  private neighbors: Set<SelectionBox> = new Set();
+  private lastNeighborCheck: number = 0;
+  private neighborCheckInterval: number = 500; // Check every 500ms
 
   // Drag helpers
   private _dragInitialStart?: Phaser.Math.Vector2;
@@ -92,8 +115,13 @@ export class SelectionBox {
     this.graphics.setDepth(100);
     this.redraw();
 
-  // Initialize localContext with its own chatHistory
-  this.localContext = { chatHistory: [] };
+    // Initialize localContext with proper structure
+    this.localContext = {
+      id: `box_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      data: new Map(),
+      chatHistory: [],
+      version: 1,
+    };
     this.onSelect = onSelect;
     // create tab after initial draw
     this.createTab();
@@ -113,6 +141,236 @@ export class SelectionBox {
       // ignore if module system differs; caller can create info manually
     }
     // themeIntent can be set later via setter
+  }
+
+  // STEP 2: Collaborative Context Merging - Basic data management methods
+
+  /**
+   * Set data in this box's context with ownership tracking
+   */
+  public setContextData(
+    key: string,
+    value: any,
+    canShare: boolean = false,
+  ): void {
+    const contextData: BoxContextData = {
+      value,
+      owner: this.localContext.id,
+      version: 1,
+      lastModified: Date.now(),
+      canShare,
+    };
+
+    this.localContext.data.set(key, contextData);
+    this.localContext.version++;
+  }
+
+  /**
+   * Get data from this box's context
+   */
+  public getContextData(key: string): any {
+    const contextData = this.localContext.data.get(key);
+    return contextData ? contextData.value : null;
+  }
+
+  /**
+   * Check if this box owns a specific piece of data
+   */
+  public ownsData(key: string): boolean {
+    const contextData = this.localContext.data.get(key);
+    return contextData ? contextData.owner === this.localContext.id : false;
+  }
+
+  /**
+   * Get all shareable data from this box
+   */
+  public getShareableData(): Map<string, BoxContextData> {
+    const shareableData = new Map<string, BoxContextData>();
+    this.localContext.data.forEach((data, key) => {
+      if (data.canShare) {
+        shareableData.set(key, data);
+      }
+    });
+    return shareableData;
+  }
+
+  // STEP 3: Collaborative Context Merging - Neighbor detection and management
+
+  /**
+   * Check if this box is touching another box (adjacent or overlapping)
+   */
+  public isTouching(other: SelectionBox): boolean {
+    if (other === this || other.getZLevel() !== this.zLevel) {
+      return false;
+    }
+
+    const myBounds = this.getBounds();
+    const otherBounds = other.getBounds();
+
+    // Check if boxes are adjacent (touching edges) or overlapping
+    const touching =
+      // Overlapping
+      Phaser.Geom.Intersects.RectangleToRectangle(myBounds, otherBounds) ||
+      // Adjacent horizontally
+      ((myBounds.right + 1 === otherBounds.left ||
+        otherBounds.right + 1 === myBounds.left) &&
+        !(
+          myBounds.bottom < otherBounds.top || otherBounds.bottom < myBounds.top
+        )) ||
+      // Adjacent vertically
+      ((myBounds.bottom + 1 === otherBounds.top ||
+        otherBounds.bottom + 1 === myBounds.top) &&
+        !(
+          myBounds.right < otherBounds.left || otherBounds.right < myBounds.left
+        ));
+
+    return touching;
+  }
+
+  /**
+   * Update neighbor list by checking all boxes in the scene
+   */
+  public updateNeighbors(allBoxes: SelectionBox[]): void {
+    const now = Date.now();
+    if (now - this.lastNeighborCheck < this.neighborCheckInterval) {
+      return; // Don't check too frequently
+    }
+
+    this.lastNeighborCheck = now;
+    const previousNeighbors = new Set(this.neighbors);
+    this.neighbors.clear();
+
+    // Find current neighbors
+    for (const box of allBoxes) {
+      if (this.isTouching(box)) {
+        this.neighbors.add(box);
+      }
+    }
+
+    // Notify about new neighbors
+    this.neighbors.forEach((neighbor) => {
+      if (!previousNeighbors.has(neighbor)) {
+        this.onNeighborAdded(neighbor);
+      }
+    });
+
+    // Notify about lost neighbors
+    previousNeighbors.forEach((previousNeighbor) => {
+      if (!this.neighbors.has(previousNeighbor)) {
+        this.onNeighborRemoved(previousNeighbor);
+      }
+    });
+  }
+
+  /**
+   * Called when a new neighbor is detected
+   */
+  private onNeighborAdded(neighbor: SelectionBox): void {
+    console.log(
+      `Box ${this.localContext.id} gained neighbor ${neighbor.localContext.id}`,
+    );
+    // Share our shareable data with the new neighbor
+    this.shareDataWithNeighbor(neighbor);
+    // Update visual indicator
+      this.updateTabPosition();
+  }
+
+  /**
+   * Called when a neighbor is no longer touching
+   */
+  private onNeighborRemoved(neighbor: SelectionBox): void {
+    console.log(
+      `Box ${this.localContext.id} lost neighbor ${neighbor.localContext.id}`,
+    );
+    // Update visual indicator
+      this.updateTabPosition();
+  }
+
+  /**
+   * Share shareable data with a specific neighbor
+   */
+  private shareDataWithNeighbor(neighbor: SelectionBox): void {
+    const shareableData = this.getShareableData();
+    shareableData.forEach((data, key) => {
+      neighbor.receiveSharedData(key, data);
+    });
+  }
+
+  /**
+   * Get current neighbors
+   */
+  public getNeighbors(): SelectionBox[] {
+    return Array.from(this.neighbors);
+  }
+
+  // STEP 4: Collaborative Context Merging - Data sharing and merging methods
+
+  /**
+   * Receive shared data from a neighbor - implements collaborative merging
+   */
+  public receiveSharedData(key: string, incomingData: BoxContextData): void {
+    const existingData = this.localContext.data.get(key);
+
+    if (!existingData) {
+      // We don't have this data, accept it if it's shareable
+      if (incomingData.canShare) {
+        this.localContext.data.set(key, {
+          ...incomingData,
+          // Don't change ownership when receiving shared data
+        });
+        this.localContext.version++;
+      }
+      return;
+    }
+
+    // We have this data - apply collaborative merging rules
+    if (existingData.owner === this.localContext.id) {
+      // We own this data - only update if incoming is newer from same owner
+      if (
+        incomingData.owner === existingData.owner &&
+        incomingData.version > existingData.version
+      ) {
+        this.localContext.data.set(key, incomingData);
+        this.localContext.version++;
+      }
+      // Otherwise, keep our version (we're the owner)
+    } else {
+      // We don't own this data - accept updates from the rightful owner
+      if (
+        incomingData.owner === existingData.owner &&
+        incomingData.version > existingData.version
+      ) {
+        this.localContext.data.set(key, incomingData);
+        this.localContext.version++;
+      }
+    }
+  }
+
+  /**
+   * Broadcast shareable data to all current neighbors
+   */
+  public broadcastToNeighbors(): void {
+    const shareableData = this.getShareableData();
+    this.neighbors.forEach((neighbor) => {
+      shareableData.forEach((data, key) => {
+        neighbor.receiveSharedData(key, data);
+      });
+    });
+  }
+
+  /**
+   * Request specific data from neighbors
+   */
+  public requestDataFromNeighbors(key: string): BoxContextData | null {
+    for (const neighbor of this.neighbors) {
+      const data = neighbor.localContext.data.get(key);
+      if (data && data.canShare) {
+        // Receive this data through normal merging process
+        this.receiveSharedData(key, data);
+        return data;
+      }
+    }
+    return null;
   }
 
   getZLevel(): number {
@@ -589,7 +847,302 @@ export class SelectionBox {
     // nothing else needed for now
   }
 
-  // Chat history management for this selection box (delegates to attached info)
+  // STEP 6: Collaborative Context Merging - Helper methods for easy usage
+
+  /**
+   * Share a piece of data with all current neighbors
+   * @param key - The data key
+   * @param value - The data value
+   * @param canShare - Whether neighbors can further share this data (default: true)
+   */
+  public shareData(key: string, value: any, canShare: boolean = true): void {
+    this.setContextData(key, value, canShare);
+    this.broadcastToNeighbors();
+  }
+
+  /**
+   * Get data, checking neighbors if we don't have it locally
+   * @param key - The data key to look for
+   * @returns The data value or null if not found
+   */
+  public findData(key: string): any {
+    // Check our own data first
+    const localData = this.getContextData(key);
+    if (localData !== null) {
+      return localData;
+    }
+
+    // Request from neighbors if we don't have it
+    const neighborData = this.requestDataFromNeighbors(key);
+    return neighborData ? neighborData.value : null;
+  }
+
+  /**
+   * Check if any box in our network (us or neighbors) has specific data
+   * @param key - The data key to check for
+   * @returns true if any connected box has this data
+   */
+  public networkHasData(key: string): boolean {
+    // Check ourselves first
+    if (this.localContext.data.has(key)) {
+      return true;
+    }
+
+    // Check neighbors
+    for (const neighbor of this.neighbors) {
+      if (neighbor.localContext.data.has(key)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Get a summary of all data available in our network
+   * @returns Object with our data and neighbors' shareable data
+   */
+  public getNetworkDataSummary(): {
+    own: string[];
+    neighborsShareable: string[];
+  } {
+    const own = Array.from(this.localContext.data.keys());
+    const neighborsShareable = new Set<string>();
+
+    this.neighbors.forEach((neighbor) => {
+      neighbor.localContext.data.forEach((data, key) => {
+        if (data.canShare) {
+          neighborsShareable.add(key);
+        }
+      });
+    });
+
+    return {
+      own,
+      neighborsShareable: Array.from(neighborsShareable),
+    };
+  }
+
+  /**
+   * Get basic info about this box for debugging
+   */
+  public getDebugInfo(): any {
+    return {
+      id: this.localContext.id,
+      zLevel: this.zLevel,
+      bounds: this.getBounds(),
+      neighbors: this.neighbors.size,
+      dataKeys: Array.from(this.localContext.data.keys()),
+      version: this.localContext.version,
+    };
+  }
+
+  // STEP 7: Collaborative Context Merging - Demo/Test methods
+
+  /**
+   * Demo method: Set some test data and share it with neighbors
+   * This shows how the collaborative system works
+   */
+  public demoCollaborativeSharing(): void {
+    console.log(`Box ${this.localContext.id} starting demo...`);
+
+    // Set some shareable data
+    this.shareData("demo_message", `Hello from ${this.localContext.id}!`, true);
+    this.shareData("timestamp", Date.now(), true);
+    this.shareData("box_color", this.getColorForZLevel(this.zLevel), true);
+
+    // Set some private data (not shareable)
+    this.setContextData("private_note", "This is private data", false);
+
+    console.log(
+      `Box ${this.localContext.id} shared data with ${this.neighbors.size} neighbors`,
+    );
+  }
+
+  /**
+   * Demo method: Log all available data in the network
+   */
+  public demoLogNetworkData(): void {
+    console.log(`=== Network Data for Box ${this.localContext.id} ===`);
+    console.log("My data:", Array.from(this.localContext.data.entries()));
+    console.log("Network summary:", this.getNetworkDataSummary());
+    console.log("Debug info:", this.getDebugInfo());
+
+    this.neighbors.forEach((neighbor) => {
+      console.log(
+        `Neighbor ${neighbor.localContext.id}:`,
+        neighbor.getDebugInfo(),
+      );
+    });
+  }
+
+  // STEP 8: Collaborative Context Merging - Chat system integration
+
+  /**
+   * Get collaborative context information for the language model
+   * This provides rich context about the box and its neighbors
+   */
+  public getCollaborativeContextForChat(): string {
+    const contextLines: string[] = [];
+
+    // Basic box info
+    contextLines.push(`=== Box Context ===`);
+    contextLines.push(`Box ID: ${this.localContext.id}`);
+    contextLines.push(`Z-Level: ${this.zLevel}`);
+    contextLines.push(
+      `Position: (${this.start.x}, ${this.start.y}) to (${this.end.x}, ${this.end.y})`,
+    );
+    contextLines.push(`Neighbors: ${this.neighbors.size} connected boxes`);
+
+    // Own data
+    if (this.localContext.data.size > 0) {
+      contextLines.push(`\n=== My Data ===`);
+      this.localContext.data.forEach((data, key) => {
+        contextLines.push(
+          `${key}: ${JSON.stringify(data.value)} (${data.canShare ? "shareable" : "private"})`,
+        );
+      });
+    }
+
+    // Network data summary
+    const networkSummary = this.getNetworkDataSummary();
+    if (networkSummary.neighborsShareable.length > 0) {
+      contextLines.push(`\n=== Available from Neighbors ===`);
+      networkSummary.neighborsShareable.forEach((key) => {
+        const value = this.findData(key);
+        if (value !== null) {
+          contextLines.push(`${key}: ${JSON.stringify(value)} (from neighbor)`);
+        }
+      });
+    }
+
+    // Neighbor details
+    if (this.neighbors.size > 0) {
+      contextLines.push(`\n=== Neighbor Details ===`);
+      this.neighbors.forEach((neighbor) => {
+        const neighborInfo = neighbor.getDebugInfo();
+        contextLines.push(
+          `Neighbor ${neighborInfo.id}: Z${neighborInfo.zLevel}, ${neighborInfo.dataKeys.length} data items`,
+        );
+      });
+    }
+
+    return contextLines.join("\n");
+  }
+
+  /**
+   * Add a chat message and optionally share it with neighbors
+   * @param msg - The message to add
+   * @param shareWithNeighbors - Whether to share this message with touching boxes
+   */
+  public addCollaborativeChatMessage(
+    msg: any,
+    shareWithNeighbors: boolean = false,
+  ): void {
+    // Add to our own chat history
+    this.localContext.chatHistory.push(msg);
+
+    // Optionally share with neighbors
+    if (shareWithNeighbors && typeof msg.content === "string") {
+      this.shareData(
+        "last_chat_message",
+        {
+          content: msg.content,
+          timestamp: Date.now(),
+          from: this.localContext.id,
+        },
+        true,
+      );
+    }
+  }
+
+  /**
+   * Get shared chat messages from neighbors
+   */
+  public getSharedChatMessages(): any[] {
+    const sharedMessages: any[] = [];
+
+    this.neighbors.forEach((neighbor) => {
+      const sharedMsg = neighbor.getContextData("last_chat_message");
+      if (sharedMsg) {
+        sharedMessages.push({
+          ...sharedMsg,
+          fromNeighbor: neighbor.localContext.id,
+        });
+      }
+    });
+
+    return sharedMessages.sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  // STEP 10: Testing and Verification Methods
+
+  /**
+   * Quick test: Set some test data and verify neighbors can see it
+   */
+  public testCollaborativeSharing(): void {
+    console.log(
+      `🧪 Testing collaborative sharing for Box ${this.localContext.id}`,
+    );
+
+    // Set some test data
+    this.shareData(
+      "test_message",
+      `Hello from Box ${this.localContext.id}!`,
+      true,
+    );
+    this.shareData("test_number", Math.floor(Math.random() * 100), true);
+    this.shareData("test_timestamp", new Date().toISOString(), true);
+
+    console.log(`📤 Box ${this.localContext.id} shared 3 test items`);
+    console.log(`👥 Connected to ${this.neighbors.size} neighbors`);
+
+    // Log what we can see from neighbors
+    setTimeout(() => {
+      const summary = this.getNetworkDataSummary();
+      console.log(
+        `📥 Box ${this.localContext.id} can see from neighbors:`,
+        summary.neighborsShareable,
+      );
+    }, 100);
+  }
+
+  /**
+   * Verify the collaborative context is working for chat
+   */
+  public testChatContext(): string {
+    console.log(`💬 Testing chat context for Box ${this.localContext.id}`);
+    const context = this.getCollaborativeContextForChat();
+    console.log("Generated context:", context);
+    return context;
+  }
+
+  /**
+   * Visual indicator: Change tab color based on neighbor count
+   */
+  public updateTabWithNetworkInfo(): void {
+    if (!this.tabText) return;
+
+    const neighborCount = this.neighbors.size;
+    const dataCount = this.localContext.data.size;
+
+    // Update tab text to show network info
+    this.tabText.setText(`Box (${neighborCount}n, ${dataCount}d)`);
+
+    // Change color based on connectivity
+    if (this.tabBg) {
+      if (neighborCount > 0) {
+        // Connected - use cyan to indicate network activity
+        this.tabBg.setFillStyle(this.isActive ? 0x00ff88 : 0x00aaff);
+      } else {
+        // Not connected - use original colors
+        this.tabBg.setFillStyle(
+          this.isActive ? 0x127803 : this.isFinalized ? 0x2b2b2b : 0x2b6bff,
+        );
+      }
+    }
+  }
+
   addChatMessage(msg: any) {
     const info = (this as any).getInfo?.() || (this as any).info;
     if (info && typeof info.addChatMessage === "function") return info.addChatMessage(msg);

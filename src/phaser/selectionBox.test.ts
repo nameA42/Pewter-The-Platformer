@@ -1,6 +1,29 @@
 import { SelectionBox } from "./selectionBox";
 import Phaser from "phaser";
 
+async function testThemeIntentCommunication() {
+  console.log("\n--- Theme Intent Communication Test ---");
+  const start = new Phaser.Math.Vector2(2, 2);
+  const end = new Phaser.Math.Vector2(3, 3);
+  const boxA = new (SelectionBox as any)(mockScene, start, end, 1, mockLayer);
+  const boxB = new (SelectionBox as any)(mockScene, start, end, 1, mockLayer);
+
+  // Set theme intent on boxA
+  boxA.setThemeIntent("forest");
+  console.log("boxA theme intent:", boxA.getThemeIntent());
+
+  // Communicate theme from boxA to boxB
+  boxA.communicateThemeTo(boxB);
+  console.log("boxB theme intent after communication:", boxB.getThemeIntent());
+
+  // Check correctness
+  if (boxB.getThemeIntent() === "forest") {
+    console.log("Theme intent communication: PASS");
+  } else {
+    console.error("Theme intent communication: FAIL");
+  }
+}
+
 // Minimal mock objects for runtime test
 const mockRectangle = {
   setOrigin: function () {
@@ -103,5 +126,6 @@ async function testSummarizeChatToThemeIntent() {
   }
 }
 
-// Always run the test when this file is loaded
+// Always run the tests when this file is loaded
 testSummarizeChatToThemeIntent();
+testThemeIntentCommunication();

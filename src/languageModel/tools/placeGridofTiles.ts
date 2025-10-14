@@ -70,7 +70,12 @@ export class PlaceGridofTiles {
 
             //Record the placement
             if (scene.activeBox) {
-              scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
+              const info = (scene.activeBox.getInfo && typeof scene.activeBox.getInfo === 'function') ? scene.activeBox.getInfo() : (scene.activeBox as any).info;
+              if (info && typeof info.addPlacedTile === 'function') {
+                info.addPlacedTile(tileIndex, x, y, layerName);
+              } else {
+                scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
+              }
             }
           }
         }

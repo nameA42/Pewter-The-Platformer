@@ -82,11 +82,14 @@ async function testSummarizeChatToThemeIntent() {
 
   // Add dummy chat messages
   try {
-    box.addChatMessage({
-      content: "User wants a forest area with lots of trees.",
-    });
-    box.addChatMessage({ content: "Add some wildlife and rivers." });
-    console.log("Dummy chat messages added.");
+    const info = box.getInfo ? box.getInfo() : (box as any).info;
+    if (info && typeof info.addChatMessage === "function") {
+      info.addChatMessage({ content: "User wants a forest area with lots of trees." });
+      info.addChatMessage({ content: "Add some wildlife and rivers." });
+      console.log("Dummy chat messages added.");
+    } else {
+      console.warn("Info object not available on SelectionBox in test");
+    }
   } catch (err) {
     console.error("Error adding chat messages:", err);
     return;

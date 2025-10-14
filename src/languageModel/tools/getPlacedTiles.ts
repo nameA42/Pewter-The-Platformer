@@ -34,7 +34,18 @@ export class GetPlacedTiles {
         return "Tool Failed: no selection box found.";
       }
 
-      const placedTiles = box.getPlacedTiles();
+      let placedTiles: any[] | undefined;
+      try {
+        const info = (box.getInfo && typeof box.getInfo === "function") ? box.getInfo() : (box as any).info;
+        if (info && typeof info.getPlacedTiles === "function") {
+          placedTiles = info.getPlacedTiles();
+        }
+      } catch (e) {
+        // ignore
+      }
+      if (!placedTiles && typeof box.getPlacedTiles === "function") {
+        placedTiles = box.getPlacedTiles();
+      }
       if (!placedTiles || placedTiles.length === 0) {
         return "No tiles have been placed in this selection box.";
       }

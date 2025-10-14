@@ -2,34 +2,43 @@ import Phaser from "phaser";
 
 export class SelectionBox {
   /**
-   * Summarize the chat log into a single keyword using the LLM and set as themeIntent
+   * Summarize the chat log into a single keyword using the InformationClass (which uses the LLM).
+   * Falls back to the old inline summarization if info isn't available.
    */
   async summarizeChatToThemeIntent(): Promise<string> {
-    // Import sendUserPrompt from chatBox dynamically to avoid circular deps
-    // (or you can import at the top if safe)
+    const info = (this as any).getInfo?.() || (this as any).info;
+    if (info && typeof info.summarizeChatToThemeIntent === "function") {
+      try {
+        const kw = await info.summarizeChatToThemeIntent();
+        return kw;
+      } catch (e) {
+        // fall through to fallback
+      }
+    }
+
+    // Fallback: dynamic import and previous inline summarization
     // @ts-ignore
     const { sendUserPrompt } = await import("../languageModel/chatBox");
-    // Flatten chat history into a single string
-    const chatLog = this.localContext.chatHistory
+    const chatLog = this.getChatHistory()
       .map((msg: any) =>
-        typeof msg.content === "string"
-          ? msg.content
-          : JSON.stringify(msg.content),
+        typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
       )
       .join("\n");
-    // Prompt for keyword summarization
     const prompt = `Summarize the following chat log into a single keyword that best represents the user's thematic intent for this selection box. Only reply with the keyword.\n${chatLog}`;
     const keyword = (await sendUserPrompt(prompt)).trim();
-    this.setThemeIntent(keyword);
+    // Delegate setting theme intent to info if possible
+    if (info && typeof info.setThemeIntent === "function") {
+      info.setThemeIntent(keyword);
+    }
     return keyword;
   }
   private graphics: Phaser.GameObjects.Graphics;
   private start: Phaser.Math.Vector2;
   private end: Phaser.Math.Vector2;
   /**
-   * Thematic intent or user prompt context for this box (e.g., story, purpose, tags)
+   * Thematic intent is now owned by the attached InformationClass (this.info).
+   * SelectionBox will delegate theme-related calls to the info object when present.
    */
-  private themeIntent: string = "";
   public getStart(): Phaser.Math.Vector2 {
     return this.start.clone();
   }
@@ -52,12 +61,9 @@ export class SelectionBox {
   // Drag helpers
   private _dragInitialStart?: Phaser.Math.Vector2;
   private _dragInitialEnd?: Phaser.Math.Vector2;
-  private _dragInitialContainerX?: number;
-  private _dragInitialContainerY?: number;
   private _dragPointerTileX?: number;
   private _dragPointerTileY?: number;
-  private _dragPointerOffsetX?: number;
-  private _dragPointerOffsetY?: number;
+  
   private _dragStartHandler?: (pointer: Phaser.Input.Pointer, obj: any) => void;
   private _dragHandler?: (
     pointer: Phaser.Input.Pointer,
@@ -86,11 +92,26 @@ export class SelectionBox {
     this.graphics.setDepth(100);
     this.redraw();
 
-    // Initialize localContext with its own chatHistory
-    this.localContext = { chatHistory: [] };
+  // Initialize localContext with its own chatHistory
+  this.localContext = { chatHistory: [] };
     this.onSelect = onSelect;
     // create tab after initial draw
     this.createTab();
+    // Attach an InformationClass instance lazily to avoid circular imports
+    try {
+      // dynamic import (ESM-friendly)
+      import("./informationClass").then((m) => {
+        try {
+          (this as any).info = new m.InformationClass(this);
+          // Sync localContext with info's chatHistory reference
+          (this as any).info.chatHistory = this.localContext.chatHistory;
+        } catch (e) {
+          // ignore
+        }
+      });
+    } catch (e) {
+      // ignore if module system differs; caller can create info manually
+    }
     // themeIntent can be set later via setter
   }
 
@@ -102,12 +123,22 @@ export class SelectionBox {
     if (this.isFinalized) return; // don't allow resizing finalized boxes
     this.start = start.clone();
     this.redraw();
+    // Inform attached InformationClass to refresh derived info
+    try {
+      const info = (this as any).getInfo?.() || (this as any).info;
+      if (info && typeof info.refreshFromBox === "function") info.refreshFromBox();
+    } catch (e) {}
   }
 
   updateEnd(end: Phaser.Math.Vector2) {
     if (this.isFinalized) return; // don't allow resizing finalized boxes
     this.end = end.clone();
     this.redraw();
+    // Inform attached InformationClass to refresh derived info
+    try {
+      const info = (this as any).getInfo?.() || (this as any).info;
+      if (info && typeof info.refreshFromBox === "function") info.refreshFromBox();
+    } catch (e) {}
   }
 
   setZLevel(zLevel: number) {
@@ -362,6 +393,11 @@ export class SelectionBox {
           if (this._pointerUpHandler)
             this.scene.input.off("pointerup", this._pointerUpHandler);
         } catch (e) {}
+        // After drag ends, inform info to refresh
+        try {
+          const info = (this as any).getInfo?.() || (this as any).info;
+          if (info && typeof info.refreshFromBox === "function") info.refreshFromBox();
+        } catch (e) {}
       };
 
       // Start drag on pointerdown on the tab if finalized
@@ -553,17 +589,37 @@ export class SelectionBox {
     // nothing else needed for now
   }
 
-  // Chat history management for this selection box
+  // Chat history management for this selection box (delegates to attached info)
   addChatMessage(msg: any) {
+    const info = (this as any).getInfo?.() || (this as any).info;
+    if (info && typeof info.addChatMessage === "function") return info.addChatMessage(msg);
     this.localContext.chatHistory.push(msg);
   }
 
   getChatHistory(): any[] {
+    const info = (this as any).getInfo?.() || (this as any).info;
+    if (info && typeof info.getChatHistory === "function") return info.getChatHistory();
     return this.localContext.chatHistory;
   }
 
   clearChatHistory() {
+    const info = (this as any).getInfo?.() || (this as any).info;
+    if (info && typeof info.clearChatHistory === "function") return info.clearChatHistory();
     this.localContext.chatHistory.length = 0;
+  }
+
+  // Clear only the info's chat history if present
+  clearInfoChatHistory() {
+    try {
+      if ((this as any).info && typeof (this as any).info.chatHistory !== "undefined") {
+        (this as any).info.chatHistory.length = 0;
+      }
+    } catch (e) {}
+  }
+
+  // Getter for attached info object
+  getInfo() {
+    return (this as any).info;
   }
 
   //Working Code - Jason Cho
@@ -575,16 +631,22 @@ export class SelectionBox {
   }
 
   //TODO: clear placed tiles accordingly, especially with user actions
-  public addPlacedTile(tileIndex: number, x: number, y: number, layerName: string) {
-    this.placedTiles.push({ tileIndex, x, y, layerName });
+  public addPlacedTile(tileIndex: number, x: number, y: number, layerName?: string) {
+    const info = (this as any).getInfo?.() || (this as any).info;
+    if (info && typeof info.addPlacedTile === "function") return info.addPlacedTile(tileIndex, x, y, layerName);
+    this.placedTiles.push({ tileIndex, x, y, layerName: layerName || "" });
     console.log("Added placed tile:", { tileIndex, x, y, layerName });
-  } 
+  }
 
   public getPlacedTiles() {
+    const info = (this as any).getInfo?.() || (this as any).info;
+    if (info && typeof info.getPlacedTiles === "function") return info.getPlacedTiles();
     return this.placedTiles;
   }
 
   public printPlacedTiles() {
+    const info = (this as any).getInfo?.() || (this as any).info;
+    if (info && typeof info.printPlacedTiles === "function") return info.printPlacedTiles();
     console.log("Placed Tiles for this SelectionBox:");
     this.placedTiles.forEach((tile, index) => {
       console.log(`${index + 1}: ${JSON.stringify(tile)}`);
@@ -594,22 +656,35 @@ export class SelectionBox {
    * Set the thematic intent or user prompt context for this box
    */
   setThemeIntent(intent: string) {
-    this.themeIntent = intent;
+    const info = (this as any).getInfo?.() || (this as any).info;
+    if (info && typeof info.setThemeIntent === "function") {
+      return info.setThemeIntent(intent);
+    }
+    // no-op if no info available
   }
 
   /**
    * Get the thematic intent or user prompt context for this box
    */
   getThemeIntent(): string {
-    return this.themeIntent;
+    const info = (this as any).getInfo?.() || (this as any).info;
+    if (info && typeof info.getThemeIntent === "function") {
+      return info.getThemeIntent();
+    }
+    return "";
   }
 
   /**
    * Communicate this box's themeIntent to another box (for later interactions)
    */
   communicateThemeTo(box: SelectionBox) {
+    const info = (this as any).getInfo?.() || (this as any).info;
+    if (info && typeof info.communicateThemeTo === "function") {
+      return info.communicateThemeTo(box);
+    }
+    // fallback: try to set directly on target
     if (box && typeof box.setThemeIntent === "function") {
-      box.setThemeIntent(this.themeIntent);
+      box.setThemeIntent("");
     }
   }
 }

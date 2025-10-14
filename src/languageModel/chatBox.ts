@@ -39,7 +39,18 @@ export function setActiveSelectionBox(box: { localContext: { chatHistory: BaseMe
     return;
   }
 
-  currentChatHistory = box.localContext.chatHistory;
+  // Prefer an attached InformationClass's chatHistory if available
+  try {
+    // box may expose getInfo() or info
+    const info = (box as any).getInfo ? (box as any).getInfo() : (box as any).info;
+    if (info && Array.isArray(info.chatHistory)) {
+      currentChatHistory = info.chatHistory as BaseMessage[];
+    } else {
+      currentChatHistory = box.localContext.chatHistory;
+    }
+  } catch (err) {
+    currentChatHistory = box.localContext.chatHistory;
+  }
   // Keep the original SelectionBox object reference if present so
   // we can finalize it when tools are invoked.
   // (no local object stored here; editor listens for tool events)

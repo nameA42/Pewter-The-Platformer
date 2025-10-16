@@ -11,6 +11,7 @@ import { UIScene } from "./phaser/UIScene.ts";
 import {
   initializeTools,
   registerTool,
+  invokeRegisteredTool,
 } from "./languageModel/modelConnector.ts";
 // import { MoveTool } from "./languageModel/tools/moveTool.ts";
 // import { sendSystemMessage } from "./languageModel/chatBox.ts";
@@ -22,6 +23,11 @@ import { PlaceGridofTiles } from "./languageModel/tools/placeGridofTiles.ts";
 import { ClearTile } from "./languageModel/tools/clearTile.ts";
 import { WorldFactsTool } from "./languageModel/tools/worldFactsTool.ts";
 import { GetPlacedTiles } from "./languageModel/tools/getPlacedTiles.ts";
+import { GetSelectionTiles } from "./languageModel/tools/getSelectionTiles.ts";
+import { GetRegionHistory } from "./languageModel/tools/getRegionHistory.ts";
+import { GetTileHistory } from "./languageModel/tools/getTileHistory.ts";
+import { ListSelectionBoxes } from "./languageModel/tools/listSelectionBoxes.ts";
+import { RegenerateRegion } from "./languageModel/tools/regenerateRegion.ts";
 
 ////****LLM Tool Setup****////
 // const tools = {
@@ -37,6 +43,11 @@ const tools = {
   clearTile: new ClearTile(getScene),
   WorldFactsTool: new WorldFactsTool(getScene),
   getPlacedTiles: new GetPlacedTiles(getScene),
+  getSelectionTiles: new GetSelectionTiles(getScene),
+  getRegionHistory: new GetRegionHistory(getScene),
+  getTileHistory: new GetTileHistory(getScene),
+  listSelectionBoxes: new ListSelectionBoxes(getScene),
+  regenerateRegion: new RegenerateRegion(getScene),
 };
 
 // // Register all tools with the LLM
@@ -51,6 +62,15 @@ initializeTools();
 
 // // Tell the system to introduce itself and explain what it can do
 sendSystemMessage("Introduce yourself and explain what you can do. ");
+
+// Expose programmatic tool invocation to the browser UI
+try {
+  if (typeof window !== 'undefined') {
+    (window as any).invokeRegisteredTool = invokeRegisteredTool;
+  }
+} catch (e) {
+  // ignore in non-browser or bundling contexts
+}
 
 ////****Phaser Game Setup****////
 

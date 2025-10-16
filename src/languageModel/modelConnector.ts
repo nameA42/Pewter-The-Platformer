@@ -24,7 +24,7 @@ const sysPrompt =
   // Handling multiple instructions
   "The player may sometimes ask you to perform multiple actions at once. In such cases, you must use the tools as needed to complete ALL parts of the request. " +
   // Layer and tile info
-  "Layers available: Collectables_Layer and Ground_Layer. " +
+  "Note: Placement and clearing tools operate on the Ground_Layer by default. Do not ask the user which layer to use. " +
   "Tile ID mapping: 1 = empty tile, 2 = coin, 4 = fruit, 5 = platform block, 6 = dirt block, 7 = item (question mark) block. " +
   "Category: Collectables = [2, 4], Ground = [5, 6, 7]" +
   // Tool rules
@@ -269,4 +269,12 @@ export async function getChatResponse(
     output.errors.push(errorMsg);
     return output;
   }
+}
+
+// Allow programmatic invocation of a registered tool by name
+export async function invokeRegisteredTool(name: string, args: Record<string, any>) {
+  const tool = toolsByName[name];
+  if (!tool) throw new Error(`Tool '${name}' is not registered.`);
+  if (typeof tool.invoke !== 'function') throw new Error(`Tool '${name}' does not expose invoke()`);
+  return await tool.invoke(args);
 }

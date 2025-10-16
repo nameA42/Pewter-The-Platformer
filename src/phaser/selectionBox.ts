@@ -1,4 +1,7 @@
 import Phaser from "phaser";
+// Invoke tools programmatically (registered in modelConnector)
+declare const window: any;
+// We'll call the invokeRegisteredTool function attached to window by bundling in the modelConnector export
 
 export class SelectionBox {
   private graphics: Phaser.GameObjects.Graphics;
@@ -22,6 +25,7 @@ export class SelectionBox {
   private tabText: Phaser.GameObjects.Text | null = null;
   private isActive: boolean = false;
   private isFinalized: boolean = false;
+  private id?: string;
 
   // Drag helpers
   private _dragInitialStart?: Phaser.Math.Vector2;
@@ -60,6 +64,15 @@ export class SelectionBox {
     this.onSelect = onSelect;
     // create tab after initial draw
     this.createTab();
+  }
+
+  // Selection identity used for provenance/history
+  public setId(id: string) {
+    this.id = id;
+  }
+
+  public getId(): string | undefined {
+    return this.id;
   }
 
   getZLevel(): number {
@@ -194,6 +207,36 @@ export class SelectionBox {
     const container = this.scene.add.container(worldX, worldY - 10, [bg, txt]);
     container.setDepth(1001);
     container.setSize(w, h);
+
+    // Add a small regenerate button to the right of the tab text
+    try {
+      const btnW = 12;
+      const btn = this.scene.add.rectangle(w - btnW - 4, 0, btnW, 10, 0x444444).setOrigin(0, 0.5);
+      const btnText = this.scene.add.text(w - btnW - 2, 0, 'R', { fontSize: '10px', color: '#ffffff' }).setOrigin(0, 0.5);
+      btn.setInteractive({ useHandCursor: true });
+      btn.on('pointerdown', async (pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: any) => {
+        try { if (event && typeof event.stopPropagation === 'function') event.stopPropagation(); } catch (e) {}
+        // Ask user for a regeneration instruction
+        let userPrompt = '';
+        try { userPrompt = window.prompt('Regenerate instruction (optional):', 'Regenerate this region to better match surrounding terrain') || ''; } catch (e) { userPrompt = ''; }
+        // Show a short status
+        const status = this.scene.add.text(0, -16, 'Regenerating...', { fontSize: '10px', color: '#ffff00' }).setOrigin(0, 0.5);
+        container.add(status);
+        try {
+          if (typeof (window as any).invokeRegisteredTool === 'function') {
+            await (window as any).invokeRegisteredTool('regenerateRegion', { selectionId: this.id, prompt: userPrompt, mode: 'creative' });
+          } else {
+            console.warn('invokeRegisteredTool not available on window');
+          }
+        } catch (err) {
+          console.error('Regenerate failed', err);
+        }
+        try { status.destroy(); } catch (e) {}
+      });
+      container.add([btn, btnText]);
+    } catch (e) {
+      // ignore if input/window not available
+    }
 
     // Store references for state changes
     this.tabBg = bg;
@@ -463,6 +506,10 @@ export class SelectionBox {
     // nothing else needed for now
   }
 
+  // Expose finalized state to external callers (EditorScene)
+  public isFinalizedState(): boolean {
+    return this.isFinalized;
+  }
   // Chat history management for this selection box
   addChatMessage(msg: any) {
     this.localContext.chatHistory.push(msg);

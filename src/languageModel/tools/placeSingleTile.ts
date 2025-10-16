@@ -29,10 +29,7 @@ export class PlaceSingleTile {
       .min(0)
       .describe("Tile Y coordinate (row index, starting at 0)."),
 
-    layerName: z
-      .string()
-      .min(1)
-      .describe("The name of the map layer where the tile should be placed."),
+    // layerName removed — hardcoded to Ground_Layer
   });
 
   toolCall = tool(
@@ -43,26 +40,49 @@ export class PlaceSingleTile {
         return "Tool Failed: no reference to scene.";
       }
 
-      const { tileIndex, x, y, layerName } = args;
+      const { tileIndex, x, y } = args;
       const map = scene.map;
+      const layerName = "Ground_Layer";
       const layer = map.getLayer(layerName)?.tilemapLayer;
-
-      if (!layer) {
-        return `Tool Failed: layer '${layerName}' not found.`;
-      }
-
+      if (!layer) return `Tool Failed: layer '${layerName}' not found.`;
       map.putTileAt(tileIndex, x, y, true, layer);
 
       //Record the placement
-      if (scene.activeBox) {
-        scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
+      // Prefer history-aware API when present
+      try {
+        if ((scene as any).applyTileMatrixWithHistoryPublic) {
+          let note = "placeSingleTile";
+          try {
+            const hist = scene.activeBox?.getChatHistory?.();
+            if (hist && hist.length) {
+              for (let i = hist.length - 1; i >= 0; i--) {
+                const m: any = hist[i];
+                if (m && typeof m._getType === "function" && m._getType() === "human") {
+                  note = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+                  break;
+                }
+              }
+            }
+          } catch (e) {}
+
+          (scene as any).applyTileMatrixWithHistoryPublic(
+            { x, y, w: 1, h: 1 },
+            [[tileIndex]],
+            null,
+            "chat",
+            scene.activeBox?.getId?.(),
+            note,
+            layerName,
+          );
+        } else {
+          if (scene.activeBox) scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
+        }
+      } catch (e) {
+        if (scene.activeBox) scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
       }
 
-      if (layerName == "Ground_Layer") {
-        scene.worldFacts.setFact("Structure");
-      } else if (layerName == "Collectables_Layer") {
-        scene.worldFacts.setFact("Collectable");
-      }
+      // Hardcoded to Ground_Layer
+      scene.worldFacts.setFact("Structure");
       return `✅ Placed tile ${tileIndex} at (${x}, ${y}) on layer '${layerName}'.`;
     },
     {
@@ -73,7 +93,7 @@ export class PlaceSingleTile {
 
         - tileIndex: numeric ID of the tile to place.
         - x, y: integer tile coordinates (not pixels).
-        - layerName: the name of the target map layer. Choose between 'Ground_Layer' and 'Collectables_Layer' 
+  Note: This tool places tiles on the Ground_Layer only.
         `,
     },
   );

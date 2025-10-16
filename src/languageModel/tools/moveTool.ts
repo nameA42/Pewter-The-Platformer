@@ -21,7 +21,7 @@ export class MoveTool {
       args.distance = Number(args.distance);
 
       let gameScene = this.sceneGetter();
-      gameScene.handlePlayerMovement(args.direction, args.distance);
+      gameScene.handlePlayerMovement();
 
       let dirName = "";
       switch (args.direction) {

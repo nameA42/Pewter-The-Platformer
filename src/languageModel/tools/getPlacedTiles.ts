@@ -11,12 +11,7 @@ export class GetPlacedTiles {
 
   // Optionally allow selection by box index or ID
   static argsSchema = z.object({
-    boxIndex: z
-      .number()
-      .int()
-      .min(0)
-      .optional()
-      .describe("Index of the selection box to query. If omitted, uses the active selection box."),
+    selectionId: z.string().optional().describe("Optional selectionId to query. If omitted, uses the active selection box."),
   });
 
   toolCall = tool(
@@ -27,9 +22,8 @@ export class GetPlacedTiles {
       }
 
       // Get the selection box
-      //TODO: check for errors
       let box = scene.activeBox;
-
+      if (args.selectionId) box = scene.getSelectionById(args.selectionId as any);
       if (!box) {
         return "Tool Failed: no selection box found.";
       }

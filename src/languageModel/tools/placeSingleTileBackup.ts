@@ -29,10 +29,7 @@ export class PlaceSingleTile {
       .min(0)
       .describe("Tile Y coordinate (row index, starting at 0)."),
 
-    layerName: z
-      .string()
-      .min(1)
-      .describe("The name of the map layer where the tile should be placed."),
+    // layerName removed — hardcoded to Ground_Layer
   });
 
   toolCall = tool(
@@ -43,21 +40,13 @@ export class PlaceSingleTile {
         return "Tool Failed: no reference to scene.";
       }
 
-      const { tileIndex, x, y, layerName } = args;
+      const { tileIndex, x, y } = args;
       const map = scene.map;
+      const layerName = "Ground_Layer";
       const layer = map.getLayer(layerName)?.tilemapLayer;
-
-      if (!layer) {
-        return `Tool Failed: layer '${layerName}' not found.`;
-      }
-
+      if (!layer) return `Tool Failed: layer '${layerName}' not found.`;
       map.putTileAt(tileIndex, x, y, true, layer);
-
-      if (layerName == "Ground_Layer") {
-        scene.worldFacts.setFact("Structure");
-      } else if (layerName == "Collectables_Layer") {
-        scene.worldFacts.setFact("Collectable");
-      }
+      scene.worldFacts.setFact("Structure");
       return `✅ Placed tile ${tileIndex} at (${x}, ${y}) on layer '${layerName}'.`;
     },
     {
@@ -68,7 +57,7 @@ Places a single tile at the given tile coordinates (x, y) on the specified map l
 
 - tileIndex: numeric ID of the tile to place.
 - x, y: integer tile coordinates (not pixels).
-- layerName: the name of the target map layer. Choose between 'Ground_Layer' and 'Collectables_Layer' 
+Note: This tool places tiles on the Ground_Layer only.
 `,
     },
   );

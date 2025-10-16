@@ -1,11 +1,12 @@
 // Pewter Platformer EditorScene - Cleaned and consolidated after merge
 import Phaser from "phaser";
+import type { BBox, PlacementOp } from "./historyTypes.ts";
 
 type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
   isFalling?: boolean;
 };
-import { sendUserPrompt } from "../languageModel/chatBox";
-import { setActiveSelectionBox } from "../languageModel/chatBox";
+import { sendUserPrompt } from "../languageModel/chatBox.ts";
+import { setActiveSelectionBox } from "../languageModel/chatBox.ts";
 import { Slime } from "./ExternalClasses/Slime.ts";
 import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
 import { UIScene } from "./UIScene.ts";
@@ -68,6 +69,10 @@ export class EditorScene extends Phaser.Scene {
   } | null = null;
   public activeBox: SelectionBox | null = null;
   private selectionBoxes: SelectionBox[] = [];
+  // History state for LLM/tool provenance
+  private placementHistory: PlacementOp[] = [];
+  private tileProvenance: Map<string, string[]> = new Map();
+  private selectionIdCounter = 0;
 
   // keyboard controls
   private keyA!: Phaser.Input.Keyboard.Key;
@@ -875,6 +880,14 @@ export class EditorScene extends Phaser.Scene {
       this.isSelecting = false;
       return;
     } else {
+      // If there's an active box that is already finalized, clear it so user can start a fresh temporary selection
+      if (this.activeBox && (this.activeBox as any).isFinalizedState && (this.activeBox as any).isFinalizedState()) {
+        try {
+          this.activeBox.setActive?.(false);
+        } catch (e) {}
+        this.activeBox = null;
+      }
+
       if (!this.activeBox) {
         // If overlap does not occur, do make a new box
         console.log("Made a new box!");
@@ -1275,6 +1288,11 @@ export class EditorScene extends Phaser.Scene {
     if (!this.activeBox) return;
 
     // Push it to the array
+    // Assign id if needed
+    if (!this.activeBox.getId?.()) {
+      const selId = `sel_${++this.selectionIdCounter}`;
+      this.activeBox.setId?.(selId);
+    }
     this.selectionBoxes.push(this.activeBox);
     // mark it as finalized (permanent) so it can't be redrawn; it can still be dragged via its tab
     this.activeBox.finalize?.();
@@ -1300,6 +1318,156 @@ export class EditorScene extends Phaser.Scene {
     console.log("EditorScene.selectBox activating box", box.getBounds());
     box.setActive?.(true);
     setActiveSelectionBox(box);
+    // ensure it has an id for provenance
+    if (box.getId && !box.getId()) {
+      const selId = `sel_${++this.selectionIdCounter}`;
+      box.setId?.(selId);
+    }
+  }
+
+  // History: wrapper that records diffs and provenance
+public applyTileMatrixWithHistoryPublic(
+  bbox: BBox,
+  matrix: number[][] | null,
+  fallbackIndex: number | null,
+  actor: "chat" | "user",
+  selectionId?: string,
+  note?: string,
+  layerName?: string,
+) {
+  // ✅ Normalize first so it can be reused safely
+  const normalizedLayerName = layerName ?? "Ground_Layer";
+
+  // Pick the target layer
+  let layer: Phaser.Tilemaps.TilemapLayer = this.groundLayer;
+  try {
+    const found = this.map?.getLayer(normalizedLayerName as any);
+    if (found?.tilemapLayer) layer = found.tilemapLayer as Phaser.Tilemaps.TilemapLayer;
+  } catch {}
+
+  // Snapshot "before"
+  const before: number[][] = [];
+  for (let dy = 0; dy < bbox.h; dy++) {
+    const row: number[] = [];
+    for (let dx = 0; dx < bbox.w; dx++) {
+      const x = bbox.x + dx, y = bbox.y + dy;
+      row.push(layer.getTileAt(x, y)?.index ?? -1);
+    }
+    before.push(row);
+  }
+
+  // Apply writes
+  for (let dy = 0; dy < bbox.h; dy++) {
+    for (let dx = 0; dx < bbox.w; dx++) {
+      const x = bbox.x + dx, y = bbox.y + dy;
+      const desired = matrix ? matrix[dy]?.[dx] ?? -1 : fallbackIndex ?? -1;
+      layer.putTileAt(desired, x, y);
+      this.activeBox?.addPlacedTile(desired, x, y, normalizedLayerName);
+    }
+  }
+
+  // Build diffs
+  const diffs: { dx: number; dy: number; before: number; after: number }[] = [];
+  for (let dy = 0; dy < bbox.h; dy++) {
+    for (let dx = 0; dx < bbox.w; dx++) {
+      const after = layer.getTileAt(bbox.x + dx, bbox.y + dy)?.index ?? -1;
+      const beforeIdx = before[dy][dx];
+      if (after !== beforeIdx) diffs.push({ dx, dy, before: beforeIdx, after });
+    }
+  }
+  if (diffs.length === 0) return;
+
+  // Record operation
+  const opId = (crypto as any).randomUUID?.() ?? `${Date.now()}_${Math.random()}`;
+  const op: PlacementOp = {
+    id: opId,
+    ts: Date.now(),
+    actor,
+    selectionId,
+    bbox: { ...bbox },
+    diffs,
+    note,
+    layerName: normalizedLayerName, // ✅ consistent now
+  };
+
+  // Optional provenance bookkeeping
+  for (const d of diffs) {
+    const key = `${bbox.x + d.dx},${bbox.y + d.dy}`;
+    const list = this.tileProvenance.get(key) ?? [];
+    list.push(opId);
+    this.tileProvenance.set(key, list);
+  }
+
+  this.placementHistory.push(op);
+}
+
+public getRegionHistory(
+  bbox: { x: number; y: number; w: number; h: number },
+  limit = 200,
+  layerName = "Ground_Layer"
+) {
+  const qMaxX = bbox.x + bbox.w - 1;
+  const qMaxY = bbox.y + bbox.h - 1;
+
+  // newest-per-cell map: "x,y" -> record
+  const newestPerCell = new Map<string, {
+    x:number; y:number; before:number; after:number;
+    opId:string; ts:number; actor:"chat"|"user";
+    selectionId?:string; layerName:string;
+  }>();
+  const selectionIds = new Set<string>();
+
+  // scan newest → oldest
+  for (let i = this.placementHistory.length - 1; i >= 0; i--) {
+    const op = this.placementHistory[i];
+    const ln = op.layerName ?? "Ground_Layer";
+    if (ln !== layerName) continue;
+
+    // quick reject by op bbox
+    const oMaxX = op.bbox.x + op.bbox.w - 1;
+    const oMaxY = op.bbox.y + op.bbox.h - 1;
+    if (oMaxX < bbox.x || qMaxX < op.bbox.x || oMaxY < bbox.y || qMaxY < op.bbox.y) continue;
+
+    for (const d of op.diffs) {
+      const x = op.bbox.x + d.dx;
+      const y = op.bbox.y + d.dy;
+      if (x < bbox.x || x > qMaxX || y < bbox.y || y > qMaxY) continue;
+
+      const key = `${x},${y}`;
+      if (!newestPerCell.has(key)) {
+        newestPerCell.set(key, {
+          x, y,
+          before: d.before, after: d.after,
+          opId: op.id, ts: op.ts, actor: op.actor,
+          selectionId: op.selectionId,
+          layerName: ln,
+        });
+        if (op.selectionId) selectionIds.add(op.selectionId);
+        if (newestPerCell.size >= limit) break;
+      }
+    }
+    if (newestPerCell.size >= limit) break;
+  }
+
+  const cells = Array.from(newestPerCell.values()).sort((a,b)=>b.ts-a.ts);
+  return {
+    bbox,
+    layerName,
+    touchedCells: cells.length,
+    selectionIds: Array.from(selectionIds),
+    cells, // newest first; each has selectionId + before/after
+  };
+}
+
+  public getTileHistory(x: number, y: number) {
+    const ids = this.tileProvenance.get(`${x},${y}`) ?? [];
+    const dict = new Map(this.placementHistory.map((op) => [op.id, op] as const));
+    return ids.map((id) => dict.get(id)!).filter(Boolean);
+  }
+
+  // Lookup a selection box by id
+  public getSelectionById(id: string) {
+    return this.selectionBoxes.find((b) => (b as any).getId?.() === id) ?? null;
   }
 
   // Match Highlight Color with Z-Level

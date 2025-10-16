@@ -41,10 +41,7 @@ export class PlaceGridofTiles {
       .min(0)
       .describe("Maximum Y (bottommost row index, inclusive)."),
 
-    layerName: z
-      .string()
-      .min(1)
-      .describe("Name of the map layer where tiles will be placed."),
+    // layerName removed — hardcoded to Ground_Layer
   });
 
   toolCall = tool(
@@ -55,30 +52,54 @@ export class PlaceGridofTiles {
         return "❌ Tool Failed: no reference to scene.";
       }
 
-      const { tileIndex, xMin, xMax, yMin, yMax, layerName } = args;
+      const { tileIndex, xMin, xMax, yMin, yMax } = args;
       const map = scene.map;
+      const layerName = "Ground_Layer";
       const layer = map.getLayer(layerName)?.tilemapLayer;
-
-      if (!layer) {
-        return `❌ Tool Failed: layer '${layerName}' not found.`;
-      }
+      if (!layer) return `❌ Tool Failed: layer '${layerName}' not found.`;
 
       try {
-        for (let x = xMin; x <= xMax; x++) {
-          for (let y = yMin; y <= yMax; y++) {
-            map.putTileAt(tileIndex, x, y, true, layer);
+        // Use history-aware API if available for batch placement
+        const w = xMax - xMin + 1;
+        const h = yMax - yMin + 1;
+        const matrix = Array.from({ length: h }, () => Array.from({ length: w }, () => tileIndex));
+        if ((scene as any).applyTileMatrixWithHistoryPublic) {
+          // Derive a helpful note from the selection's chat history (last human message)
+          let note = "placeGridofTiles";
+          try {
+            const hist = scene.activeBox?.getChatHistory?.();
+            if (hist && hist.length) {
+              for (let i = hist.length - 1; i >= 0; i--) {
+                const m: any = hist[i];
+                if (m && typeof m._getType === "function" && m._getType() === "human") {
+                  note = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+                  break;
+                }
+              }
+            }
+          } catch (e) {}
 
-            //Record the placement
-            if (scene.activeBox) {
-              scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
+          (scene as any).applyTileMatrixWithHistoryPublic(
+            { x: xMin, y: yMin, w, h },
+            matrix,
+            null,
+            "chat",
+            scene.activeBox?.getId?.(),
+            note,
+            layerName,
+          );
+        } else {
+          for (let x = xMin; x <= xMax; x++) {
+            for (let y = yMin; y <= yMax; y++) {
+              map.putTileAt(tileIndex, x, y, true, layer);
+              if (scene.activeBox) {
+                scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
+              }
             }
           }
         }
-        if (layerName == "Ground_Layer") {
-          scene.worldFacts.setFact("Structure");
-        } else if (layerName == "Collectables_Layer") {
-          scene.worldFacts.setFact("Collectable");
-        }
+        // Hardcoded to Ground_Layer
+        scene.worldFacts.setFact("Structure");
         return `✅ Placed grid of tile ${tileIndex} from (${xMin}, ${yMin}) up to (${xMax}, ${yMax}) on layer '${layerName}'.`;
       } catch (e) {
         console.error("putTileAt failed:", e);
@@ -94,7 +115,7 @@ Places a rectangular grid of tiles on the map.
 - tileIndex: numeric ID of the tile to place.
 - (xMin, yMin): top-left inclusive coordinates.
 - (xMax, yMax): bottom-right exclusive coordinates.
-- layerName: the name of the target map layer. Choose between 'Ground_Layer' and 'Collectables_Layer' 
+- Note: This tool places tiles on the Ground_Layer only.
 `,
     },
   );

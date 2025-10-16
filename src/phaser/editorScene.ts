@@ -1,17 +1,17 @@
 // Pewter Platformer EditorScene - Cleaned and consolidated after merge
 import Phaser from "phaser";
-import type { BBox, PlacementOp } from "./historyTypes.ts";
+import type { BBox, PlacementOp } from "./historyTypes";
 
 type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
   isFalling?: boolean;
 };
-import { sendUserPrompt } from "../languageModel/chatBox.ts";
-import { setActiveSelectionBox } from "../languageModel/chatBox.ts";
+import { sendUserPrompt } from "../languageModel/chatBox";
+import { setActiveSelectionBox } from "../languageModel/chatBox";
 import { Slime } from "./ExternalClasses/Slime.ts";
-import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
-import { UIScene } from "./UIScene.ts";
-import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
-import { SelectionBox } from "./selectionBox.ts";
+import { UltraSlime } from "./ExternalClasses/UltraSlime";
+import { UIScene } from "./UIScene";
+import { WorldFacts } from "./ExternalClasses/worldFacts";
+import { SelectionBox } from "./selectionBox";
 
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
@@ -178,6 +178,15 @@ export class EditorScene extends Phaser.Scene {
       0,
     )!;
     // console.log("Tileset added:", this.map);
+    this.backgroundLayer   = this.map.createLayer("Background_Layer",   tileset, 0, 0)!;
+    this.groundLayer       = this.map.createLayer("Ground_Layer",       tileset, 0, 0)!;
+    this.collectablesLayer = this.map.createLayer("Collectables_Layer", tileset, 0, 0)!;
+
+    // Optional: order and visibility for clarity
+    this.backgroundLayer.setDepth(0).setVisible(true);
+    this.groundLayer.setDepth(1).setVisible(true);
+    this.collectablesLayer.setDepth(2).setVisible(true);
+
 
     this.backgroundLayer = this.map.createLayer(
       "Background_Layer",
@@ -341,6 +350,22 @@ export class EditorScene extends Phaser.Scene {
     this.input.on("pointerup", this.endSelection, this);
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+        if (pointer.leftButtonDown()) {
+    // 🔽 NEW: prefer selecting an existing box under the cursor
+    const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const tileX = Math.floor(world.x / this.TILE_SIZE);
+    const tileY = Math.floor(world.y / this.TILE_SIZE);
+
+    // newest-first so "topmost" tab/box wins
+    for (let i = this.selectionBoxes.length - 1; i >= 0; i--) {
+      const b = this.selectionBoxes[i];
+      const r = b.getBounds(); // tile-space rect
+      if (tileX >= r.x && tileX < r.x + r.width && tileY >= r.y && tileY < r.y + r.height) {
+        this.selectBox(b);
+        return; // stop: do not start a new selection
+      }
+    }
+  }
       if (pointer.middleButtonDown()) {
         isDragging = true;
         dragStartPoint.set(pointer.x, pointer.y);
@@ -398,6 +423,22 @@ export class EditorScene extends Phaser.Scene {
     });
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+        if (pointer.leftButtonDown()) {
+    // 🔽 NEW: prefer selecting an existing box under the cursor
+    const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const tileX = Math.floor(world.x / this.TILE_SIZE);
+    const tileY = Math.floor(world.y / this.TILE_SIZE);
+
+    // newest-first so "topmost" tab/box wins
+    for (let i = this.selectionBoxes.length - 1; i >= 0; i--) {
+      const b = this.selectionBoxes[i];
+      const r = b.getBounds(); // tile-space rect
+      if (tileX >= r.x && tileX < r.x + r.width && tileY >= r.y && tileY < r.y + r.height) {
+        this.selectBox(b);
+        return; // stop: do not start a new selection
+      }
+    }
+  }
       if (pointer.middleButtonDown()) {
         isDragging = true;
         dragStartPoint.set(pointer.x, pointer.y);
@@ -1324,7 +1365,16 @@ export class EditorScene extends Phaser.Scene {
       box.setId?.(selId);
     }
   }
-
+  private getEditableLayerByName(name: string): Phaser.Tilemaps.TilemapLayer {
+    if (this.groundLayer?.layer?.name === name)       return this.groundLayer;
+    if (this.backgroundLayer?.layer?.name === name)   return this.backgroundLayer;
+    if (this.collectablesLayer?.layer?.name === name) return this.collectablesLayer;
+    try {
+      const data = this.map?.getLayer(name as any);
+      if (data?.tilemapLayer) return data.tilemapLayer as Phaser.Tilemaps.TilemapLayer;
+    } catch {}
+    return this.groundLayer ?? (this.map?.layers?.[0]?.tilemapLayer as any);
+  }
   // History: wrapper that records diffs and provenance
 public applyTileMatrixWithHistoryPublic(
   bbox: BBox,
@@ -1336,14 +1386,16 @@ public applyTileMatrixWithHistoryPublic(
   layerName?: string,
 ) {
   // ✅ Normalize first so it can be reused safely
-  const normalizedLayerName = layerName ?? "Ground_Layer";
+  const normalizedLayerName = layerName ?? this.activeBox?.getLayerName?.() ?? "Ground_Layer";
 
-  // Pick the target layer
-  let layer: Phaser.Tilemaps.TilemapLayer = this.groundLayer;
-  try {
-    const found = this.map?.getLayer(normalizedLayerName as any);
-    if (found?.tilemapLayer) layer = found.tilemapLayer as Phaser.Tilemaps.TilemapLayer;
-  } catch {}
+// Pick the target layer (robust)
+const layer = this.getEditableLayerByName(normalizedLayerName);
+
+// Guard: refuse writes if the layer isn’t actually editable
+if (!(layer as any)?.putTileAt) {
+  console.warn(`[applyTileMatrix] Layer "${normalizedLayerName}" is not editable; no tiles written.`);
+  return;
+}
 
   // Snapshot "before"
   const before: number[][] = [];
@@ -1360,7 +1412,11 @@ public applyTileMatrixWithHistoryPublic(
   for (let dy = 0; dy < bbox.h; dy++) {
     for (let dx = 0; dx < bbox.w; dx++) {
       const x = bbox.x + dx, y = bbox.y + dy;
-      const desired = matrix ? matrix[dy]?.[dx] ?? -1 : fallbackIndex ?? -1;
+    let desired: number | null | undefined = matrix ? matrix[dy]?.[dx] : fallbackIndex;
+      if (desired === undefined || desired === null) {
+        // Skip instead of clearing to -1 silently
+        continue;
+      }
       layer.putTileAt(desired, x, y);
       this.activeBox?.addPlacedTile(desired, x, y, normalizedLayerName);
     }
@@ -1404,8 +1460,10 @@ public applyTileMatrixWithHistoryPublic(
 public getRegionHistory(
   bbox: { x: number; y: number; w: number; h: number },
   limit = 200,
-  layerName = "Ground_Layer"
+  layerName?: string
 ) {
+  // 🔽 NEW: auto-pick the active box’s layer if not specified
+  const resolvedLayer = layerName ?? this.activeBox?.getLayerName?.() ?? "Ground_Layer";
   const qMaxX = bbox.x + bbox.w - 1;
   const qMaxY = bbox.y + bbox.h - 1;
 
@@ -1421,7 +1479,7 @@ public getRegionHistory(
   for (let i = this.placementHistory.length - 1; i >= 0; i--) {
     const op = this.placementHistory[i];
     const ln = op.layerName ?? "Ground_Layer";
-    if (ln !== layerName) continue;
+    if (ln !== resolvedLayer) continue;
 
     // quick reject by op bbox
     const oMaxX = op.bbox.x + op.bbox.w - 1;
@@ -1452,7 +1510,7 @@ public getRegionHistory(
   const cells = Array.from(newestPerCell.values()).sort((a,b)=>b.ts-a.ts);
   return {
     bbox,
-    layerName,
+    layerName: resolvedLayer,
     touchedCells: cells.length,
     selectionIds: Array.from(selectionIds),
     cells, // newest first; each has selectionId + before/after

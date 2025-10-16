@@ -208,6 +208,20 @@ export class SelectionBox {
     container.setDepth(1001);
     container.setSize(w, h);
 
+    // 🔽 NEW: make the whole tab container interactive and swallow clicks
+    try {
+      container.setInteractive(
+        new Phaser.Geom.Rectangle(0, 0, w, h),
+        Phaser.Geom.Rectangle.Contains
+      );
+      container.on('pointerdown', (pointer: Phaser.Input.Pointer, _lx: number, _ly: number, event: any) => {
+        try { event?.stopPropagation?.(); } catch {}
+        if (this.onSelect) this.onSelect(this);
+      });
+    } catch (e) {
+      // ignore
+    }
+
     // Add a small regenerate button to the right of the tab text
     try {
       const btnW = 12;
@@ -471,6 +485,15 @@ export class SelectionBox {
       endY - startY,
     );
   }
+  
+  public getLayerName(): string {
+  try {
+    // Phaser injects .layer.name on TilemapLayer
+    return (this.layer as any)?.layer?.name ?? "Ground_Layer";
+  } catch {
+    return "Ground_Layer";
+  }
+}
 
   // Returns the selected tiles
   getSelectedTiles(): number[][] {

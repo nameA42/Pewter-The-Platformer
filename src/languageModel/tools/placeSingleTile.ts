@@ -72,7 +72,7 @@ export class PlaceSingleTile {
             "chat",
             scene.activeBox?.getId?.(),
             note,
-            layerName,
+            undefined,
           );
         } else {
           if (scene.activeBox) scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);

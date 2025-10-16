@@ -21,6 +21,14 @@ export class SelectionBox {
   private tabText: Phaser.GameObjects.Text | null = null;
   private isActive: boolean = false;
   private isFinalized: boolean = false;
+  // selectionBox.ts (add inside the class)
+  public desiredTargets?: {
+    platform?: number;
+    enemy?: number;
+    collectable?: number;
+  };
+  public preferredPlatformIndex?: number;
+  public preferredCollectableIndex?: number;
 
   // Drag helpers
   private _dragInitialStart?: Phaser.Math.Vector2;

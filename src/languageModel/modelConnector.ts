@@ -159,7 +159,7 @@ export async function getChatResponse(
       "LLM has not been initialized with tools. Did you forget to call initializeTools()?",
     );
   }
-
+  console.log("Getting chat response with history:", chatMessageHistory);
   const output = {
     text: [] as string[],
     toolCalls: [] as {
@@ -222,14 +222,21 @@ export async function getChatResponse(
             tool_call_id: String(toolCall.id ?? ""),
           }),
         );
-              // Notify UI/editor that a tool was called so selection boxes can finalize
-              try {
-                if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-                  window.dispatchEvent(new CustomEvent('toolCalled', { detail: { name: toolCall.name, args: toolCall.args, result } }));
-                }
-              } catch (e) {
-                // ignore
-              }
+        // Notify UI/editor that a tool was called so selection boxes can finalize
+        try {
+          if (
+            typeof window !== "undefined" &&
+            typeof window.dispatchEvent === "function"
+          ) {
+            window.dispatchEvent(
+              new CustomEvent("toolCalled", {
+                detail: { name: toolCall.name, args: toolCall.args, result },
+              }),
+            );
+          }
+        } catch (e) {
+          // ignore
+        }
       } catch (toolError) {
         const errorMsg = `Error: Tool '${toolCall.name}' failed with args: ${JSON.stringify(toolCall.args)}.\nDetails: ${toolError}`;
         console.error(errorMsg);

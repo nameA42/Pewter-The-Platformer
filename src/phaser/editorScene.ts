@@ -4,6 +4,23 @@ import Phaser from "phaser";
 // After imports, before the class:
 type FactCounts = Record<string, number>;
 
+type RNG = () => number;
+
+type RegenRules = {
+  // Platform generation
+  startChance: number; // chance to start a new platform run at a row if left wasn’t solid
+  continueChance: number; // chance to continue a run from the left at the same row
+  gapChance: number; // chance to force a gap (even if left was solid)
+  minRun: number; // min horizontal run length (enforced softly)
+  maxRun: number; // max horizontal run length (soft cap)
+
+  // Placement
+  platformTileIndex?: number; // default platform tile to place (uses selectedTileIndex if not provided)
+
+  // Enemies / items (optional)
+  enemyOnTopChance?: number; // chance to place an enemy on top of a new platform tile
+};
+
 type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
   isFalling?: boolean;
 };
@@ -30,6 +47,7 @@ export class EditorScene extends Phaser.Scene {
   private minZoomLevel = 2.25;
   private maxZoomLevel = 10;
   private zoomLevel = 2.25;
+  private keyL!: Phaser.Input.Keyboard.Key;
 
   // removed: isEditMode (unused)
 
@@ -106,10 +124,21 @@ export class EditorScene extends Phaser.Scene {
   // removed: currentSelection (unused)
 
   private onFinalizeBox(box: SelectionBox) {
+    // 1) facts are current
     this.snapshotSelection(box);
+
+    // 2) seed sticky intent once (only if not already set)
+    if (!box.desiredTargets) box.desiredTargets = { ...box.ownFacts };
+    if (box.preferredPlatformIndex == null)
+      box.preferredPlatformIndex = this.inferPlatformTileIndex(box);
+    if (box.preferredCollectableIndex == null)
+      box.preferredCollectableIndex = this.inferCollectableTileIndex(box);
+
+    // 3) the rest of your finalize pipeline
     this.indexSelection(box);
     this.linkNestingFor(box);
     this.recomputeAggFactsUpwards(box.id);
+
     console.log("Finalized selection:", box.id, {
       own: box.ownFacts,
       agg: box.aggFacts,
@@ -368,6 +397,8 @@ export class EditorScene extends Phaser.Scene {
 
   create() {
     this.map = this.make.tilemap({ key: "defaultMap" });
+    this.keyL = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.L);
+    console.log("[EditorScene] L key bound");
 
     this.worldFacts = new WorldFacts(this);
 
@@ -758,7 +789,397 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
+  private makeRngFromString(seedStr: string): RNG {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < seedStr.length; i++) {
+      h ^= seedStr.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return () => {
+      h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
+      return (h >>> 8) / 0x01000000;
+    };
+  }
+
+  // Inside EditorScene
+  public regenerateSelectionLeftToRightConstrained(
+    sel: SelectionBox,
+    rules?: Partial<RegenRules> & {
+      targetPlatforms?: number;
+      targetEnemies?: number;
+      targetCollectables?: number;
+      rngSeed?: string;
+      platformTileIndex?: number; // allow forcing a platform tile
+    },
+  ) {
+    // Tunable defaults for the sweep
+    const cfg: RegenRules = {
+      startChance: 0.2,
+      continueChance: 0.75,
+      gapChance: 0.1,
+      minRun: 2,
+      maxRun: 6,
+      platformTileIndex: undefined,
+      enemyOnTopChance: 0,
+      ...(rules || {}),
+    };
+
+    const { x0, y0, x1, y1 } = sel.getTileRect();
+    const W = x1 - x0 + 1,
+      H = y1 - y0 + 1;
+    if (W <= 0 || H <= 0) return;
+
+    // ---- Targets (sticky intent → scan → 0) ----
+    const scanned = this.scanSelectionFacts(sel); // { platform, enemy, collectable }
+    const sticky = sel.desiredTargets ?? {};
+
+    const targetPlatforms =
+      rules?.targetPlatforms ?? sticky.platform ?? scanned.platform ?? 0;
+    const targetEnemies =
+      rules?.targetEnemies ?? sticky.enemy ?? scanned.enemy ?? 0;
+    const targetCollects =
+      rules?.targetCollectables ??
+      sticky.collectable ??
+      scanned.collectable ??
+      0;
+
+    // Preferred tile indices (sticky → infer)
+    const platformIdx =
+      rules?.platformTileIndex ??
+      sel.preferredPlatformIndex ??
+      this.inferPlatformTileIndex(sel);
+    const collectableIdx =
+      sel.preferredCollectableIndex ?? this.inferCollectableTileIndex(sel);
+
+    // ---- Snapshot current ground cells (0 empty, 1 solid) ----
+    const cur: number[][] = [];
+    for (let r = 0; r < H; r++) {
+      const row: number[] = [];
+      for (let c = 0; c < W; c++) {
+        const t = this.groundLayer?.getTileAt(x0 + c, y0 + r);
+        row.push(t && t.index !== -1 ? 1 : 0);
+      }
+      cur.push(row);
+    }
+
+    // ---- RNG ----
+    const seed = rules?.rngSeed ?? sel.id;
+    const rng: RNG = this.makeRngFromString(seed);
+
+    // Helper: is left cell already solid in the *new* grid?
+    const leftSolid = (nxt: number[][], c: number, r: number) =>
+      c > 0 ? nxt[r][c - 1] === 1 : false;
+
+    // ---- 1) Initial left→right proposal ----
+    const nxt: number[][] = Array.from({ length: H }, () => Array(W).fill(0));
+    const runLen: number[] = Array(H).fill(0);
+
+    for (let c = 0; c < W; c++) {
+      for (let r = H - 1; r >= 0; r--) {
+        const wasLeft = leftSolid(nxt, c, r);
+        const forceGap = rng() < cfg.gapChance;
+
+        let place = 0;
+        if (forceGap) {
+          place = 0;
+          runLen[r] = 0;
+        } else if (wasLeft) {
+          const softMaxBias = runLen[r] >= cfg.maxRun ? 0.15 : 0.0;
+          const p = Math.max(0, cfg.continueChance - softMaxBias);
+          if (rng() < p) {
+            place = 1;
+            runLen[r] += 1;
+          } else {
+            if (runLen[r] < cfg.minRun && rng() < 0.75) {
+              place = 1;
+              runLen[r] += 1;
+            } else {
+              place = 0;
+              runLen[r] = 0;
+            }
+          }
+        } else {
+          if (rng() < cfg.startChance) {
+            place = 1;
+            runLen[r] = 1;
+          } else {
+            place = 0;
+            runLen[r] = 0;
+          }
+        }
+
+        nxt[r][c] = place;
+      }
+    }
+
+    // ---- 2) Adjust to hit exact targetPlatforms ----
+    const countOnes = (grid: number[][]) =>
+      grid.reduce((sum, row) => sum + row.reduce((a, b) => a + b, 0), 0);
+    let placed = countOnes(nxt);
+
+    if (placed > targetPlatforms) {
+      // Remove extras: randomly zero some 1s
+      let toRemove = placed - targetPlatforms;
+      const coords: Array<{ r: number; c: number }> = [];
+      for (let r = 0; r < H; r++)
+        for (let c = 0; c < W; c++) if (nxt[r][c] === 1) coords.push({ r, c });
+      // Shuffle lightly
+      for (let i = coords.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [coords[i], coords[j]] = [coords[j], coords[i]];
+      }
+      for (const { r, c } of coords) {
+        if (toRemove <= 0) break;
+        nxt[r][c] = 0;
+        toRemove--;
+      }
+    } else if (placed < targetPlatforms) {
+      // Add missing: prefer extending runs (cells whose left is 1), then anywhere empty
+      let toAdd = targetPlatforms - placed;
+
+      // Pass 1: extend runs
+      for (let r = 0; r < H && toAdd > 0; r++) {
+        for (let c = 0; c < W && toAdd > 0; c++) {
+          if (nxt[r][c] === 0 && leftSolid(nxt, c, r)) {
+            nxt[r][c] = 1;
+            toAdd--;
+          }
+        }
+      }
+      // Pass 2: fill anywhere empty
+      for (let r = 0; r < H && toAdd > 0; r++) {
+        for (let c = 0; c < W && toAdd > 0; c++) {
+          if (nxt[r][c] === 0) {
+            nxt[r][c] = 1;
+            toAdd--;
+          }
+        }
+      }
+    }
+
+    // ---- 3) Apply platforms to the map via placeTile (fires your fact hooks) ----
+    const tileIndexToUse =
+      cfg.platformTileIndex ??
+      platformIdx ??
+      (this.selectedTileIndex > 0 ? this.selectedTileIndex : 2);
+
+    for (let r = 0; r < H; r++) {
+      for (let c = 0; c < W; c++) {
+        const gx = x0 + c;
+        const gy = y0 + r;
+        const wantSolid = nxt[r][c] === 1;
+        const isSolid = cur[r][c] === 1;
+
+        if (wantSolid && !isSolid) {
+          this.placeTile(this.groundLayer, gx, gy, tileIndexToUse);
+        } else if (!wantSolid && isSolid) {
+          this.placeTile(this.groundLayer, gx, gy, -1);
+        }
+      }
+    }
+
+    // ---- 4) Collectables: clear inside selection, then place exactly targetCollects ----
+    if (this.collectablesLayer) {
+      // Clear collectables within selection so they don’t accumulate
+      for (let r = 0; r < H; r++) {
+        for (let c = 0; c < W; c++) {
+          this.collectablesLayer.putTileAt(-1, x0 + c, y0 + r);
+        }
+      }
+
+      // LEFT→RIGHT sprinkle to exactly match targetCollects
+      if (targetCollects > 0 && collectableIdx != null) {
+        let placed = 0;
+        outer: for (let c = 0; c < W; c++) {
+          for (let r = H - 1; r >= 0; r--) {
+            // bottom→up if you prefer low placement
+            const wx = x0 + c,
+              wy = y0 + r;
+            const hasCollect =
+              this.collectablesLayer.getTileAt(wx, wy)?.index !== -1;
+            if (!hasCollect) {
+              this.collectablesLayer.putTileAt(collectableIdx, wx, wy);
+              placed++;
+              if (placed >= targetCollects) break outer;
+            }
+          }
+        }
+      }
+    }
+
+    // ---- 5) Enemies: clear inside selection, then place exactly targetEnemies ----
+    this.removeEnemiesInSelection(sel);
+    if (targetEnemies > 0) {
+      // Reuse platform coords from nxt
+      const platforms: Array<{ gx: number; gy: number }> = [];
+      for (let r = 0; r < H; r++) {
+        for (let c = 0; c < W; c++) {
+          if (nxt[r][c] === 1) platforms.push({ gx: x0 + c, gy: y0 + r });
+        }
+      }
+      // Shuffle and place up to targetEnemies
+      for (let i = platforms.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [platforms[i], platforms[j]] = [platforms[j], platforms[i]];
+      }
+      const m = Math.min(targetEnemies, platforms.length);
+      for (let i = 0; i < m; i++) {
+        const { gx, gy } = platforms[i];
+        const px = gx * this.TILE_SIZE + this.TILE_SIZE / 2;
+        const py = gy * this.TILE_SIZE - 4; // slightly above
+        try {
+          const e = new UltraSlime(this, px, py, this.map, this.groundLayer); // or Slime
+          this.add.existing(e);
+          this.enemies.push(e);
+        } catch {}
+      }
+    }
+
+    // ---- 6) Refresh facts, parents, UI, worldFacts ----
+    this.snapshotSelection(sel);
+    this.recomputeAggFactsUpwards(sel.id);
+    const summary = this.describeFacts(sel.ownFacts);
+    (this.scene.get("UIScene") as any)?.handleSelectionInfo?.(
+      `Regenerated ${sel.id} (L→R). ${summary}`,
+    );
+    this.worldFacts?.refresh?.();
+  }
+
+  /**
+   * Removes all enemies inside the given selection box.
+   */
+  private removeEnemiesInSelection(sel: SelectionBox): void {
+    const { x0, y0, x1, y1 } = sel.getTileRect();
+    this.enemies = this.enemies.filter((enemy) => {
+      if (!enemy || !enemy.active) return false;
+      const tx = Math.floor(enemy.x / this.TILE_SIZE);
+      const ty = Math.floor(enemy.y / this.TILE_SIZE);
+      const inside = tx >= x0 && tx <= x1 && ty >= y0 && ty <= y1;
+      if (inside) {
+        enemy.destroy();
+        return false;
+      }
+      return true;
+    });
+  }
+
+  private removeCollectablesInSelection(sel: SelectionBox): void {
+    const { x0, y0, x1, y1 } = sel.getTileRect();
+    for (let ty = y0; ty <= y1; ty++) {
+      for (let tx = x0; tx <= x1; tx++) {
+        const t = this.collectablesLayer?.getTileAt(tx, ty);
+        if (t && t.index !== -1) {
+          this.collectablesLayer.putTileAt(-1, tx, ty);
+        }
+      }
+    }
+  }
+
+  // Inside EditorScene
+  public regenerateAllSelectionsLeftToRight(options?: {
+    useAggFacts?: boolean; // false = ownFacts, true = aggFacts
+    varySeedEachPress?: boolean; // new layout each press
+    platformTileIndex?: number; // optional forced tile
+  }) {
+    const {
+      useAggFacts = false,
+      varySeedEachPress = true,
+      platformTileIndex,
+    } = options ?? {};
+
+    // Sort by area ascending so inner boxes go first
+    const selections = this.selectionBoxes
+      .slice()
+      .sort(
+        (a, b) =>
+          a.getTileRect().w * a.getTileRect().h -
+          b.getTileRect().w * b.getTileRect().h,
+      );
+
+    console.log(`[EditorScene] Regen ALL — ${selections.length} selections`);
+
+    for (const sel of selections) {
+      // Keep facts fresh
+      this.snapshotSelection(sel);
+
+      const facts = useAggFacts ? sel.aggFacts : sel.ownFacts;
+      const targetPlatforms = facts.platform ?? 0;
+      const targetEnemies = facts.enemy ?? 0;
+
+      const rngSeed = varySeedEachPress ? `${sel.id}:${Date.now()}` : sel.id;
+
+      console.log(
+        `[EditorScene] Regen ${sel.id} targets: platforms=${targetPlatforms}, enemies=${targetEnemies}`,
+      );
+
+      this.regenerateSelectionLeftToRightConstrained(sel, {
+        targetPlatforms,
+        targetEnemies,
+        rngSeed,
+        platformTileIndex,
+        // you can also pass startChance/continueChance/gapChance/minRun/maxRun here
+      });
+    }
+  }
+
+  // helper: most common ground tile in sel
+  private inferPlatformTileIndex(sel: SelectionBox): number {
+    const { x0, y0, x1, y1 } = sel.getTileRect();
+    const freq = new Map<number, number>();
+    for (let ty = y0; ty <= y1; ty++)
+      for (let tx = x0; tx <= x1; tx++) {
+        const t = this.groundLayer?.getTileAt(tx, ty);
+        if (t && t.index !== -1)
+          freq.set(t.index, (freq.get(t.index) ?? 0) + 1);
+      }
+    if (freq.size) {
+      let best = -1,
+        bestN = -1;
+      for (const [i, n] of freq)
+        if (n > bestN) {
+          best = i;
+          bestN = n;
+        }
+      return best;
+    }
+    return this.selectedTileIndex > 0 ? this.selectedTileIndex : 2;
+  }
+
+  // helper: most common collectable tile in sel
+  private inferCollectableTileIndex(sel: SelectionBox): number {
+    const { x0, y0, x1, y1 } = sel.getTileRect();
+    const freq = new Map<number, number>();
+    for (let ty = y0; ty <= y1; ty++)
+      for (let tx = x0; tx <= x1; tx++) {
+        const t = this.collectablesLayer?.getTileAt(tx, ty);
+        if (t && t.index !== -1)
+          freq.set(t.index, (freq.get(t.index) ?? 0) + 1);
+      }
+    // If none found, just return -1 to mean "no collectables used before"
+    if (!freq.size) return -1;
+    let best = -1,
+      bestN = -1;
+    for (const [i, n] of freq)
+      if (n > bestN) {
+        best = i;
+        bestN = n;
+      }
+    return best;
+  }
+
   update() {
+    // In create(): already have this.keyL = addKey(L)
+
+    // In update():
+    if (Phaser.Input.Keyboard.JustDown(this.keyL)) {
+      // Example: regenerate all boxes using each box’s *ownFacts*
+      this.regenerateAllSelectionsLeftToRight({
+        useAggFacts: false, // set true if you want outer boxes to preserve totals incl. children
+        varySeedEachPress: true, // new layouts every press
+        // platformTileIndex: 17,   // set if you want a canonical platform tile
+      });
+    }
+
     if (this.gameActive) {
       // Play mode: player movement and camera follow
       // Hide grid and red outline

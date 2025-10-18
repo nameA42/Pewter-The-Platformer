@@ -9,6 +9,7 @@ import { setActiveSelectionBox } from "../languageModel/chatBox";
 import { Slime } from "./ExternalClasses/Slime.ts";
 import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
 import { UIScene } from "./UIScene.ts";
+import Regenerator from "./Regenerator";
 import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
 import { SelectionBox } from "./selectionBox.ts";
 
@@ -85,7 +86,6 @@ export class EditorScene extends Phaser.Scene {
   private keyB!: Phaser.Input.Keyboard.Key;
   private keyCtrl!: Phaser.Input.Keyboard.Key;
   private keyDelete!: Phaser.Input.Keyboard.Key;
-
 
   private setPointerOverUI = (v: boolean) =>
     this.registry.set("uiPointerOver", v);
@@ -201,6 +201,60 @@ export class EditorScene extends Phaser.Scene {
     this.createMinimap();
     this.cameras.main.centerOn(0, 0);
 
+    // Ensure a Regenerator instance exists so UI can trigger and log regen
+    try {
+      const rg = new Regenerator(this, {
+        chunkSize: 8,
+        dependencyProvider: (chunkKeys: string[]) => {
+          const m = new Map<string, Set<string>>();
+          for (const k of chunkKeys) m.set(k, new Set());
+          return m;
+        },
+        onChunkRegen: async (chunkKey: string) => {
+          try {
+            this.game.events.emit("regenerator:chunk", chunkKey);
+          } catch (e) {}
+
+          // Visual debug: parse chunkKey `cx,cy,z` and draw a fading rectangle
+          try {
+            const parts = (chunkKey || "").split(",");
+            if (parts.length >= 2) {
+              const cx = parseInt(parts[0], 10);
+              const cy = parseInt(parts[1], 10);
+              const chunkSize = 8; // keep in sync with Regenerator chunkSize
+              const px = cx * chunkSize * 16;
+              const py = cy * chunkSize * 16;
+              const pw = chunkSize * 16;
+              const ph = chunkSize * 16;
+              const gfx = this.add
+                .rectangle(px, py, pw, ph, 0x00ff00, 0.28)
+                .setOrigin(0, 0)
+                .setDepth(1900)
+                .setScrollFactor(1);
+              this.tweens.add({
+                targets: gfx,
+                alpha: 0,
+                duration: 900,
+                ease: "Cubic.easeOut",
+                onComplete: () => {
+                  try {
+                    gfx.destroy();
+                  } catch (e) {}
+                },
+              });
+            }
+          } catch (e) {}
+
+          // keep console visibility for debugging
+          // eslint-disable-next-line no-console
+          console.log("[Regenerator] onChunkRegen", chunkKey);
+        },
+      });
+      try {
+        (this as any).regenerator = rg;
+      } catch (e) {}
+    } catch (e) {}
+
     // grid
     this.gridGraphics = this.add.graphics();
     this.gridGraphics.setDepth(10);
@@ -283,7 +337,9 @@ export class EditorScene extends Phaser.Scene {
       typeof window.addEventListener === "function"
     ) {
       window.addEventListener("toolCalled", (_ev: any) => {
-        console.log("toolCalled event received; finalizing active box if present");
+        console.log(
+          "toolCalled event received; finalizing active box if present",
+        );
         if (this.activeBox) {
           // Mark the box as finalized (permanent)
           this.activeBox.finalize?.();
@@ -317,8 +373,12 @@ export class EditorScene extends Phaser.Scene {
       this.keyN = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.N);
       this.keyZ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
       this.keyB = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B);
-      this.keyDelete = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.DELETE);
-      this.keyCtrl = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.CTRL);
+      this.keyDelete = this.input.keyboard!.addKey(
+        Phaser.Input.Keyboard.KeyCodes.DELETE,
+      );
+      this.keyCtrl = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.CTRL,
+      );
     }
 
     // scrolling
@@ -418,7 +478,7 @@ export class EditorScene extends Phaser.Scene {
             ?.index || 0;
       }
     });
-    
+
     this.keyDelete.on("down", () => {
       if (!this.activeBox) return;
       // remove from permanent list if present

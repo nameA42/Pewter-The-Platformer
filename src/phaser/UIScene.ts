@@ -210,6 +210,29 @@ export class UIScene extends Phaser.Scene {
     // Play mode button - Shawn
     this.createPlayButton();
 
+    // Regenerator live log (persistent small list)
+    const regenLog: string[] = [];
+    const regenText = this.add
+      .text(8, 8, "", { fontSize: "12px", color: "#00ff00" })
+      .setDepth(2000)
+      .setScrollFactor(0)
+      .setOrigin(0, 0);
+    const maxLog = 6;
+    this.game.events.on("regenerator:chunk", (chunkKey: string) => {
+      try {
+        regenLog.unshift(chunkKey);
+        if (regenLog.length > maxLog) regenLog.length = maxLog;
+        regenText.setText(["Regen Log:"].concat(regenLog).join("\n"));
+        // fade out after some time
+        this.time.delayedCall(4000, () => {
+          try {
+            regenLog.pop();
+            regenText.setText(["Regen Log:"].concat(regenLog).join("\n"));
+          } catch (e) {}
+        });
+      } catch (e) {}
+    });
+
     // Add a small helper button to select the current temporary selection box
     const selectBoxBtn = this.createButton(
       this,
@@ -233,19 +256,153 @@ export class UIScene extends Phaser.Scene {
     );
     selectBoxBtn.setDepth(1001);
 
-    this.input.keyboard!.on('keydown-H', () => {
-      const editorScene = this.scene.get('editorScene') as EditorScene;
+    // Regen Selections button: triggers the EditorScene regenerator for current boxes
+    const regenBtn = this.createButton(
+      this,
+      360, // x position
+      this.cameras.main.height - 50,
+      "Regen",
+      () => {
+        try {
+          const editorScene = this.scene.get("editorScene") as EditorScene;
+          if (!editorScene) {
+            console.warn("No editorScene found");
+            this.createToast("No editorScene");
+            return;
+          }
+          const count = (this as any).triggerRegen?.call(
+            this,
+            editorScene,
+          ) as number;
+          this.createToast(`Regen triggered (${count} selection(s))`);
+        } catch (e) {
+          console.warn("Failed to trigger regen:", e);
+          this.createToast("Regen failed (see console)");
+        }
+      },
+      {
+        fill: 0x333333,
+        hoverFill: 0x4a4a4a,
+        downFill: 0x2a2a2a,
+        textColor: "#ffffff",
+        fontSize: 14,
+        paddingX: 12,
+        paddingY: 8,
+        fixedWidth: 120,
+      },
+    );
+    regenBtn.setDepth(1001);
+    regenBtn.setScrollFactor(0);
+
+    // Hotkey: press 'R' to trigger regen (same behavior as the Regen button)
+    try {
+      const keyR = this.input.keyboard!.addKey(
+        Phaser.Input.Keyboard.KeyCodes.R,
+      );
+      keyR.on("down", () => {
+        console.log("UIScene: R pressed -> trigger regen");
+        try {
+          const editorScene = this.scene.get("editorScene") as EditorScene;
+          if (!editorScene) {
+            console.warn("No editorScene found");
+            this.createToast("No editorScene");
+            return;
+          }
+          const count = (this as any).triggerRegen?.call(
+            this,
+            editorScene,
+          ) as number;
+          this.createToast(`Regen triggered (${count} selection(s))`);
+        } catch (e) {
+          console.warn("Failed to trigger regen via R key:", e);
+          this.createToast("Regen failed (see console)");
+        }
+      });
+    } catch (e) {
+      // ignore if keyboard not available
+    }
+
+    this.input.keyboard!.on("keydown-H", () => {
+      const editorScene = this.scene.get("editorScene") as EditorScene;
       const activeBox = editorScene.activeBox;
       if (activeBox) {
         activeBox.printPlacedTiles();
       } else {
-        console.log('No active selection box.');
+        console.log("No active selection box.");
       }
     });
   }
   // Receives selection info from EditorScene and displays it in the chatbox
   public handleSelectionInfo(msg: string) {
     this.latestSelectionContext = msg;
+  }
+
+  // Centralized regen trigger used by the Regen button and R hotkey.
+  // Returns the number of selection boxes that were marked; if zero, marks
+  // the current camera view as a fallback and returns 0.
+  private triggerRegen(editorScene: EditorScene): number {
+    const reg = (editorScene as any).regenerator as any;
+    if (!reg) return 0;
+    let count = 0;
+    const boxes = (editorScene as any).selectionBoxes as any[] | undefined;
+    if (boxes && Array.isArray(boxes)) {
+      for (const b of boxes) {
+        try {
+          reg.markDirty(b.getBounds(), b.getZLevel());
+          count++;
+        } catch (e) {}
+      }
+    }
+    const active = (editorScene as any).activeBox as any | undefined;
+    if (active) {
+      try {
+        reg.markDirty(active.getBounds(), active.getZLevel());
+        count++;
+      } catch (e) {}
+    }
+
+    if (count === 0) {
+      // Fallback: mark camera world area (in tile coords) to stimulate regen
+      try {
+        const cam = editorScene.cameras.main;
+        const world = cam.getWorldPoint(cam.width / 2, cam.height / 2);
+        const tileW = Math.ceil(cam.worldView.width / 16);
+        const tileH = Math.ceil(cam.worldView.height / 16);
+        const rect = new Phaser.Geom.Rectangle(
+          Math.floor((cam.worldView.x || 0) / 16),
+          Math.floor((cam.worldView.y || 0) / 16),
+          tileW,
+          tileH,
+        );
+        reg.markDirty(rect, 1);
+      } catch (e) {}
+    }
+
+    if (typeof reg.scheduleRegenNow === "function") reg.scheduleRegenNow();
+    return count;
+  }
+
+  // Show a small temporary toast in the top-right corner
+  private createToast(msg: string, ttlMs: number = 1400) {
+    try {
+      const x = this.cameras.main.width - 8;
+      const y = 8;
+      const txt = this.add
+        .text(x, y, msg, { fontSize: "14px", color: "#ffffff" })
+        .setOrigin(1, 0)
+        .setScrollFactor(0)
+        .setDepth(2000)
+        .setAlpha(0.95);
+      this.tweens.add({
+        targets: txt,
+        alpha: 0,
+        ease: "Cubic.easeOut",
+        duration: ttlMs,
+        onComplete: () => txt.destroy(),
+      });
+    } catch (e) {
+      // ignore
+    }
   }
 
   //Working Code - Jason Cho (Helper functions)

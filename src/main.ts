@@ -22,6 +22,7 @@ import { PlaceGridofTiles } from "./languageModel/tools/placeGridofTiles.ts";
 import { ClearTile } from "./languageModel/tools/clearTile.ts";
 import { WorldFactsTool } from "./languageModel/tools/worldFactsTool.ts";
 import { GetPlacedTiles } from "./languageModel/tools/getPlacedTiles.ts";
+import { RelativeRegeneration } from "./languageModel/tools/relativeGeneration.ts";
 
 ////****LLM Tool Setup****////
 // const tools = {
@@ -37,6 +38,7 @@ const tools = {
   clearTile: new ClearTile(getScene),
   WorldFactsTool: new WorldFactsTool(getScene),
   getPlacedTiles: new GetPlacedTiles(getScene),
+  relativeGeneration: new RelativeRegeneration(getScene),
 };
 
 // // Register all tools with the LLM

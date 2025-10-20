@@ -720,6 +720,14 @@ export class EditorScene extends Phaser.Scene {
     } else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
       this.finalizeSelectBox();
     }
+
+    //Temp code - Jason 
+    if (Phaser.Input.Keyboard.JustDown(this.keyB)) {
+      //Call selectionBox.ts checkTilesInBox
+      if (this.activeBox) {
+        this.activeBox.checkTilesInBox();
+      }
+    }
   }
 
   undoLastAction(): void {

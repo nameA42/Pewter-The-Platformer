@@ -36,6 +36,11 @@ export class SelectionBox {
   private _dragHandler?: (pointer: Phaser.Input.Pointer, obj: any, dragX: number, dragY: number) => void;
   private _pointerMoveHandler?: (pointer: Phaser.Input.Pointer) => void;
   private _pointerUpHandler?: (pointer: Phaser.Input.Pointer) => void;
+  //Drag and Drop support - Jason Cho
+  private dragSnapshot?: { w: number; h: number; tiles: { dx: number; dy: number; index: number }[] };
+  private previewMap?: Phaser.Tilemaps.Tilemap;
+  private previewLayer?: Phaser.Tilemaps.TilemapLayer | null;
+  private dragOriginStart?: Phaser.Math.Vector2; // where the drag began (tile coords)
 
   constructor(
     scene: Phaser.Scene,
@@ -273,16 +278,25 @@ export class SelectionBox {
             this.start = candidateStart;
             this.end = candidateEnd;
             this.redraw();
+            this.updatePreviewLayerPosition(); //Drag and Drop 
           }
         } catch (e) {
           this.start = candidateStart;
           this.end = candidateEnd;
           this.redraw();
+          this.updatePreviewLayerPosition(); //Drag and Drop
         }
       };
 
       const pointerUp = (_pointer: Phaser.Input.Pointer) => {
         dragging = false;
+        // Only commit if we actually started a drag snapshot
+        if (this.dragSnapshot) {
+          this.commitMoveToCurrentPosition();
+        } else {
+          // No snapshot -> just ensure ghost is gone
+          this.destroyPreviewLayer();
+        }
         try {
           if (this._pointerMoveHandler) this.scene.input.off('pointermove', this._pointerMoveHandler);
         } catch (e) {}
@@ -311,6 +325,10 @@ export class SelectionBox {
         this._pointerUpHandler = pointerUp;
         this.scene.input.on('pointermove', this._pointerMoveHandler);
         this.scene.input.on('pointerup', this._pointerUpHandler);
+
+        //Drag and Drop support - Jason Cho
+        this.snapshotSelection();
+        this.updatePreviewLayerPosition();
       });
     } catch (e) {
       // ignore if input system not available
@@ -500,4 +518,179 @@ export class SelectionBox {
       console.log(`${index + 1}: ${JSON.stringify(tile)}`);
     });
   }
+
+  //Drag and Drop support - Jason Cho
+  public checkTilesInBox() {
+    const sX = Math.min(this.start.x, this.end.x);
+    const sY = Math.min(this.start.y, this.end.y);
+    const eX = Math.max(this.start.x, this.end.x);
+    const eY = Math.max(this.start.y, this.end.y);
+    const tilesInBox: { tileIndex: number; x: number; y: number; layerName: string}[] = [];
+    for (let y = sY; y <= eY; y++) {
+      for (let x = sX; x <= eX; x++) {
+        const tile = this.layer.getTileAt(x, y);
+        if (tile) {
+          tilesInBox.push({ tileIndex: tile.index, x: x, y: y, layerName: this.layer.layer.name });
+        }
+      }
+    }
+    console.log("Tiles in Box:", tilesInBox);
+    return tilesInBox;
+  }
+
+  private snapshotSelection(): void {
+    const sX = Math.min(this.start.x, this.end.x);
+    const sY = Math.min(this.start.y, this.end.y);
+    const eX = Math.max(this.start.x, this.end.x);
+    const eY = Math.max(this.start.y, this.end.y);
+    const w = eX - sX + 1;
+    const h = eY - sY + 1;
+
+    const tiles: { dx: number; dy: number; index: number }[] = [];
+    for (let ty = 0; ty < h; ty++) {
+      for (let tx = 0; tx < w; tx++) {
+        const tile = this.layer.getTileAt(sX + tx, sY + ty);
+        if (tile && tile.index !== -1) {
+          tiles.push({ dx: tx, dy: ty, index: tile.index });
+        }
+      }
+    }
+
+    this.dragSnapshot = { w, h, tiles };
+    this.dragOriginStart = new Phaser.Math.Vector2(sX, sY);
+
+    this.buildPreviewLayer();          // build the ghost layer
+    this.updatePreviewLayerPosition(); // position it under the box
+  }
+
+  private buildPreviewLayer(): void {
+    this.destroyPreviewLayer();
+    if (!this.dragSnapshot) return;
+
+    const map = this.layer.tilemap;                 // use the SAME map
+    const tileW = map.tileWidth;
+    const tileH = map.tileHeight;
+
+    // Use the exact tilesets already attached to the map (no re-adding)
+    const sourceTilesets = map.tilesets as Phaser.Tilemaps.Tileset[];
+    if (!sourceTilesets || sourceTilesets.length === 0) {
+      console.warn("[SelectionBox] No tilesets on map; preview cannot render.");
+      return;
+    }
+
+    // Create a temporary blank layer ON THIS MAP (avoids tileset/key/firstgid mismatches)
+    this.previewLayer = map.createBlankLayer("PREVIEW_GHOST", sourceTilesets, 0, 0);
+    if (!this.previewLayer) {
+      console.warn("[SelectionBox] Failed to create preview layer.");
+      return;
+    }
+
+    this.previewLayer.setDepth(1002);
+    this.previewLayer.setAlpha(0.75);
+    this.previewLayer.setVisible(true);
+    this.previewLayer.setScrollFactor(1, 1);
+
+    // Clear to empty, then paint snapshot indices
+    this.previewLayer.fill(-1, 0, 0, this.dragSnapshot.w, this.dragSnapshot.h);
+
+    for (const t of this.dragSnapshot.tiles) {
+      this.previewLayer.putTileAt(t.index, t.dx, t.dy);
+    }
+
+    // Position under the box (world pixels)
+    const sX = Math.min(this.start.x, this.end.x);
+    const sY = Math.min(this.start.y, this.end.y);
+    this.previewLayer.setPosition(sX * tileW, sY * tileH);
+  }
+
+
+  private destroyPreviewLayer(): void {
+    if (this.previewLayer) { this.previewLayer.destroy(); this.previewLayer = undefined; }
+    if (this.previewMap)   { (this.previewMap as any).destroy?.(); this.previewMap = undefined; }
+  }
+
+  private updatePreviewLayerPosition(): void {
+    if (!this.previewLayer) return;
+    const map = this.layer.tilemap;
+    const sX = Math.min(this.start.x, this.end.x);
+    const sY = Math.min(this.start.y, this.end.y);
+    this.previewLayer.setPosition(sX * map.tileWidth, sY * map.tileHeight);
+  }
+
+  private commitMoveToCurrentPosition(): void {
+    if (!this.dragSnapshot || !this.dragOriginStart) {
+      this.destroyPreviewLayer();
+      return;
+    }
+
+    const oldSX = this.dragOriginStart.x;
+    const oldSY = this.dragOriginStart.y;
+    const newSX = Math.min(this.start.x, this.end.x);
+    const newSY = Math.min(this.start.y, this.end.y);
+    const dx = newSX - oldSX;
+    const dy = newSY - oldSY;
+
+    // OPTIONAL: prevent overlapping paste
+    if (!this.targetAreaIsClear(newSX, newSY)) {
+    console.log("Overlapped!");
+    // cleanup + snap back to original
+    this.destroyPreviewLayer();
+    this.dragSnapshot = undefined;
+    this.dragOriginStart = undefined;
+    this.start.set(oldSX, oldSY);
+    this.end.set(oldSX + this.dragSnapshot!.w - 1, oldSY + this.dragSnapshot!.h - 1);
+    this.redraw();
+    return;
+  }
+
+
+    // 1) Clear original snapshot footprint (only cells that had tiles)
+    for (let ty = 0; ty < this.dragSnapshot.h; ty++) {
+      for (let tx = 0; tx < this.dragSnapshot.w; tx++) {
+        const hadTile = this.dragSnapshot.tiles.some(t => t.dx === tx && t.dy === ty);
+        if (hadTile) this.layer.putTileAt(-1, oldSX + tx, oldSY + ty);
+      }
+    }
+
+    // 2) Paste at new location
+    for (const t of this.dragSnapshot.tiles) {
+      const nx = newSX + t.dx;
+      const ny = newSY + t.dy;
+      this.layer.putTileAt(t.index, nx, ny);
+    }
+
+    // 3) Update bookkeeping for tiles associated with this box
+    if (this.placedTiles?.length) {
+      for (const pt of this.placedTiles) {
+        // Only shift tiles that were inside the old selection
+        if (
+          pt.x >= oldSX && pt.x < oldSX + this.dragSnapshot.w &&
+          pt.y >= oldSY && pt.y < oldSY + this.dragSnapshot.h
+        ) {
+          pt.x += dx;
+          pt.y += dy;
+        }
+      }
+    }
+
+    // Cleanup
+    this.destroyPreviewLayer();
+    this.dragSnapshot = undefined;
+    this.dragOriginStart = undefined;
+
+    this.redraw();
+  }
+
+  private targetAreaIsClear(newSX: number, newSY: number): boolean {
+    if (!this.dragSnapshot) return true;
+    for (const t of this.dragSnapshot.tiles) {
+      const nx = newSX + t.dx;
+      const ny = newSY + t.dy;
+      const tile = this.layer.getTileAt(nx, ny);
+      if (tile && tile.index !== -1) return false;
+    }
+    return true;
+  }
+
+
 }

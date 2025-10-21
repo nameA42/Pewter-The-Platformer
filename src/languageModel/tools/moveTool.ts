@@ -21,7 +21,17 @@ export class MoveTool {
       args.distance = Number(args.distance);
 
       let gameScene = this.sceneGetter();
-      gameScene.handlePlayerMovement(args.direction, args.distance);
+      // Use the explicit movePlayer API which accepts direction and distance
+      if (typeof (gameScene as any).movePlayer === "function") {
+        (gameScene as any).movePlayer(args.direction, args.distance);
+      } else {
+        // fallback to the legacy method (no-arg handler)
+        try {
+          (gameScene as any).handlePlayerMovement();
+        } catch (e) {
+          // ignore
+        }
+      }
 
       let dirName = "";
       switch (args.direction) {

@@ -77,9 +77,7 @@ export class SelectionBox {
   private isFinalized: boolean = false;
 
   // STEP 3: Collaborative Context Merging - Neighbor tracking
-  private neighbors: Set<SelectionBox> = new Set();
-  private lastNeighborCheck: number = 0;
-  private neighborCheckInterval: number = 500; // Check every 500ms
+  // neighbor tracking is delegated to attached InformationClass (box.getInfo())
 
   // Drag helpers
   private _dragInitialStart?: Phaser.Math.Vector2;
@@ -87,13 +85,7 @@ export class SelectionBox {
   private _dragPointerTileX?: number;
   private _dragPointerTileY?: number;
   
-  private _dragStartHandler?: (pointer: Phaser.Input.Pointer, obj: any) => void;
-  private _dragHandler?: (
-    pointer: Phaser.Input.Pointer,
-    obj: any,
-    dragX: number,
-    dragY: number,
-  ) => void;
+  
   private _pointerMoveHandler?: (pointer: Phaser.Input.Pointer) => void;
   private _pointerUpHandler?: (pointer: Phaser.Input.Pointer) => void;
 
@@ -126,20 +118,8 @@ export class SelectionBox {
     // create tab after initial draw
     this.createTab();
     // Attach an InformationClass instance lazily to avoid circular imports
-    try {
-      // dynamic import (ESM-friendly)
-      import("./informationClass").then((m) => {
-        try {
-          (this as any).info = new m.InformationClass(this);
-          // Sync localContext with info's chatHistory reference
-          (this as any).info.chatHistory = this.localContext.chatHistory;
-        } catch (e) {
-          // ignore
-        }
-      });
-    } catch (e) {
-      // ignore if module system differs; caller can create info manually
-    }
+    // InformationClass should be attached by the caller (EditorScene) to avoid
+    // dynamic import races. If not attached, callers can create one manually.
     // themeIntent can be set later via setter
   }
 
@@ -200,107 +180,37 @@ export class SelectionBox {
    * Check if this box is touching another box (adjacent or overlapping)
    */
   public isTouching(other: SelectionBox): boolean {
-    if (other === this || other.getZLevel() !== this.zLevel) {
-      return false;
-    }
-
-    const myBounds = this.getBounds();
-    const otherBounds = other.getBounds();
-
-    // Check if boxes are adjacent (touching edges) or overlapping
-    const touching =
-      // Overlapping
-      Phaser.Geom.Intersects.RectangleToRectangle(myBounds, otherBounds) ||
-      // Adjacent horizontally
-      ((myBounds.right + 1 === otherBounds.left ||
-        otherBounds.right + 1 === myBounds.left) &&
-        !(
-          myBounds.bottom < otherBounds.top || otherBounds.bottom < myBounds.top
-        )) ||
-      // Adjacent vertically
-      ((myBounds.bottom + 1 === otherBounds.top ||
-        otherBounds.bottom + 1 === myBounds.top) &&
-        !(
-          myBounds.right < otherBounds.left || otherBounds.right < myBounds.left
-        ));
-
-    return touching;
+    // Delegate to InformationClass if present
+    try {
+      const info = (this as any).getInfo?.() || (this as any).info;
+      if (info && typeof info.isTouchingBox === "function") return info.isTouchingBox(other);
+    } catch (e) {}
+    // Fallback to conservative check
+    if (other === this || other.getZLevel() !== this.zLevel) return false;
+    return Phaser.Geom.Intersects.RectangleToRectangle(this.getBounds(), other.getBounds());
   }
-
-  /**
-   * Update neighbor list by checking all boxes in the scene
-   */
+  // Update neighbors: delegate to info
   public updateNeighbors(allBoxes: SelectionBox[]): void {
-    const now = Date.now();
-    if (now - this.lastNeighborCheck < this.neighborCheckInterval) {
-      return; // Don't check too frequently
-    }
-
-    this.lastNeighborCheck = now;
-    const previousNeighbors = new Set(this.neighbors);
-    this.neighbors.clear();
-
-    // Find current neighbors
-    for (const box of allBoxes) {
-      if (this.isTouching(box)) {
-        this.neighbors.add(box);
-      }
-    }
-
-    // Notify about new neighbors
-    this.neighbors.forEach((neighbor) => {
-      if (!previousNeighbors.has(neighbor)) {
-        this.onNeighborAdded(neighbor);
-      }
-    });
-
-    // Notify about lost neighbors
-    previousNeighbors.forEach((previousNeighbor) => {
-      if (!this.neighbors.has(previousNeighbor)) {
-        this.onNeighborRemoved(previousNeighbor);
-      }
-    });
+    try {
+      const info = (this as any).getInfo?.() || (this as any).info;
+      if (info && typeof info.updateNeighborsForBoxes === "function") return info.updateNeighborsForBoxes(allBoxes as any[]);
+    } catch (e) {}
   }
 
   /**
    * Called when a new neighbor is detected
    */
-  private onNeighborAdded(neighbor: SelectionBox): void {
-    console.log(
-      `Box ${this.localContext.id} gained neighbor ${neighbor.localContext.id}`,
-    );
-    // Share our shareable data with the new neighbor
-    this.shareDataWithNeighbor(neighbor);
-    // Update visual indicator
-      this.updateTabPosition();
-  }
-
-  /**
-   * Called when a neighbor is no longer touching
-   */
-  private onNeighborRemoved(neighbor: SelectionBox): void {
-    console.log(
-      `Box ${this.localContext.id} lost neighbor ${neighbor.localContext.id}`,
-    );
-    // Update visual indicator
-      this.updateTabPosition();
-  }
-
-  /**
-   * Share shareable data with a specific neighbor
-   */
-  private shareDataWithNeighbor(neighbor: SelectionBox): void {
-    const shareableData = this.getShareableData();
-    shareableData.forEach((data, key) => {
-      neighbor.receiveSharedData(key, data);
-    });
-  }
+  // neighbor add/remove/share handled by InformationClass; SelectionBox keeps lightweight delegates
 
   /**
    * Get current neighbors
    */
   public getNeighbors(): SelectionBox[] {
-    return Array.from(this.neighbors);
+    try {
+      const info = (this as any).getInfo?.() || (this as any).info;
+      if (info && typeof info.getNeighborsBoxes === "function") return info.getNeighborsBoxes() as SelectionBox[];
+    } catch (e) {}
+    return [];
   }
 
   // STEP 4: Collaborative Context Merging - Data sharing and merging methods
@@ -350,8 +260,13 @@ export class SelectionBox {
    * Broadcast shareable data to all current neighbors
    */
   public broadcastToNeighbors(): void {
+    try {
+      const info = (this as any).getInfo?.() || (this as any).info;
+      if (info && typeof info.broadcastToNeighborsBox === "function") return info.broadcastToNeighborsBox();
+    } catch (e) {}
+
     const shareableData = this.getShareableData();
-    this.neighbors.forEach((neighbor) => {
+    this.getNeighbors().forEach((neighbor) => {
       shareableData.forEach((data, key) => {
         neighbor.receiveSharedData(key, data);
       });
@@ -362,10 +277,14 @@ export class SelectionBox {
    * Request specific data from neighbors
    */
   public requestDataFromNeighbors(key: string): BoxContextData | null {
-    for (const neighbor of this.neighbors) {
+    try {
+      const info = (this as any).getInfo?.() || (this as any).info;
+      if (info && typeof info.requestDataFromNeighborsBox === "function") return info.requestDataFromNeighborsBox(key);
+    } catch (e) {}
+
+    for (const neighbor of this.getNeighbors()) {
       const data = neighbor.localContext.data.get(key);
       if (data && data.canShare) {
-        // Receive this data through normal merging process
         this.receiveSharedData(key, data);
         return data;
       }
@@ -381,22 +300,12 @@ export class SelectionBox {
     if (this.isFinalized) return; // don't allow resizing finalized boxes
     this.start = start.clone();
     this.redraw();
-    // Inform attached InformationClass to refresh derived info
-    try {
-      const info = (this as any).getInfo?.() || (this as any).info;
-      if (info && typeof info.refreshFromBox === "function") info.refreshFromBox();
-    } catch (e) {}
   }
 
   updateEnd(end: Phaser.Math.Vector2) {
     if (this.isFinalized) return; // don't allow resizing finalized boxes
     this.end = end.clone();
     this.redraw();
-    // Inform attached InformationClass to refresh derived info
-    try {
-      const info = (this as any).getInfo?.() || (this as any).info;
-      if (info && typeof info.refreshFromBox === "function") info.refreshFromBox();
-    } catch (e) {}
   }
 
   setZLevel(zLevel: number) {
@@ -823,10 +732,15 @@ export class SelectionBox {
       this.tabContainer.destroy();
       this.tabContainer = null;
     }
-    // Remove drag listeners
-    if (this._dragStartHandler)
-      this.scene.input.off("dragstart", this._dragStartHandler);
-    if (this._dragHandler) this.scene.input.off("drag", this._dragHandler);
+    // Remove any pointer listeners we registered during dragging
+    try {
+      if (this._pointerMoveHandler)
+        this.scene.input.off("pointermove", this._pointerMoveHandler);
+    } catch (e) {}
+    try {
+      if (this._pointerUpHandler)
+        this.scene.input.off("pointerup", this._pointerUpHandler);
+    } catch (e) {}
   }
 
   // Mark this selection as finalized (permanent). Keeps a tab for dragging but
@@ -845,6 +759,11 @@ export class SelectionBox {
     }
     // ensure tab is activeable for dragging
     // nothing else needed for now
+    // Sync attached info now that box is finalized
+    try {
+      const info = (this as any).getInfo?.() || (this as any).info;
+      if (info && typeof info.refreshFromBox === "function") info.refreshFromBox();
+    } catch (e) {}
   }
 
   // STEP 6: Collaborative Context Merging - Helper methods for easy usage
@@ -888,13 +807,14 @@ export class SelectionBox {
       return true;
     }
 
-    // Check neighbors
-    for (const neighbor of this.neighbors) {
-      if (neighbor.localContext.data.has(key)) {
-        return true;
-      }
-    }
+    try {
+      const info = (this as any).getInfo?.() || (this as any).info;
+      if (info && typeof info.networkHasDataBox === "function") return info.networkHasDataBox(key);
+    } catch (e) {}
 
+    for (const neighbor of this.getNeighbors()) {
+      if (neighbor.localContext.data.has(key)) return true;
+    }
     return false;
   }
 
@@ -906,21 +826,19 @@ export class SelectionBox {
     own: string[];
     neighborsShareable: string[];
   } {
+    try {
+      const info = (this as any).getInfo?.() || (this as any).info;
+      if (info && typeof info.getNetworkDataSummaryBox === "function") return info.getNetworkDataSummaryBox();
+    } catch (e) {}
+
     const own = Array.from(this.localContext.data.keys());
     const neighborsShareable = new Set<string>();
-
-    this.neighbors.forEach((neighbor) => {
-      neighbor.localContext.data.forEach((data, key) => {
-        if (data.canShare) {
-          neighborsShareable.add(key);
-        }
+    this.getNeighbors().forEach((neighbor) => {
+      neighbor.localContext.data.forEach((data: any, key: string) => {
+        if (data.canShare) neighborsShareable.add(key);
       });
     });
-
-    return {
-      own,
-      neighborsShareable: Array.from(neighborsShareable),
-    };
+    return { own, neighborsShareable: Array.from(neighborsShareable) };
   }
 
   /**
@@ -931,7 +849,7 @@ export class SelectionBox {
       id: this.localContext.id,
       zLevel: this.zLevel,
       bounds: this.getBounds(),
-      neighbors: this.neighbors.size,
+      neighbors: this.getNeighbors().length,
       dataKeys: Array.from(this.localContext.data.keys()),
       version: this.localContext.version,
     };
@@ -954,9 +872,7 @@ export class SelectionBox {
     // Set some private data (not shareable)
     this.setContextData("private_note", "This is private data", false);
 
-    console.log(
-      `Box ${this.localContext.id} shared data with ${this.neighbors.size} neighbors`,
-    );
+    console.log(`Box ${this.localContext.id} shared data with ${this.getNeighbors().length} neighbors`);
   }
 
   /**
@@ -967,12 +883,8 @@ export class SelectionBox {
     console.log("My data:", Array.from(this.localContext.data.entries()));
     console.log("Network summary:", this.getNetworkDataSummary());
     console.log("Debug info:", this.getDebugInfo());
-
-    this.neighbors.forEach((neighbor) => {
-      console.log(
-        `Neighbor ${neighbor.localContext.id}:`,
-        neighbor.getDebugInfo(),
-      );
+    this.getNeighbors().forEach((neighbor) => {
+      console.log(`Neighbor ${neighbor.localContext.id}:`, neighbor.getDebugInfo());
     });
   }
 
@@ -992,7 +904,11 @@ export class SelectionBox {
     contextLines.push(
       `Position: (${this.start.x}, ${this.start.y}) to (${this.end.x}, ${this.end.y})`,
     );
-    contextLines.push(`Neighbors: ${this.neighbors.size} connected boxes`);
+    try {
+      const info = (this as any).getInfo?.() || (this as any).info;
+      if (info && typeof info.getCollaborativeContextForChatBox === "function") return info.getCollaborativeContextForChatBox();
+    } catch (e) {}
+    contextLines.push(`Neighbors: ${this.getNeighbors().length} connected boxes`);
 
     // Own data
     if (this.localContext.data.size > 0) {
@@ -1017,13 +933,11 @@ export class SelectionBox {
     }
 
     // Neighbor details
-    if (this.neighbors.size > 0) {
+    if (this.getNeighbors().length > 0) {
       contextLines.push(`\n=== Neighbor Details ===`);
-      this.neighbors.forEach((neighbor) => {
+      this.getNeighbors().forEach((neighbor) => {
         const neighborInfo = neighbor.getDebugInfo();
-        contextLines.push(
-          `Neighbor ${neighborInfo.id}: Z${neighborInfo.zLevel}, ${neighborInfo.dataKeys.length} data items`,
-        );
+        contextLines.push(`Neighbor ${neighborInfo.id}: Z${neighborInfo.zLevel}, ${neighborInfo.dataKeys.length} data items`);
       });
     }
 
@@ -1039,20 +953,13 @@ export class SelectionBox {
     msg: any,
     shareWithNeighbors: boolean = false,
   ): void {
-    // Add to our own chat history
+    try {
+      const info = (this as any).getInfo?.() || (this as any).info;
+      if (info && typeof info.addCollaborativeChatMessageBox === "function") return info.addCollaborativeChatMessageBox(msg, shareWithNeighbors);
+    } catch (e) {}
     this.localContext.chatHistory.push(msg);
-
-    // Optionally share with neighbors
     if (shareWithNeighbors && typeof msg.content === "string") {
-      this.shareData(
-        "last_chat_message",
-        {
-          content: msg.content,
-          timestamp: Date.now(),
-          from: this.localContext.id,
-        },
-        true,
-      );
+      this.shareData("last_chat_message", { content: msg.content, timestamp: Date.now(), from: this.localContext.id }, true);
     }
   }
 
@@ -1060,18 +967,15 @@ export class SelectionBox {
    * Get shared chat messages from neighbors
    */
   public getSharedChatMessages(): any[] {
+    try {
+      const info = (this as any).getInfo?.() || (this as any).info;
+      if (info && typeof info.getSharedChatMessagesBox === "function") return info.getSharedChatMessagesBox();
+    } catch (e) {}
     const sharedMessages: any[] = [];
-
-    this.neighbors.forEach((neighbor) => {
+    this.getNeighbors().forEach((neighbor) => {
       const sharedMsg = neighbor.getContextData("last_chat_message");
-      if (sharedMsg) {
-        sharedMessages.push({
-          ...sharedMsg,
-          fromNeighbor: neighbor.localContext.id,
-        });
-      }
+      if (sharedMsg) sharedMessages.push({ ...sharedMsg, fromNeighbor: neighbor.localContext.id });
     });
-
     return sharedMessages.sort((a, b) => a.timestamp - b.timestamp);
   }
 
@@ -1094,16 +998,13 @@ export class SelectionBox {
     this.shareData("test_number", Math.floor(Math.random() * 100), true);
     this.shareData("test_timestamp", new Date().toISOString(), true);
 
-    console.log(`📤 Box ${this.localContext.id} shared 3 test items`);
-    console.log(`👥 Connected to ${this.neighbors.size} neighbors`);
+  console.log(`📤 Box ${this.localContext.id} shared 3 test items`);
+  console.log(`👥 Connected to ${this.getNeighbors().length} neighbors`);
 
     // Log what we can see from neighbors
     setTimeout(() => {
       const summary = this.getNetworkDataSummary();
-      console.log(
-        `📥 Box ${this.localContext.id} can see from neighbors:`,
-        summary.neighborsShareable,
-      );
+      console.log(`📥 Box ${this.localContext.id} can see from neighbors:`, summary.neighborsShareable);
     }, 100);
   }
 
@@ -1122,24 +1023,17 @@ export class SelectionBox {
    */
   public updateTabWithNetworkInfo(): void {
     if (!this.tabText) return;
+    try {
+      const info = (this as any).getInfo?.() || (this as any).info;
+      if (info && typeof info.updateTabWithNetworkInfoBox === "function") return info.updateTabWithNetworkInfoBox();
+    } catch (e) {}
 
-    const neighborCount = this.neighbors.size;
+    const neighborCount = this.getNeighbors().length;
     const dataCount = this.localContext.data.size;
-
-    // Update tab text to show network info
     this.tabText.setText(`Box (${neighborCount}n, ${dataCount}d)`);
-
-    // Change color based on connectivity
     if (this.tabBg) {
-      if (neighborCount > 0) {
-        // Connected - use cyan to indicate network activity
-        this.tabBg.setFillStyle(this.isActive ? 0x00ff88 : 0x00aaff);
-      } else {
-        // Not connected - use original colors
-        this.tabBg.setFillStyle(
-          this.isActive ? 0x127803 : this.isFinalized ? 0x2b2b2b : 0x2b6bff,
-        );
-      }
+      if (neighborCount > 0) this.tabBg.setFillStyle(this.isActive ? 0x00ff88 : 0x00aaff);
+      else this.tabBg.setFillStyle(this.isActive ? 0x127803 : this.isFinalized ? 0x2b2b2b : 0x2b6bff);
     }
   }
 

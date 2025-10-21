@@ -11,6 +11,7 @@ import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
 import { UIScene } from "./UIScene.ts";
 import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
 import { SelectionBox } from "./selectionBox.ts";
+import InformationClass from "./informationClass";
 
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
@@ -704,11 +705,29 @@ export class EditorScene extends Phaser.Scene {
     // STEP 5: Collaborative Context Merging - Update neighbor detection for all boxes
     for (const box of this.selectionBoxes) {
       if (box.updateNeighbors) {
-        box.updateNeighbors(this.selectionBoxes);
+        try {
+          const info = (box as any).getInfo ? (box as any).getInfo() : (box as any).info;
+          if (info && typeof info.updateNeighborsForBoxes === "function") {
+            info.updateNeighborsForBoxes(this.selectionBoxes as any[]);
+          } else {
+            box.updateNeighbors(this.selectionBoxes);
+          }
+        } catch (e) {
+          try { box.updateNeighbors(this.selectionBoxes); } catch (e) {}
+        }
       }
     }
     if (this.activeBox && this.activeBox.updateNeighbors) {
-      this.activeBox.updateNeighbors(this.selectionBoxes);
+      try {
+        const info = (this.activeBox as any).getInfo ? (this.activeBox as any).getInfo() : (this.activeBox as any).info;
+        if (info && typeof info.updateNeighborsForBoxes === "function") {
+          info.updateNeighborsForBoxes(this.selectionBoxes as any[]);
+        } else {
+          this.activeBox.updateNeighbors(this.selectionBoxes);
+        }
+      } catch (e) {
+        try { this.activeBox.updateNeighbors(this.selectionBoxes); } catch (e) {}
+      }
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.keyC) && this.keyCtrl.isDown) {
@@ -913,6 +932,11 @@ export class EditorScene extends Phaser.Scene {
             this.selectBox(box);
           },
         );
+        // attach InformationClass immediately so info-based features are available
+        try {
+          (this.activeBox as any).info = new (InformationClass as any)(this.activeBox);
+          (this.activeBox as any).info.chatHistory = (this.activeBox as any).localContext.chatHistory;
+        } catch (e) {}
         // Immediately make this new box active (visual + chat)
         this.selectBox(this.activeBox);
       } else {

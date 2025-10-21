@@ -38,6 +38,8 @@ export function setActiveSelectionBox(
   if (!box) {
     // Clear active context
     currentChatHistory = [];
+    // clear any stored active box reference
+    currentActiveBox = null;
     if (
       typeof window !== "undefined" &&
       typeof window.dispatchEvent === "function"
@@ -62,6 +64,15 @@ export function setActiveSelectionBox(
   // Keep the original SelectionBox object reference if present so
   // we can finalize it when tools are invoked.
   // (no local object stored here; editor listens for tool events)
+  // briefly store the active box reference to avoid unused-variable linting; editor may expose this globally too
+  currentActiveBox = box;
+  try {
+    const boxId = box && (box as any).localContext ? (box as any).localContext.id : null;
+    const hasInfo = box ? !!((box as any).getInfo ? (box as any).getInfo() : (box as any).info) : false;
+    console.log("chatBox.setActiveSelectionBox: active box set ->", boxId || null, "hasInfo=", hasInfo);
+  } catch (e) {
+    console.log("chatBox.setActiveSelectionBox: active box set -> (error reading details)");
+  }
   // Ensure system message is always first
   const sysPrompt =
     "You are 'Pewter, an expert tile-based map designer by day, but an incredible video game player by night. " +
@@ -162,6 +173,18 @@ export async function sendUserPrompt(message: string): Promise<string> {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
 
+      // Trigger one-line summary generation for the active selection box (non-blocking)
+      try {
+        const activeBox = currentActiveBox;
+        const info = activeBox && (activeBox.getInfo ? activeBox.getInfo() : activeBox.info);
+        if (info && typeof info.generateSummaryOneLine === "function") {
+          // fire-and-forget summary generation
+          info.generateSummaryOneLine().catch((e: any) => console.warn("generateSummaryOneLine failed:", e));
+        }
+      } catch (e) {
+        // ignore
+      }
+
     return replyText;
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
@@ -218,6 +241,17 @@ export async function sendUserPromptWithContext(
     ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
+
+      // Trigger one-line summary generation for the active selection box (non-blocking)
+      try {
+        const activeBox = currentActiveBox;
+        const info = activeBox && (activeBox.getInfo ? activeBox.getInfo() : activeBox.info);
+        if (info && typeof info.generateSummaryOneLine === "function") {
+          info.generateSummaryOneLine().catch((e: any) => console.warn("generateSummaryOneLine failed:", e));
+        }
+      } catch (e) {
+        // ignore
+      }
 
     return replyText;
   } catch (err) {
@@ -302,21 +336,18 @@ export async function sendUserPromptWithCollaborativeContext(
 
   // Try to get collaborative context from the active box
   // We need to access the active box through the editor scene
-  try {
-    // Access the active selection box through the global window object
-    // This assumes the EditorScene sets window.activeSelectionBox or similar
-    const activeBox = (window as any).getActiveSelectionBox?.();
-
-    if (
-      activeBox &&
-      typeof activeBox.getCollaborativeContextForChat === "function"
-    ) {
-      collaborativeContext = activeBox.getCollaborativeContextForChat();
-      console.log("Including collaborative context from active selection box");
+    try {
+      const activeBox = currentActiveBox;
+      if (
+        activeBox &&
+        typeof activeBox.getCollaborativeContextForChat === "function"
+      ) {
+        collaborativeContext = activeBox.getCollaborativeContextForChat();
+        console.log("Including collaborative context from active selection box");
+      }
+    } catch (error) {
+      console.warn("Could not retrieve collaborative context:", error);
     }
-  } catch (error) {
-    console.warn("Could not retrieve collaborative context:", error);
-  }
 
   // Push the user's visible message into the active history
   const userMessage = new HumanMessage(userMessageText);
@@ -348,6 +379,17 @@ export async function sendUserPromptWithCollaborativeContext(
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
 
+      // Trigger one-line summary generation for the active selection box (non-blocking)
+      try {
+        const activeBox = currentActiveBox;
+        const info = activeBox && (activeBox.getInfo ? activeBox.getInfo() : activeBox.info);
+        if (info && typeof info.generateSummaryOneLine === "function") {
+          info.generateSummaryOneLine().catch((e: any) => console.warn("generateSummaryOneLine failed:", e));
+        }
+      } catch (e) {
+        // ignore
+      }
+
     return replyText;
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
@@ -377,7 +419,7 @@ export async function sendUserPromptWithFullContext(
   // Get collaborative context
   let collaborativeContext = "";
   try {
-    const activeBox = (window as any).getActiveSelectionBox?.();
+    const activeBox = currentActiveBox;
     if (
       activeBox &&
       typeof activeBox.getCollaborativeContextForChat === "function"

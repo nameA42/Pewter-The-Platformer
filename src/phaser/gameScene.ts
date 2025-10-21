@@ -489,4 +489,25 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setZoom(clampedZoom);
     return `Game is now zoomed to level ${clampedZoom}`;
   }
+
+  // Compatibility wrapper used by tools: move player by direction (0:left,1:up,2:right) and distance
+  public movePlayer(direction: number, distance: number) {
+    // Map direction to simple movement for tool calls
+    const dir = Number(direction);
+    const dist = Number(distance) || 1;
+    switch (dir) {
+      case 0:
+        this.player.x -= dist * 8;
+        break;
+      case 1:
+        // upward -> simple jump impulse
+        this.player.setVelocityY(this.JUMP_VELOCITY || -500);
+        break;
+      case 2:
+        this.player.x += dist * 8;
+        break;
+      default:
+        break;
+    }
+  }
 }

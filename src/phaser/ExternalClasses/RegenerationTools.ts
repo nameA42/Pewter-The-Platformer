@@ -1,6 +1,10 @@
 import { SelectionBox } from "../selectionBox.ts";
 import { WorldFacts } from "./worldFacts.ts";
-import { BaseMessage } from "@langchain/core/messages";
+import {
+  BaseMessage,
+  SystemMessage,
+  HumanMessage,
+} from "@langchain/core/messages";
 import {
   getChatResponse,
   initializeLLM,
@@ -133,6 +137,7 @@ function computePriority(
 
 function createGuidePrompt(info: any): string {
   const { worldFacts, placedTiles, convoHistory } = info;
+  console.log(worldFacts.toString());
 
   const recentSummary = convoHistory
     .slice(-3)
@@ -149,7 +154,9 @@ Placed tiles: ${JSON.stringify(placedTiles, null, 2)}
 ### Summary of recent discussion
 ${recentSummary}
 
-Now I will go through the previous conversation again so that we can complete the regeneration of this selection.
+Now I will go through the previous conversation again so that we can complete the regeneration of this selection. 
+
+For each of the prompts, just do what I have mentioned before. Do not ask questions. Make assumptions and just do it. Do not question anything and just regenerate for each of the prompts.
   `;
 }
 
@@ -188,20 +195,30 @@ export async function regenerate(
 
     // Step 2a: Create the guide prompt for the selection
     const guidePrompt = createGuidePrompt(info);
+    console.log(guidePrompt);
 
     // Step 2b: Prepare chat history for LangChain
     const chatMessageHistory: BaseMessage[] = [];
-    await initializeLLM(chatMessageHistory); // inject system prompt
-    info.convoHistory.forEach((line) => {
-      chatMessageHistory.push({
-        type: "human",
-        text: line,
-      } as any);
-    });
-    chatMessageHistory.push({
-      type: "human",
-      text: guidePrompt,
-    } as any);
+
+    // Inject your system prompt properly
+    await initializeLLM(chatMessageHistory); // assumes this pushes a SystemMessage
+
+    // Add conversation history
+    chatMessageHistory.push(new HumanMessage({ content: String(guidePrompt) }));
+
+    for (const line of info.convoHistory) {
+      // Only push valid human messages
+      chatMessageHistory.push(new HumanMessage({ content: String(line) }));
+    }
+
+    // Debug output to verify structure
+    console.log(
+      "chatMessageHistory before LLM call:",
+      chatMessageHistory.map((msg) => ({
+        role: msg._getType?.() ?? msg.constructor.name,
+        content: msg.content,
+      })),
+    );
 
     // Step 2c: Call LLM with tools
     const llmResult = await getChatResponse(chatMessageHistory);

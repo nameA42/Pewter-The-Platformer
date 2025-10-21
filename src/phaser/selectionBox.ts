@@ -290,19 +290,21 @@ export class SelectionBox {
 
       const pointerUp = (_pointer: Phaser.Input.Pointer) => {
         dragging = false;
-        // Only commit if we actually started a drag snapshot
-        if (this.dragSnapshot) {
-          this.commitMoveToCurrentPosition();
-        } else {
-          // No snapshot -> just ensure ghost is gone
-          this.destroyPreviewLayer();
-        }
+        
         try {
           if (this._pointerMoveHandler) this.scene.input.off('pointermove', this._pointerMoveHandler);
         } catch (e) {}
         try {
           if (this._pointerUpHandler) this.scene.input.off('pointerup', this._pointerUpHandler);
         } catch (e) {}
+
+        // Only commit if we actually started a drag snapshot - Drag and Drop
+        if (this.dragSnapshot) {
+          this.commitMoveToCurrentPosition();
+        } else {
+          // No snapshot -> just ensure ghost is gone
+          this.destroyPreviewLayer();
+        }
       };
 
       // Start drag on pointerdown on the tab if finalized

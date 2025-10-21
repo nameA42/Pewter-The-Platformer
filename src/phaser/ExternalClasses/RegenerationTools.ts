@@ -156,7 +156,16 @@ ${recentSummary}
 
 Now I will go through the previous conversation again so that we can complete the regeneration of this selection. 
 
-For each of the prompts, just do what I have mentioned before. Do not ask questions. Make assumptions and just do it. Do not question anything and just regenerate for each of the prompts.
+For each of the prompts, just redo what I have mentioned before. Do not ask questions. Make assumptions and just do it. Do not question anything and just regenerate for each of the prompts.
+
+Here are some steps: 
+ • Clear selection fully
+ • For each prompt, do the actions mentioned in the prompt
+    • Ex: Human Prompt - Place a platform of length _ and height _ at _ and _ coordinates.
+        •  For that prompt, place the platform with that length and with that height at those coordinates. 
+        • If the coordinates are not specified, assume that it is random. Simply assume. 
+
+Use this information to guide your regeneration. Simply do the regeneration by doing each prompt. 
   `;
 }
 

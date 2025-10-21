@@ -74,11 +74,11 @@ export class PlaceGridofTiles {
             }
           }
         }
-        if (layerName == "Ground_Layer") {
-          scene.worldFacts.setFact("Structure");
-        } else if (layerName == "Collectables_Layer") {
-          scene.worldFacts.setFact("Collectable");
-        }
+        // if (layerName == "Ground_Layer") {
+        //   scene.worldFacts.setFact("Structure");
+        // } else if (layerName == "Collectables_Layer") {
+        //   scene.worldFacts.setFact("Collectable");
+        // }
         return `✅ Placed grid of tile ${tileIndex} from (${xMin}, ${yMin}) up to (${xMax}, ${yMax}) on layer '${layerName}'.`;
       } catch (e) {
         console.error("putTileAt failed:", e);

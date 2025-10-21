@@ -1,0 +1,216 @@
+import { SelectionBox } from "../selectionBox.ts";
+import { WorldFacts } from "./worldFacts.ts";
+import { BaseMessage } from "@langchain/core/messages";
+import {
+  getChatResponse,
+  initializeLLM,
+} from "../../languageModel/modelConnector.ts";
+
+class SelectionInfo {
+  worldFacts: WorldFacts;
+  placedTiles: { tileIndex: number; x: number; y: number; layerName: string }[];
+  convoHistory: any[];
+  zLevel: number;
+
+  constructor(
+    worldFacts: WorldFacts,
+    placedTiles: {
+      tileIndex: number;
+      x: number;
+      y: number;
+      layerName: string;
+    }[],
+    convoHistory: any[],
+    zLevel: number,
+  ) {
+    this.worldFacts = worldFacts;
+    this.placedTiles = placedTiles;
+    this.convoHistory = convoHistory;
+    this.zLevel = zLevel;
+  }
+}
+
+export class RegenerationRequest {
+  private selection: SelectionBox;
+  private priority: number;
+  private info: SelectionInfo;
+
+  constructor(
+    selection: SelectionBox,
+    priority: number,
+    worldFacts: WorldFacts,
+  ) {
+    this.selection = selection;
+    this.priority = priority;
+    this.info = new SelectionInfo(
+      worldFacts,
+      selection.getPlacedTiles(),
+      selection.getChatHistory(),
+      selection.getZLevel(),
+    );
+  }
+
+  getSelection(): SelectionBox {
+    return this.selection;
+  }
+
+  getPriority(): number {
+    return this.priority;
+  }
+
+  getInfo(): SelectionInfo {
+    return this.info;
+  }
+
+  setSelection(selection: SelectionBox): void {
+    this.selection = selection;
+  }
+
+  setPriority(priority: number): void {
+    this.priority = priority;
+  }
+
+  setInfo(info: SelectionInfo): void {
+    this.info = info;
+  }
+}
+
+export class RegenerationQueue<SelectionBox = any> {
+  private queue: RegenerationRequest[] = [];
+  push(request: RegenerationRequest) {
+    this.queue.push(request);
+    this.sortQueue();
+  }
+
+  pop(): RegenerationRequest | undefined {
+    return this.queue.shift();
+  }
+
+  isEmpty(): boolean {
+    return this.queue.length === 0;
+  }
+
+  override(layer: SelectionBox, newPriority: number, newInfo: any) {
+    const reqIndex = this.queue.findIndex((r) => r.getSelection() === layer);
+    if (reqIndex >= 0) {
+      const req = this.queue[reqIndex];
+      req.setPriority(newPriority);
+      req.setInfo(newInfo);
+      this.sortQueue();
+    } else {
+      console.warn(
+        "[RegenerationQueue] Layer not found in queue for override.",
+      );
+    }
+  }
+
+  contains(layer: SelectionBox): boolean {
+    return this.queue.some((r) => r.getSelection() === layer);
+  }
+
+  private sortQueue() {
+    this.queue.sort((a, b) => a.getPriority() - b.getPriority());
+  }
+}
+
+/* ---------------- Priority Computation ---------------- */
+
+function computePriority(
+  selection: SelectionBox,
+  zMin: number,
+  zMax: number,
+  dependencies: Map<SelectionBox, number>,
+  Z_WEIGHT = 0.4,
+  DEP_WEIGHT = 0.6,
+): number {
+  const z = selection.getZLevel();
+  const dep = dependencies.get(selection) ?? 0;
+  const normZ = (z - zMin) / Math.max(1, zMax - zMin);
+  return Z_WEIGHT * normZ + DEP_WEIGHT * (1 - dep); // Lower = higher priority
+}
+
+/* ---------------- Prompt Construction ---------------- */
+
+function createGuidePrompt(info: any): string {
+  const { worldFacts, placedTiles, convoHistory } = info;
+
+  const recentSummary = convoHistory
+    .slice(-3)
+    .map((line: string) => `• ${line}`)
+    .join("\n");
+
+  return `
+You are an intelligent world builder regenerating a visual layer in a Phaser scene.
+
+### Local Context
+World facts: ${worldFacts.toString()}
+Placed tiles: ${JSON.stringify(placedTiles, null, 2)}
+
+### Summary of recent discussion
+${recentSummary}
+
+Now I will go through the previous conversation again so that we can complete the regeneration of this selection.
+  `;
+}
+
+/* ---------------- Main Regeneration Function ---------------- */
+
+export async function regenerate(
+  allSelections: SelectionBox[],
+  dependencies: Map<SelectionBox, number>,
+) {
+  const queue = new RegenerationQueue();
+  let zMin = Infinity;
+  let zMax = -Infinity;
+
+  // Step 1: Compute z range & enqueue regeneration requests
+  for (const selection of allSelections) {
+    const z = selection.getZLevel();
+    zMin = Math.min(zMin, z);
+    zMax = Math.max(zMax, z);
+
+    const priority = computePriority(selection, zMin, zMax, dependencies);
+    const request = new RegenerationRequest(
+      selection,
+      priority,
+      selection.worldFacts,
+    );
+    queue.push(request);
+  }
+
+  // Step 2: Process the priority queue
+  while (!queue.isEmpty()) {
+    const req = queue.pop();
+    if (!req) continue;
+
+    const selection = req.getSelection();
+    const info = req.getInfo();
+
+    // Step 2a: Create the guide prompt for the selection
+    const guidePrompt = createGuidePrompt(info);
+
+    // Step 2b: Prepare chat history for LangChain
+    const chatMessageHistory: BaseMessage[] = [];
+    await initializeLLM(chatMessageHistory); // inject system prompt
+    info.convoHistory.forEach((line) => {
+      chatMessageHistory.push({
+        type: "human",
+        text: line,
+      } as any);
+    });
+    chatMessageHistory.push({
+      type: "human",
+      text: guidePrompt,
+    } as any);
+
+    // Step 2c: Call LLM with tools
+    const llmResult = await getChatResponse(chatMessageHistory);
+
+    console.log(`[Regeneration] Completed selection`);
+    console.log("[LLM Output Text]:", llmResult.text.join("\n"));
+    console.log("[Tool Calls]:", llmResult.toolCalls);
+    console.log("[Errors]:", llmResult.errors);
+  }
+
+  console.log("[Regeneration] Scene regeneration complete.");
+}

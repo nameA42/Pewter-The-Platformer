@@ -11,6 +11,7 @@ import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
 import { UIScene } from "./UIScene.ts";
 import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
 import { SelectionBox } from "./selectionBox.ts";
+import { regenerate } from "./ExternalClasses/RegenerationTools.ts";
 
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
@@ -85,7 +86,7 @@ export class EditorScene extends Phaser.Scene {
   private keyB!: Phaser.Input.Keyboard.Key;
   private keyCtrl!: Phaser.Input.Keyboard.Key;
   private keyDelete!: Phaser.Input.Keyboard.Key;
-
+  private keyQ!: Phaser.Input.Keyboard.Key;
 
   private setPointerOverUI = (v: boolean) =>
     this.registry.set("uiPointerOver", v);
@@ -160,8 +161,6 @@ export class EditorScene extends Phaser.Scene {
 
   create() {
     this.map = this.make.tilemap({ key: "defaultMap" });
-
-    this.worldFacts = new WorldFacts(this);
 
     console.log("Map loaded:", this.map);
     const tileset = this.map.addTilesetImage(
@@ -283,7 +282,9 @@ export class EditorScene extends Phaser.Scene {
       typeof window.addEventListener === "function"
     ) {
       window.addEventListener("toolCalled", (_ev: any) => {
-        console.log("toolCalled event received; finalizing active box if present");
+        console.log(
+          "toolCalled event received; finalizing active box if present",
+        );
         if (this.activeBox) {
           // Mark the box as finalized (permanent)
           this.activeBox.finalize?.();
@@ -317,8 +318,13 @@ export class EditorScene extends Phaser.Scene {
       this.keyN = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.N);
       this.keyZ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
       this.keyB = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B);
-      this.keyDelete = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.DELETE);
-      this.keyCtrl = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.CTRL);
+      this.keyDelete = this.input.keyboard!.addKey(
+        Phaser.Input.Keyboard.KeyCodes.DELETE,
+      );
+      this.keyCtrl = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.CTRL,
+      );
+      this.keyQ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
     }
 
     // scrolling
@@ -418,7 +424,7 @@ export class EditorScene extends Phaser.Scene {
             ?.index || 0;
       }
     });
-    
+
     this.keyDelete.on("down", () => {
       if (!this.activeBox) return;
       // remove from permanent list if present
@@ -439,8 +445,6 @@ export class EditorScene extends Phaser.Scene {
       console.log("Active selection box deleted");
     });
     //TODO: handle UI -> Editor communication
-
-    this.worldFacts.refresh();
   }
 
   setupPlayer() {
@@ -719,6 +723,11 @@ export class EditorScene extends Phaser.Scene {
       this.cycleZLevel();
     } else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
       this.finalizeSelectBox();
+    } else if (Phaser.Input.Keyboard.JustDown(this.keyQ)) {
+      regenerate(
+        this.selectionBoxes,
+        this.computeDependencyMap(this.selectionBoxes),
+      );
     }
   }
 
@@ -1314,5 +1323,47 @@ export class EditorScene extends Phaser.Scene {
       default:
         return 0xffffff; // white (This is not gonna happen)
     }
+  }
+
+  computeDependencyMap(selections: SelectionBox[]): Map<SelectionBox, number> {
+    const dependencyMap = new Map<SelectionBox, number>();
+
+    // Initialize all with 0 dependencies
+    for (const box of selections) {
+      dependencyMap.set(box, 0);
+    }
+
+    // Compare each pair of boxes
+    for (let i = 0; i < selections.length; i++) {
+      const boxA = selections[i];
+      const startA = boxA.getStart();
+      const endA = boxA.getEnd();
+
+      for (let j = 0; j < selections.length; j++) {
+        if (i === j) continue;
+
+        const boxB = selections[j];
+        const startB = boxB.getStart();
+        const endB = boxB.getEnd();
+
+        // Check overlap
+        const overlaps =
+          startA.x <= endB.x &&
+          endA.x >= startB.x &&
+          startA.y <= endB.y &&
+          endA.y >= startB.y;
+
+        if (overlaps) {
+          // Increment dependency count for the box with higher zLevel
+          if (boxB.getZLevel() > boxA.getZLevel()) {
+            dependencyMap.set(boxB, (dependencyMap.get(boxB) || 0) + 1);
+          } else {
+            dependencyMap.set(boxA, (dependencyMap.get(boxA) || 0) + 1);
+          }
+        }
+      }
+    }
+
+    return dependencyMap;
   }
 }

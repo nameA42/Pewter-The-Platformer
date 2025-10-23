@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import {
   sendUserPromptWithContext,
   getDisplayChatHistory,
-} from "../languageModel/chatBox";
+} from "../languageModel/chatBox.ts";
 import { EditorScene } from "./editorScene.ts";
 
 export class UIScene extends Phaser.Scene {

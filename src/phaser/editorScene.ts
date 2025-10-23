@@ -1,11 +1,12 @@
 // Pewter Platformer EditorScene - Cleaned and consolidated after merge
 import Phaser from "phaser";
+import type { BBox, PlacementOp, TileDiffCell } from "./historyTypes.ts";
 
 type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
   isFalling?: boolean;
 };
-import { sendUserPrompt } from "../languageModel/chatBox";
-import { setActiveSelectionBox } from "../languageModel/chatBox";
+import { sendUserPrompt } from "../languageModel/chatBox.ts";
+import { setActiveSelectionBox } from "../languageModel/chatBox.ts";
 import { Slime } from "./ExternalClasses/Slime.ts";
 import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
 import { UIScene } from "./UIScene.ts";
@@ -66,8 +67,15 @@ export class EditorScene extends Phaser.Scene {
     endX: number;
     endY: number;
   } | null = null;
+  // expose last selection bbox and id for tools
+  private lastSelectionBBox: { x: number; y: number; w: number; h: number } | null = null;
+  private lastSelectionId?: string;
   public activeBox: SelectionBox | null = null;
   private selectionBoxes: SelectionBox[] = [];
+  // History state for LLM/tool provenance
+  private placementHistory: PlacementOp[] = [];
+  private tileProvenance: Map<string, string[]> = new Map();
+  private selectionIdCounter = 0;
 
   // keyboard controls
   private keyA!: Phaser.Input.Keyboard.Key;
@@ -553,6 +561,37 @@ export class EditorScene extends Phaser.Scene {
     tileIndex = tileIndex === 0 ? -1 : tileIndex; // Allow -1 for erasing tiles
     console.log(`Placing tile at (${x}, ${y}) with index ${tileIndex}`);
     layer.putTileAt(tileIndex, x, y);
+
+    // Determine layerName for provenance if possible
+    let layerName: string | undefined = undefined;
+    try {
+      if (layer === this.groundLayer) layerName = "Ground_Layer";
+      else if (layer === this.collectablesLayer) layerName = "Collectables_Layer";
+      else if (layer === this.backgroundLayer) layerName = "Background_Layer";
+    } catch (e) {
+      layerName = undefined;
+    }
+
+    // Record history/provenance via the history-aware API when available
+    try {
+      if ((this as any).applyTileMatrixWithHistoryPublic) {
+        (this as any).applyTileMatrixWithHistoryPublic(
+          { x, y, w: 1, h: 1 },
+          [[tileIndex]],
+          null,
+          "user",
+          this.activeBox?.getId?.(),
+          "user_place",
+          layerName,
+        );
+      } else if (this.activeBox) {
+        // Fallback: record per-selection placed tile
+        this.activeBox.addPlacedTile(tileIndex, x, y, layerName ?? "Ground_Layer");
+      }
+    } catch (e) {
+      // Best-effort: record on selection only
+      if (this.activeBox) this.activeBox.addPlacedTile(tileIndex, x, y, layerName ?? "Ground_Layer");
+    }
   }
 
   update() {
@@ -875,6 +914,14 @@ export class EditorScene extends Phaser.Scene {
       this.isSelecting = false;
       return;
     } else {
+            // If there's an active box that is already finalized, clear it so user can start a fresh temporary selection
+      if (this.activeBox && (this.activeBox as any).isFinalizedState && (this.activeBox as any).isFinalizedState()) {
+        try {
+          this.activeBox.setActive?.(false);
+        } catch (e) {}
+        this.activeBox = null;
+      }
+
       if (!this.activeBox) {
         // If overlap does not occur, do make a new box
         console.log("Made a new box!");
@@ -899,6 +946,17 @@ export class EditorScene extends Phaser.Scene {
         this.activeBox.updateEnd(this.selectionEnd);
       }
     }
+  }
+
+  public getActiveSelectionBBox() {
+    const b = this.activeBox?.getBounds();
+    if (!b) return null;
+    return { x: b.x, y: b.y, w: b.width, h: b.height, id: (this.activeBox as any).getId?.() };
+  }
+
+  public getLastSelectionBBox() {
+    if (!this.lastSelectionBBox) return null;
+    return { ...this.lastSelectionBBox, id: this.lastSelectionId };
   }
 
   updateSelection(pointer: Phaser.Input.Pointer) {
@@ -963,6 +1021,11 @@ export class EditorScene extends Phaser.Scene {
     if (!this.selectionBoxes.includes(this.activeBox)) {
       this.selectionBoxes.push(this.activeBox);
     }
+
+    // save finalized bbox + id for tool fallback
+    const gb = this.activeBox.getBounds();
+    this.lastSelectionBBox = { x: gb.x, y: gb.y, w: gb.width, h: gb.height };
+    this.lastSelectionId = (this.activeBox as any).getId?.();
 
     // These define the height and width of the selection box
     const selectionWidth = eX - sX + 1;
@@ -1275,6 +1338,11 @@ export class EditorScene extends Phaser.Scene {
     if (!this.activeBox) return;
 
     // Push it to the array
+    // Assign id if needed
+    if (!this.activeBox.getId?.()) {
+      const selId = `sel_${++this.selectionIdCounter}`;
+      this.activeBox.setId?.(selId);
+    }
     this.selectionBoxes.push(this.activeBox);
     // mark it as finalized (permanent) so it can't be redrawn; it can still be dragged via its tab
     this.activeBox.finalize?.();
@@ -1285,21 +1353,198 @@ export class EditorScene extends Phaser.Scene {
   }
 
   // Helper to set a selection box as active and update visuals/chat
-  selectBox(box: SelectionBox | null) {
-    if (!box) return;
-    // Deactivate all boxes we know about (selectionBoxes and any current activeBox)
-    for (const b of this.selectionBoxes) {
-      b.setActive?.(false);
-    }
-    if (this.activeBox) {
-      this.activeBox.setActive?.(false);
+// Helper to set a selection box as active and update visuals/chat
+selectBox(box: SelectionBox | null) {
+  if (!box) return;
+
+  // Deactivate all boxes we know about
+  for (const b of this.selectionBoxes) {
+    b.setActive?.(false);
+  }
+  if (this.activeBox) {
+    this.activeBox.setActive?.(false);
+  }
+
+  // Activate the requested box
+  this.activeBox = box;
+  box.setActive?.(true);
+  setActiveSelectionBox(box);
+
+  // Ensure it has an id for provenance
+  if (box.getId && !box.getId()) {
+    const selId = `sel_${++this.selectionIdCounter}`;
+    box.setId?.(selId);
+  }
+
+  // ✅ UPDATE: Refresh the cached bbox
+  const gb = box.getBounds();
+  this.lastSelectionBBox = { x: gb.x, y: gb.y, w: gb.width, h: gb.height };
+  this.lastSelectionId = box.getId?.();
+  
+  // ✅ NEW: Send selection context to UIScene so the LLM knows which box is active
+  const start = box.getStart();
+  const end = box.getEnd();
+  const sX = Math.min(start.x, end.x);
+  const sY = Math.min(start.y, end.y);
+  const eX = Math.max(start.x, end.x);
+  const eY = Math.max(start.y, end.y);
+  const selectionWidth = eX - sX + 1;
+  const selectionHeight = eY - sY + 1;
+
+  const contextMsg = 
+    `User has switched to an existing selection box. ` +
+    `This selection is ${selectionWidth}x${selectionHeight} tiles. ` +
+    `Global coordinates: [${sX}, ${sY}] to [${eX}, ${eY}].`;
+
+  // Send to UIScene so it appears in the chat context
+  const uiScene = this.scene.get("UIScene") as UIScene;
+  if (uiScene && typeof uiScene.handleSelectionInfo === "function") {
+    uiScene.handleSelectionInfo(contextMsg);
+  }
+
+  console.log("EditorScene.selectBox -> active box updated:", this.lastSelectionBBox);
+}
+
+  // History: wrapper that records diffs and provenance
+  public applyTileMatrixWithHistoryPublic(
+    bbox: BBox,
+    matrix: number[][] | null,
+    fallbackIndex: number | null,
+    actor: "chat" | "user",
+    selectionId?: string,
+    note?: string,
+    layerName?: string,
+  ) {
+    // choose the target layer by name when possible
+    let layer: Phaser.Tilemaps.TilemapLayer = this.groundLayer;
+    try {
+      if (layerName && this.map) {
+        const found = this.map.getLayer(layerName as any);
+        if (found && (found as any).tilemapLayer) {
+          layer = (found as any).tilemapLayer as Phaser.Tilemaps.TilemapLayer;
+        }
+      }
+    } catch (e) {
+      // fallback to groundLayer
+      layer = this.groundLayer;
     }
 
-    // activate the new box
-    this.activeBox = box;
-    console.log("EditorScene.selectBox activating box", box.getBounds());
-    box.setActive?.(true);
-    setActiveSelectionBox(box);
+    // snapshot before
+    const before: number[][] = [];
+    for (let dy = 0; dy < bbox.h; dy++) {
+      const row: number[] = [];
+      for (let dx = 0; dx < bbox.w; dx++) {
+        const x = bbox.x + dx,
+          y = bbox.y + dy;
+        row.push(layer.getTileAt(x, y)?.index ?? -1);
+      }
+      before.push(row);
+    }
+
+    // write tiles
+    for (let dy = 0; dy < bbox.h; dy++) {
+      for (let dx = 0; dx < bbox.w; dx++) {
+        const x = bbox.x + dx,
+          y = bbox.y + dy;
+        const desired = matrix ? matrix[dy]?.[dx] ?? -1 : fallbackIndex ?? -1;
+        layer.putTileAt(desired, x, y);
+
+        // record placedTiles on the target selection box if present
+        let targetBox: SelectionBox | null = null as any;
+        try {
+          if (selectionId) targetBox = this.getSelectionById(selectionId);
+        } catch (e) {
+          targetBox = null as any;
+        }
+        if (!targetBox) targetBox = this.activeBox;
+        if (targetBox) {
+          try {
+            targetBox.addPlacedTile(desired, x, y, layerName ?? "Ground_Layer");
+          } catch (e) {
+            // ignore if selection box doesn't support placed tiles
+          }
+        }
+      }
+    }
+
+    // compute diffs
+    const diffs: any[] = [];
+    for (let dy = 0; dy < bbox.h; dy++) {
+      for (let dx = 0; dx < bbox.w; dx++) {
+        const x = bbox.x + dx,
+          y = bbox.y + dy;
+        const a = layer.getTileAt(x, y)?.index ?? -1;
+        const b = before[dy][dx];
+        if (a !== b) diffs.push({ dx, dy, before: b, after: a });
+      }
+    }
+
+    if (diffs.length === 0) return;
+
+    const opId = (crypto as any).randomUUID?.() ?? `${Date.now()}_${Math.random()}`;
+    const op = {
+      id: opId,
+      ts: Date.now(),
+      actor,
+      selectionId,
+      bbox: { ...bbox },
+      diffs,
+      note,
+      layerName,
+    };
+
+    // provenance
+    for (const d of diffs) {
+      const key = `${bbox.x + d.dx},${bbox.y + d.dy}`;
+      const list = this.tileProvenance.get(key) ?? [];
+      list.push(opId);
+      this.tileProvenance.set(key, list);
+    }
+
+    this.placementHistory.push(op);
+    // ADD: notify chat layer that the tool finished successfully
+    try {
+      if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+        window.dispatchEvent(
+          new CustomEvent("toolCompleted", {
+            detail: { tool: note ?? "tile_write", selectionId },
+          }),
+        );
+      }
+    } catch (e) {
+      // no-op
+    }
+    const MAX_OPS = 1000;
+    if (this.placementHistory.length > MAX_OPS) {
+      const removed = this.placementHistory.splice(0, this.placementHistory.length - MAX_OPS);
+      // prune provenance references to removed ops
+      const removedIds = new Set(removed.map((r) => r.id));
+      for (const [key, arr] of Array.from(this.tileProvenance.entries())) {
+        const filtered = arr.filter((id) => !removedIds.has(id));
+        if (filtered.length === 0) this.tileProvenance.delete(key);
+        else this.tileProvenance.set(key, filtered);
+      }
+    }
+  }
+
+  public getRegionHistory(bbox: { x: number; y: number; w: number; h: number }, limit = 10) {
+    const inter = (a: any, b: any) =>
+      !(a.x + a.w - 1 < b.x || b.x + b.w - 1 < a.x || a.y + a.h - 1 < b.y || b.y + b.h - 1 < a.y);
+    return this.placementHistory
+      .filter((op) => inter(op.bbox, bbox))
+      .sort((a: any, b: any) => b.ts - a.ts)
+      .slice(0, limit);
+  }
+
+  public getTileHistory(x: number, y: number) {
+    const ids = this.tileProvenance.get(`${x},${y}`) ?? [];
+    const dict = new Map(this.placementHistory.map((op) => [op.id, op] as const));
+    return ids.map((id) => dict.get(id)!).filter(Boolean);
+  }
+
+  // Lookup a selection box by id
+  public getSelectionById(id: string) {
+    return this.selectionBoxes.find((b) => (b as any).getId?.() === id) ?? null;
   }
 
   // Match Highlight Color with Z-Level

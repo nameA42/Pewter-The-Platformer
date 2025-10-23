@@ -64,13 +64,27 @@ export class PlaceGridofTiles {
       }
 
       try {
-        for (let x = xMin; x <= xMax; x++) {
-          for (let y = yMin; y <= yMax; y++) {
-            map.putTileAt(tileIndex, x, y, true, layer);
-
-            //Record the placement
-            if (scene.activeBox) {
-              scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
+        // Use history-aware API if available for batch placement
+        const w = xMax - xMin + 1;
+        const h = yMax - yMin + 1;
+        const matrix = Array.from({ length: h }, () => Array.from({ length: w }, () => tileIndex));
+        if ((scene as any).applyTileMatrixWithHistoryPublic) {
+          (scene as any).applyTileMatrixWithHistoryPublic(
+            { x: xMin, y: yMin, w, h },
+            matrix,
+            null,
+            "chat",
+            scene.activeBox?.getId?.(),
+            "placeGridofTiles",
+            layerName,
+          );
+        } else {
+          for (let x = xMin; x <= xMax; x++) {
+            for (let y = yMin; y <= yMax; y++) {
+              map.putTileAt(tileIndex, x, y, true, layer);
+              if (scene.activeBox) {
+                scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
+              }
             }
           }
         }

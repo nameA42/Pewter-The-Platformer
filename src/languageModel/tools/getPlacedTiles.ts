@@ -11,12 +11,7 @@ export class GetPlacedTiles {
 
   // Optionally allow selection by box index or ID
   static argsSchema = z.object({
-    boxIndex: z
-      .number()
-      .int()
-      .min(0)
-      .optional()
-      .describe("Index of the selection box to query. If omitted, uses the active selection box."),
+    selectionId: z.string().optional().describe("Optional selectionId to query. If omitted, uses the active selection box."),
   });
 
   toolCall = tool(
@@ -27,14 +22,41 @@ export class GetPlacedTiles {
       }
 
       // Get the selection box
-      //TODO: check for errors
-      let box = scene.activeBox;
+      // Try to resolve selection box in a few ways:
+      // 1. If selectionId provided, look it up in finalized boxes
+      // 2. Fallback to current activeBox (temporary)
+      // 3. Fallback to lastSelectionBBox id stored on the scene
+      let box: any = null;
+      if (args.selectionId) {
+        try {
+          box = scene.getSelectionById(args.selectionId as any);
+        } catch (e) {
+          box = null;
+        }
+      }
+
+      if (!box) {
+        try {
+          box = (scene as any).activeBox ?? null;
+        } catch (e) {
+          box = null;
+        }
+      }
+
+      if (!box) {
+        try {
+          const last = (scene as any).getLastSelectionBBox?.();
+          if (last && last.id) box = scene.getSelectionById(last.id as any);
+        } catch (e) {
+          // ignore
+        }
+      }
 
       if (!box) {
         return "Tool Failed: no selection box found.";
       }
 
-      const placedTiles = box.getPlacedTiles();
+      const placedTiles = box.getPlacedTiles?.();
       if (!placedTiles || placedTiles.length === 0) {
         return "No tiles have been placed in this selection box.";
       }

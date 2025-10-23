@@ -54,8 +54,23 @@ export class PlaceSingleTile {
       map.putTileAt(tileIndex, x, y, true, layer);
 
       //Record the placement
-      if (scene.activeBox) {
-        scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
+      // Prefer history-aware API when present
+      try {
+        if ((scene as any).applyTileMatrixWithHistoryPublic) {
+          (scene as any).applyTileMatrixWithHistoryPublic(
+            { x, y, w: 1, h: 1 },
+            [[tileIndex]],
+            null,
+            "chat",
+            scene.activeBox?.getId?.(),
+            "placeSingleTile",
+            layerName,
+          );
+        } else {
+          if (scene.activeBox) scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
+        }
+      } catch (e) {
+        if (scene.activeBox) scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
       }
 
       if (layerName == "Ground_Layer") {

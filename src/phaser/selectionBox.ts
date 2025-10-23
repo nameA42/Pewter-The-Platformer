@@ -22,6 +22,7 @@ export class SelectionBox {
   private tabText: Phaser.GameObjects.Text | null = null;
   private isActive: boolean = false;
   private isFinalized: boolean = false;
+  private id?: string;
 
   // Drag helpers
   private _dragInitialStart?: Phaser.Math.Vector2;
@@ -60,6 +61,15 @@ export class SelectionBox {
     this.onSelect = onSelect;
     // create tab after initial draw
     this.createTab();
+  }
+
+  // Selection identity used for provenance/history
+  public setId(id: string) {
+    this.id = id;
+  }
+
+  public getId(): string | undefined {
+    return this.id;
   }
 
   getZLevel(): number {
@@ -463,6 +473,10 @@ export class SelectionBox {
     // nothing else needed for now
   }
 
+  // Expose finalized state to external callers (EditorScene)
+  public isFinalizedState(): boolean {
+    return this.isFinalized;
+  }
   // Chat history management for this selection box
   addChatMessage(msg: any) {
     this.localContext.chatHistory.push(msg);

@@ -16,30 +16,27 @@ const sysPrompt =
   "You are 'Pewter', an expert tile-based map designer by day and an incredible video game player by night. " +
   "Your job is to help the player create a platformer game that is both playable and completable. You must always follow instructions and use the tools available. " +
   "Sometimes your job will require you to use multiple different tools at once so feel free to use each tool multiple times and use all the tools if necessary. " +
-  // Work only in selection box
   "IMPORTANT: You must ONLY make changes inside the selection box. You cannot modify tiles or place objects outside the selection box under any circumstances. " +
-  // World Facts initialization
   "When a scene is first set up, you MUST call the World Facts Tool to initialize the facts of the scene. This means recording all ground levels, platform locations, solid ground, item locations (enemies, collectables, breakable blocks), and pitfalls. " +
   "This initialization MUST happen before making any placements or edits. " +
-  // Handling multiple instructions
-  "The player may sometimes ask you to perform multiple actions at once. In such cases, you must use the tools as needed to complete ALL parts of the request. " +
-  // Layer and tile info
   "Layers available: Collectables_Layer and Ground_Layer. " +
   "Tile ID mapping: 1 = empty tile, 2 = coin, 4 = fruit, 5 = platform block, 6 = dirt block, 7 = item (question mark) block. " +
-  "Category: Collectables = [2, 4], Ground = [5, 6, 7]" +
-  // Tool rules
+  "Category: Collectables = [2, 4], Ground = [5, 6, 7]. " +
   "Tool rules: " +
   "Place Enemy: Only place enemies on ground. Find the nearest ground tile and place the enemy one tile above it. Ensure the enemy has enough space to move side-to-side. If placement is impossible, suggest an alternative location but do not place it. " +
   "Clear Tile: Clear only on the Ground_Layer unless specifically instructed otherwise. " +
-  "World Facts: Use this tool to provide yourself with the facts within the world or within the selection. Using the get method, you " +
+  "World Facts: Use this tool to provide yourself with the facts within the world or within the selection. " +
   "Place Tile: Use this tool to place a given index or term on a layer when told. Use the tile information and map each tile to the index. " +
   "Place Grid of Tiles: Use this tool to place a grid of tiles with a given index or term on a layer when told. Use the tile information and map each tile to the index. " +
   "Get Placed Tiles: Use this tool to retrieve all tiles placed within a selection box. " +
-  "PLEASE USE THE WORLD FACTS TOOL TO RECEIVE INFORMATION ABOUT THE LAYER YOU MIGHT NEED TO WORK ON. For example, if the player asks you to place an enemy within a selection, first check where the top of the ground is before placing making sure not to place it within the ground. Same applies to collectables or anything else. The world facts tool is your best guide as to what is within the game world. Use it to your advantage PLEASE. " +
+  // Strong, explicit tool-selection policy (the key nudge)
+  "When the user asks about current contents of a selection (e.g., 'what's in the box', 'what is inside', 'show contents', 'now', 'currently', 'visible', 'topmost'), you MUST call the `getSelectionTiles` tool. " +
+  "When the user asks about history of what a selection placed (e.g., 'what did this box place', 'history', 'previous placements', 'audit', 'undo scope'), you MUST call the `getPlacedTiles` tool. " +
+  "Do NOT use `getPlacedTiles` to answer current/visible contents, and do NOT use `getSelectionTiles` to answer history. " +
   "Always be friendly and helpful. Make the level playable and visually consistent. You may offer suggestions occasionally, but you must always follow these rules.";
 
-let tools: any = []; //tool functions and their schemas
-let toolsByName: Record<string, any> = {}; //Backwards references to tool functions by name
+let tools: any = []; // tool functions and their schemas
+let toolsByName: Record<string, any> = {}; // Backwards references to tool functions by name
 
 const llm = new ChatGoogleGenerativeAI({
   model: modelName,
@@ -71,78 +68,9 @@ export function initializeTools() {
 export async function initializeLLM(
   chatMessageHistory: BaseMessage[],
 ): Promise<void> {
-  //inject sys prompt
+  // inject sys prompt
   chatMessageHistory.push(new SystemMessage(sysPrompt));
 }
-
-// export async function getChatResponse(chatMessageHistory: BaseMessage[]): Promise<string> {
-//   if(!llmWithTools){
-//       throw new Error("LLM has not been initialized with tools. Did you forget to call initializeTools()?");
-//   }
-
-//   try {
-//     let response = await llmWithTools.invoke(chatMessageHistory);
-
-//     console.log("Raw LLM resoponse: ", response);
-
-//     chatMessageHistory.push(response); // This is required for tools to work
-
-//     // Iterate through all tool calls
-//     const calls = response.tool_calls ?? [];
-//     for (const toolCall of calls) {
-//       const selectedTool = toolsByName[toolCall.name];
-//       if(!selectedTool){
-//         const msg = `Error: Unknown tool "${toolCall.name}".`;
-//         console.error(msg);
-//         chatMessageHistory.push(new ToolMessage({
-//           content: msg,
-//           tool_call_id: String(toolCall.id || "")
-//         }));
-//         continue;
-//       }
-//       try {
-//         const result = await selectedTool.invoke(toolCall.args);
-//         console.log(`Tool called ${toolCall.name} with result: ${result}`);
-
-//         chatMessageHistory.push(new ToolMessage({
-//           name: toolCall.name,
-//           content: result,
-//           tool_call_id: String(toolCall.id || "")
-//         }));
-
-//       } catch (toolError) {
-//         console.error(`Tool ${toolCall.name} failed:`, toolError);
-//         // Add error message to chat history
-//         const errorMessage =
-//         `Error: Tool '${toolCall.name}' failed with args: ${JSON.stringify(toolCall.args)}.\n` +
-//         `Details: ${toolError}. Please try again with different parameters.`;
-
-//         chatMessageHistory.push(new ToolMessage({
-//           name: toolCall.name,
-//           content: errorMessage,
-//           tool_call_id: String(toolCall.id || "")
-//         }));
-//       }
-//     }
-
-//     // If a tool is called then ask the LLM to comment on it
-//     if (calls.length > 0) {
-//       response = await llmWithTools.invoke(chatMessageHistory);
-//       console.log("Raw LLM response after tool calls:", response);
-//     }
-
-//     let resultContent = response.content;
-//     if (typeof resultContent !== "string") {
-//       console.log("Non-string AI response detected:", resultContent);
-//       resultContent = JSON.stringify(resultContent);
-//     }
-//     return resultContent;
-//   }
-//   catch (error) {
-//     console.error("Error in LLM call: ", error);
-//     return "Error communicating with model :(";
-//   }
-// }
 
 export async function getChatResponse(
   chatMessageHistory: BaseMessage[],
@@ -223,16 +151,23 @@ export async function getChatResponse(
             tool_call_id: String(toolCall.id ?? ""),
           }),
         );
-              // Notify UI/editor that a tool was called so selection boxes can finalize
-              try {
-                if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-                  window.dispatchEvent(new CustomEvent('toolCalled', { detail: { name: toolCall.name, args: toolCall.args, result } }));
-                }
-              } catch (e) {
-                // ignore
-              }
+
+        // Notify UI/editor that a tool was called so selection boxes can finalize
+        try {
+          if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+            window.dispatchEvent(
+              new CustomEvent("toolCalled", {
+                detail: { name: toolCall.name, args: toolCall.args, result },
+              }),
+            );
+          }
+        } catch (e) {
+          // ignore
+        }
       } catch (toolError) {
-        const errorMsg = `Error: Tool '${toolCall.name}' failed with args: ${JSON.stringify(toolCall.args)}.\nDetails: ${toolError}`;
+        const errorMsg = `Error: Tool '${toolCall.name}' failed with args: ${JSON.stringify(
+          toolCall.args,
+        )}.\nDetails: ${toolError}`;
         console.error(errorMsg);
         output.errors.push(errorMsg);
 

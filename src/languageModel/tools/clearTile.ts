@@ -54,9 +54,24 @@ export class ClearTile {
       }
 
       try {
-        for (let x = xMin; x < xMax; x++) {
-          for (let y = yMin; y < yMax; y++) {
-            map.removeTileAt(x, y, false, false, layer);
+        // Prefer history-aware API if available
+        const w = xMax - xMin;
+        const h = yMax - yMin;
+        if ((scene as any).applyTileMatrixWithHistoryPublic) {
+          (scene as any).applyTileMatrixWithHistoryPublic(
+            { x: xMin, y: yMin, w, h },
+            null,
+            -1,
+            "chat",
+            scene.activeBox?.getId?.(),
+            "clearTiles",
+            layerName,
+          );
+        } else {
+          for (let x = xMin; x < xMax; x++) {
+            for (let y = yMin; y < yMax; y++) {
+              map.removeTileAt(x, y, false, false, layer);
+            }
           }
         }
 

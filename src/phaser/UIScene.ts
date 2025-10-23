@@ -116,7 +116,7 @@ export class UIScene extends Phaser.Scene {
         box-shadow: 0 0 8px rgba(0,0,0,0.6);
       ">
         <div id="chat-log" style="flex-grow: 1; overflow-y: auto; font-size: 15px; line-height: 1.5;"></div>
-        <input id="chat-input" type="text" placeholder="Type a command..." style="
+        <input id="chat-input" type="text" placeholder="Type a command..." autocomplete="off" style="
           margin-top: 16px;
           padding: 14px;
           font-size: 15px;
@@ -233,13 +233,13 @@ export class UIScene extends Phaser.Scene {
     );
     selectBoxBtn.setDepth(1001);
 
-    this.input.keyboard!.on('keydown-H', () => {
-      const editorScene = this.scene.get('editorScene') as EditorScene;
+    this.input.keyboard!.on("keydown-H", () => {
+      const editorScene = this.scene.get("editorScene") as EditorScene;
       const activeBox = editorScene.activeBox;
       if (activeBox) {
         activeBox.printPlacedTiles();
       } else {
-        console.log('No active selection box.');
+        console.log("No active selection box.");
       }
     });
   }

@@ -32,36 +32,39 @@ export class GetSelectionTiles {
       const width  = endX - startX + 1;
       const height = endY - startY + 1;
 
-      // --- Try to read visibly "topmost" tiles across known layers.
-      // Order is top-first: collectables > ground > background.
-      // If these layer refs don't exist, we fall back to the old per-layer snapshot.
-      const layersTopDown: Phaser.Tilemaps.TilemapLayer[] = []
-        .concat((scene as any).collectablesLayer || [])
-        .concat((scene as any).groundLayer || [])
-        .concat((scene as any).backgroundLayer || [])
-        .filter(Boolean);
-
+      // Use the improved copyTiles method from the SelectionBox
+      // This will use the same layer detection logic that works correctly
       let tiles: number[][] = [];
-
-      if (layersTopDown.length > 0) {
-        // Topmost-wins snapshot (current visible truth)
-        for (let y = startY; y <= endY; y++) {
-          const row: number[] = [];
-          for (let x = startX; x <= endX; x++) {
-            let chosen = -1;
-            for (const layer of layersTopDown) {
-              const t = layer.getTileAt(x, y, false);
-              const idx = t ? t.index : -1;
-              if (idx > 0) { chosen = idx; break; } // first non-empty (topmost)
-            }
-            row.push(chosen);
-          }
-          tiles.push(row);
-        }
-      } else {
-        // Fallback: keep your current behavior (per-layer for this box)
-        try { box.copyTiles?.(); } catch (_e) { /*ignore*/ }
+      try { 
+        box.copyTiles?.(); 
         tiles = box.getSelectedTiles?.() ?? [];
+      } catch (e) { 
+        // If copyTiles fails, fall back to direct layer reading
+        const layersTopDown: Phaser.Tilemaps.TilemapLayer[] = []
+          .concat((scene as any).collectablesLayer || [])
+          .concat((scene as any).groundLayer || [])
+          .filter(Boolean);
+
+        tiles = [];
+        if (layersTopDown.length > 0) {
+          // Topmost-wins snapshot (current visible truth)
+          for (let y = startY; y <= endY; y++) {
+            const row: number[] = [];
+            for (let x = startX; x <= endX; x++) {
+              let chosen = -1;
+              for (const layer of layersTopDown) {
+                const t = layer.getTileAt(x, y, false);
+                const idx = t ? t.index : -1;
+                if (idx > 0) { chosen = idx; break; } // first non-empty (topmost)
+              }
+              row.push(chosen);
+            }
+            tiles.push(row);
+          }
+        } else {
+          // Last resort: return empty array
+          tiles = [];
+        }
       }
 
       return JSON.stringify({ width, height, tiles });

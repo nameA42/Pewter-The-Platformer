@@ -227,7 +227,19 @@ export async function sendUserPrompt(message: string): Promise<string> {
     );
   }
   if (_coachMsg) {
-    historyRef.unshift(_coachMsg); // insert at the very beginning
+    // Check if there's already a system message at the beginning
+    const hasSystemMessage = historyRef.length > 0 && 
+      historyRef[0] && 
+      typeof historyRef[0]._getType === "function" && 
+      historyRef[0]._getType() === "system";
+    
+    if (hasSystemMessage) {
+      // Replace the existing system message with our coach message
+      historyRef[0] = _coachMsg;
+    } else {
+      // Insert at the very beginning
+      historyRef.unshift(_coachMsg);
+    }
     _coachPushed = true;
   }
 
@@ -323,7 +335,19 @@ export async function sendUserPromptWithContext(
     );
   }
   if (_coachMsg) {
-    tempHistory.unshift(_coachMsg); // insert at the very beginning
+    // Check if there's already a system message at the beginning
+    const hasSystemMessage = tempHistory.length > 0 && 
+      tempHistory[0] && 
+      typeof tempHistory[0]._getType === "function" && 
+      tempHistory[0]._getType() === "system";
+    
+    if (hasSystemMessage) {
+      // Replace the existing system message with our coach message
+      tempHistory[0] = _coachMsg;
+    } else {
+      // Insert at the very beginning
+      tempHistory.unshift(_coachMsg);
+    }
     _coachPushed = true;
   }
 

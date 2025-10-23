@@ -173,6 +173,33 @@ export class SelectionBox {
 
     this.updateTabPosition();
   }
+    // Returns visible TilemapLayers ordered top-first so "what you see" == "what you snapshot"
+    private getLayersTopDown(): Phaser.Tilemaps.TilemapLayer[] {
+      // Prefer scene-level references if your EditorScene exposes them
+      // Order: collectables (top) > ground (middle) > background (bottom, but we'll skip it for game tiles)
+      const explicit: Phaser.Tilemaps.TilemapLayer[] = []
+        .concat((this.scene as any).collectablesLayer || [])
+        .concat((this.scene as any).groundLayer || [])
+        // Skip background layer for game tile detection - it contains decorative tiles
+        .filter(Boolean);
+
+      if (explicit.length > 0) return explicit;
+
+      // Otherwise derive from the tilemap
+      const map: Phaser.Tilemaps.Tilemap | undefined =
+        (this.scene as any).map || (this.scene as any).tilemap || (this.scene as any).tileMap;
+
+      if (!map || !Array.isArray((map as any).layers)) return [this.layer].filter(Boolean);
+
+      // Normalize to actual TilemapLayer instances and sort by depth (topmost first)
+      const layers = (map as any).layers
+        .map((l: any) => l?.tilemapLayer ?? l?.layer?.tilemapLayer ?? l)
+        .filter((l: any) => l && typeof l.getTileAt === "function" && l.visible !== false);
+
+      layers.sort((a: any, b: any) => (b.depth ?? 0) - (a.depth ?? 0));
+      return layers;
+    }
+  
 
   private createTab() {
     // Create a small clickable tab that sits above the selection box
@@ -385,12 +412,22 @@ export class SelectionBox {
     const eX = Math.max(this.start.x, this.end.x);
     const eY = Math.max(this.start.y, this.end.y);
 
+    const layersTopDown = this.getLayersTopDown();
+
     this.selectedTiles = [];
     for (let y = sY; y <= eY; y++) {
       const row: number[] = [];
       for (let x = sX; x <= eX; x++) {
-        const tile = this.layer.getTileAt(x, y);
-        row.push(tile ? tile.index : -1);
+        let chosen = -1; // default: empty
+        for (const layer of layersTopDown) {
+          // nonNull=false => returns null when there's no tile object here
+          const t = layer.getTileAt(x, y, false);
+          if (t && t.index !== -1 && t.index !== 0) { // Phaser uses -1 for empty tiles, 0 might be empty too
+            chosen = t.index;
+            break; // topmost non-empty wins
+          }
+        }
+        row.push(chosen);
       }
       this.selectedTiles.push(row);
     }

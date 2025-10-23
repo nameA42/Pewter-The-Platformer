@@ -139,10 +139,12 @@ function createGuidePrompt(info: any): string {
   const { worldFacts, placedTiles, convoHistory } = info;
   console.log(worldFacts.toString());
 
-  const recentSummary = convoHistory
-    .slice(-3)
-    .map((line: string) => `• ${line}`)
-    .join("\n");
+  let summary = "";
+  for (let i = 0; i < convoHistory.length; i++) {
+    if (convoHistory[i].getType() == "human") {
+      summary += convoHistory[i].content + "\n\n";
+    }
+  }
 
   return `
 You are an intelligent world builder regenerating a visual layer in a Phaser scene.
@@ -151,21 +153,21 @@ You are an intelligent world builder regenerating a visual layer in a Phaser sce
 World facts: ${worldFacts.toString()}
 Placed tiles: ${JSON.stringify(placedTiles, null, 2)}
 
-### Summary of recent discussion
-${recentSummary}
+### Full history of recent discussion
+${summary}
 
-Now I will go through the previous conversation again so that we can complete the regeneration of this selection. 
+For each of the prompt within the full history of recent discussion, just redo what I have mentioned before. Do not ask questions. Make assumptions and just do it. Do not question anything and just regenerate for each of the prompts.
 
-For each of the prompts, just redo what I have mentioned before. Do not ask questions. Make assumptions and just do it. Do not question anything and just regenerate for each of the prompts.
+You are in an asynchornous mode with the user. You cannot ask any clarification questions and you must just complete the tasks. You have full control over what you need to do. Just do it. Never ask any clarification questions and do not tell the user that you will do something as this is not the point of regeneration. Your goal is to just use tool calls and present the changes for the regeneration. 
 
-Here are some steps: 
- • Clear selection fully
+Here are some steps with an example: 
+ • Clear selection fully (only clear the selection please. Do not clear outside the selection)
  • For each prompt, do the actions mentioned in the prompt
     • Ex: Human Prompt - Place a platform of length _ and height _ at _ and _ coordinates.
-        •  For that prompt, place the platform with that length and with that height at those coordinates. 
+        • For that prompt, place the platform using any or one of the tools provided (placeSingleTile, placeGridofTiles, placeEnemy, clearTile) with that length and with that height at those coordinates. 
         • If the coordinates are not specified, assume that it is random. Simply assume. 
 
-Use this information to guide your regeneration. Simply do the regeneration by doing each prompt. 
+Use this information to guide your regeneration. Simply do the regeneration by doing each prompt.
   `;
 }
 
@@ -217,7 +219,9 @@ export async function regenerate(
 
     for (const line of info.convoHistory) {
       // Only push valid human messages
-      chatMessageHistory.push(new HumanMessage({ content: String(line) }));
+      if (line.getType() == "human") {
+        chatMessageHistory.push(line);
+      }
     }
 
     // Debug output to verify structure

@@ -245,129 +245,16 @@ export class EditorScene extends Phaser.Scene {
             }
           } catch (e) {}
 
-          // Push/slide resolver: attempt to push tiles to the right to resolve collisions
+          // Delegate push/slide behavior to the Regenerator so the algorithm
+          // implementation lives centrally. This keeps EditorScene thin.
           try {
-            const parts = (chunkKey || "").split(",");
-            if (parts.length >= 2) {
-              const cx = parseInt(parts[0], 10);
-              const cy = parseInt(parts[1], 10);
-              const chunkSize = 8; // keep in sync with Regenerator
-
-              const startX = cx * chunkSize;
-              const startY = cy * chunkSize;
-              const endX = Math.min(startX + chunkSize - 1, this.map.width - 1);
-              const endY = Math.min(
-                startY + chunkSize - 1,
-                this.map.height - 1,
-              );
-
-              // Helpers
-              const posKey = (x: number, y: number) => `${x},${y}`;
-
-              // Map from "fromKey" -> move info
-              const moves = new Map<
-                string,
-                {
-                  fromX: number;
-                  fromY: number;
-                  toX: number;
-                  toY: number;
-                  tileIndex: number;
-                }
-              >();
-
-              const plannedFrom = new Set<string>();
-              const plannedTo = new Set<string>();
-
-              const maxChain = 128; // safety
-
-              // Scan chunk cells right-to-left so we can reason about pushes to the right
-              for (let ty = startY; ty <= endY; ty++) {
-                for (let tx = endX; tx >= startX; tx--) {
-                  const fKey = posKey(tx, ty);
-                  if (plannedFrom.has(fKey)) continue;
-                  const tile = this.groundLayer.getTileAt(tx, ty);
-                  if (!tile) continue;
-
-                  const destX = tx + 1;
-                  if (destX > this.map.width - 1) continue; // can't push off-map
-
-                  // Build chain of occupied tiles starting at destX moving right
-                  const chain: Array<{ x: number; y: number; index: number }> =
-                    [];
-                  let curX = destX;
-                  let blocked = false;
-                  while (curX <= this.map.width - 1) {
-                    const t = this.groundLayer.getTileAt(curX, ty);
-                    if (!t) break; // found empty spot
-                    chain.push({ x: curX, y: ty, index: t.index });
-                    curX++;
-                    if (chain.length > maxChain) {
-                      blocked = true;
-                      break;
-                    }
-                  }
-                  if (blocked) continue;
-
-                  // curX is the first empty spot (could be destX if chain.length === 0)
-                  // schedule moves for chain (from last to first)
-                  let targetX = curX;
-                  for (let i = chain.length - 1; i >= 0; i--) {
-                    const c = chain[i];
-                    const fromK = posKey(c.x, c.y);
-                    const toK = posKey(targetX, c.y);
-                    if (plannedTo.has(toK)) {
-                      blocked = true;
-                      break;
-                    }
-                    moves.set(fromK, {
-                      fromX: c.x,
-                      fromY: c.y,
-                      toX: targetX,
-                      toY: c.y,
-                      tileIndex: c.index,
-                    });
-                    plannedFrom.add(fromK);
-                    plannedTo.add(toK);
-                    targetX--;
-                  }
-                  if (blocked) continue;
-
-                  // schedule original tile to move into destX
-                  const toK = posKey(destX, ty);
-                  if (!plannedTo.has(toK)) {
-                    moves.set(fKey, {
-                      fromX: tx,
-                      fromY: ty,
-                      toX: destX,
-                      toY: ty,
-                      tileIndex: tile.index,
-                    });
-                    plannedFrom.add(fKey);
-                    plannedTo.add(toK);
-                  }
-                }
-              }
-
-              if (moves.size > 0) {
-                // Remove original tiles first
-                for (const m of moves.values()) {
-                  try {
-                    this.groundLayer.removeTileAt(m.fromX, m.fromY);
-                  } catch (e) {}
-                }
-
-                // Then place tiles at their new positions
-                for (const m of moves.values()) {
-                  try {
-                    this.groundLayer.putTileAt(m.tileIndex, m.toX, m.toY);
-                  } catch (e) {}
-                }
-              }
+            const rg = (this as any).regenerator as any;
+            if (rg && typeof rg.pushSlideChunk === "function") {
+              rg.pushSlideChunk(chunkKey);
             }
           } catch (e) {
             // eslint-disable-next-line no-console
-            console.error("[Regenerator] push/slide error", e);
+            console.error("onChunkRegen -> pushSlideChunk error", e);
           }
 
           // keep console visibility for debugging

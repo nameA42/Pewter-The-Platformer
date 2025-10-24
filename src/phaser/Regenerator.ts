@@ -42,6 +42,316 @@ export class Regenerator {
     }
   }
 
+  // --- High-level helpers moved into Regenerator so regen logic lives here ---
+
+  /** Parse a chunk key "cx,cy,z" into numbers */
+  private parseChunkKey(key: ChunkKey) {
+    const parts = (key || "").split(",").map((p) => parseInt(p, 10));
+    return { cx: parts[0] || 0, cy: parts[1] || 0, z: parts[2] || 0 };
+  }
+
+  /** Mark chunks touched by a set of tile positions (in tile coords) */
+  public markChunksForTilePositions(
+    tiles: Array<{ x: number; y: number; index?: number }>,
+    z: number = 1,
+  ) {
+    if (!tiles || tiles.length === 0) return;
+    const keys = new Set<string>();
+    for (const t of tiles) {
+      const cx = Math.floor(t.x / this.chunkSize);
+      const cy = Math.floor(t.y / this.chunkSize);
+      keys.add(this.chunkKeyFromCoords(cx, cy, z));
+    }
+    for (const k of keys) {
+      const parts = k.split(",").map((n) => parseInt(n, 10));
+      const rect = new Phaser.Geom.Rectangle(
+        parts[0] * this.chunkSize,
+        parts[1] * this.chunkSize,
+        this.chunkSize,
+        this.chunkSize,
+      );
+      try {
+        this.markDirty(rect, parts[2] || 0);
+      } catch (e) {}
+    }
+  }
+
+  /** Attempt to push/slide occupied tiles to the right inside the chunk region.
+   *  Returns the number of moves applied. Operates on the scene's Ground_Layer by default.
+   */
+  public pushSlideChunk(
+    chunkKey: ChunkKey,
+    layerName: string = "Ground_Layer",
+    maxChain: number = 128,
+  ): number {
+    try {
+      const { cx, cy } = this.parseChunkKey(chunkKey);
+      const startX = cx * this.chunkSize;
+      const startY = cy * this.chunkSize;
+      const endX = Math.min(
+        startX + this.chunkSize - 1,
+        (this.scene as any).map.width - 1,
+      );
+      const endY = Math.min(
+        startY + this.chunkSize - 1,
+        (this.scene as any).map.height - 1,
+      );
+
+      const layer =
+        (this.scene as any)[`${layerName.replace(/\s+/g, "")}Layer`] ||
+        (this.scene as any).groundLayer;
+      if (!layer) return 0;
+
+      const posKey = (x: number, y: number) => `${x},${y}`;
+      const moves = new Map<
+        string,
+        {
+          fromX: number;
+          fromY: number;
+          toX: number;
+          toY: number;
+          tileIndex: number;
+        }
+      >();
+      const plannedFrom = new Set<string>();
+      const plannedTo = new Set<string>();
+
+      for (let ty = startY; ty <= endY; ty++) {
+        for (let tx = endX; tx >= startX; tx--) {
+          const fKey = posKey(tx, ty);
+          if (plannedFrom.has(fKey)) continue;
+          const tile = layer.getTileAt(tx, ty);
+          if (!tile) continue;
+
+          const destX = tx + 1;
+          if (destX > (this.scene as any).map.width - 1) continue;
+
+          const chain: Array<{ x: number; y: number; index: number }> = [];
+          let curX = destX;
+          let blocked = false;
+          while (curX <= (this.scene as any).map.width - 1) {
+            const t = layer.getTileAt(curX, ty);
+            if (!t) break;
+            chain.push({ x: curX, y: ty, index: t.index });
+            curX++;
+            if (chain.length > maxChain) {
+              blocked = true;
+              break;
+            }
+          }
+          if (blocked) continue;
+
+          let targetX = curX;
+          for (let i = chain.length - 1; i >= 0; i--) {
+            const c = chain[i];
+            const fromK = posKey(c.x, c.y);
+            const toK = posKey(targetX, c.y);
+            if (plannedTo.has(toK)) {
+              blocked = true;
+              break;
+            }
+            moves.set(fromK, {
+              fromX: c.x,
+              fromY: c.y,
+              toX: targetX,
+              toY: c.y,
+              tileIndex: c.index,
+            });
+            plannedFrom.add(fromK);
+            plannedTo.add(toK);
+            targetX--;
+          }
+          if (blocked) continue;
+
+          const toK = posKey(destX, ty);
+          if (!plannedTo.has(toK)) {
+            moves.set(fKey, {
+              fromX: tx,
+              fromY: ty,
+              toX: destX,
+              toY: ty,
+              tileIndex: tile.index,
+            });
+            plannedFrom.add(fKey);
+            plannedTo.add(toK);
+          }
+        }
+      }
+
+      if (moves.size === 0) return 0;
+
+      // remove originals
+      for (const m of moves.values()) {
+        try {
+          layer.removeTileAt(m.fromX, m.fromY);
+        } catch (e) {}
+      }
+      // place targets
+      for (const m of moves.values()) {
+        try {
+          layer.putTileAt(m.tileIndex, m.toX, m.toY);
+        } catch (e) {}
+      }
+
+      // mark affected chunks & emit event
+      this.markChunksForTilePositions(
+        Array.from(moves.values()).map((m) => ({ x: m.toX, y: m.toY })),
+      );
+      try {
+        this.scene.game.events.emit("regenerator:chunk", chunkKey);
+      } catch (e) {}
+      return moves.size;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[Regenerator] pushSlideChunk error", e);
+      return 0;
+    }
+  }
+
+  /** Use WorldFacts to locate a platform StructureFact covering tileX,tileY */
+  public findPlatformFactAt(tileX: number, tileY: number): any | null {
+    try {
+      const wf = (this.scene as any).worldFacts;
+      if (!wf) return null;
+      wf.refresh?.();
+      const facts = wf.getFact("Structure") as any[];
+      for (const f of facts) {
+        if (
+          f.structureType === "Platform" &&
+          tileX >= f.xStart &&
+          tileX <= f.xEnd
+        ) {
+          const idx = tileX - f.xStart;
+          const expectedY = f.heights?.[idx];
+          if (typeof expectedY === "number") {
+            if (expectedY === tileY) return f;
+            // still return candidate if mismatch
+            return f;
+          }
+          return f;
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  public collectPlatformTilesFromFact(
+    fact: any,
+  ): Array<{ x: number; y: number; index: number }> {
+    const out: Array<{ x: number; y: number; index: number }> = [];
+    try {
+      if (
+        !fact ||
+        fact.structureType !== "Platform" ||
+        !Array.isArray(fact.heights)
+      )
+        return out;
+      const layer = (this.scene as any).groundLayer;
+      if (!layer) return out;
+      for (let x = fact.xStart; x <= fact.xEnd; x++) {
+        const idx = x - fact.xStart;
+        const y = fact.heights![idx];
+        if (typeof y !== "number" || y < 0) continue;
+        const tile = layer.getTileAt(x, y);
+        if (tile) out.push({ x, y, index: tile.index });
+      }
+    } catch (e) {}
+    return out;
+  }
+
+  public removePlatformAt(tileX: number, tileY: number) {
+    try {
+      const fact = this.findPlatformFactAt(tileX, tileY);
+      if (!fact) return false;
+      const tiles = this.collectPlatformTilesFromFact(fact);
+      const layer = (this.scene as any).groundLayer;
+      for (const t of tiles) {
+        try {
+          layer.removeTileAt(t.x, t.y);
+        } catch (e) {}
+      }
+      this.markChunksForTilePositions(tiles);
+      try {
+        (this.scene as any).regenerator?.scheduleRegenNow?.();
+      } catch (e) {}
+      try {
+        (this.scene as any).worldFacts?.refresh?.();
+      } catch (e) {}
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  public movePlatformAt(
+    tileX: number,
+    tileY: number,
+    dx: number,
+    dy: number,
+    force: boolean = false,
+  ): boolean {
+    try {
+      const fact = this.findPlatformFactAt(tileX, tileY);
+      if (!fact) return false;
+      const tiles = this.collectPlatformTilesFromFact(fact);
+      if (!tiles.length) return false;
+      const w = (this.scene as any).map.width;
+      const h = (this.scene as any).map.height;
+      const layer = (this.scene as any).groundLayer;
+      const key = (x: number, y: number) => `${x},${y}`;
+
+      const targets = new Map<
+        string,
+        { tx: number; ty: number; index: number }
+      >();
+      for (const t of tiles) {
+        const tx = t.x + dx;
+        const ty = t.y + dy;
+        if (tx < 0 || tx >= w || ty < 0 || ty >= h) return false;
+        targets.set(key(tx, ty), { tx, ty, index: t.index });
+      }
+
+      if (!force) {
+        for (const v of targets.values()) {
+          const existing = layer.getTileAt(v.tx, v.ty);
+          const wasMoving = tiles.some(
+            (t) => t.x === v.tx - dx && t.y === v.ty - dy,
+          );
+          if (existing && !wasMoving) return false;
+        }
+      }
+
+      for (const t of tiles) {
+        try {
+          layer.removeTileAt(t.x, t.y);
+        } catch (e) {}
+      }
+      for (const v of targets.values()) {
+        try {
+          layer.putTileAt(v.index, v.tx, v.ty);
+        } catch (e) {}
+      }
+
+      const all = tiles.concat(
+        Array.from(targets.values()).map((v) => ({
+          x: v.tx,
+          y: v.ty,
+          index: v.index,
+        })),
+      );
+      this.markChunksForTilePositions(all);
+      try {
+        (this.scene as any).regenerator?.scheduleRegenNow?.();
+      } catch (e) {}
+      try {
+        (this.scene as any).worldFacts?.refresh?.();
+      } catch (e) {}
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   private chunkKeyFromCoords(cx: number, cy: number, z: number): ChunkKey {
     return `${cx},${cy},${z}`;
   }

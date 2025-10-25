@@ -686,9 +686,15 @@ export class EditorScene extends Phaser.Scene {
       if (box.updateNeighbors) {
         box.updateNeighbors(this.selectionBoxes);
       }
+      if (box.updateIntersections) {
+        box.updateIntersections(this.selectionBoxes);
+      }
     }
     if (this.activeBox && this.activeBox.updateNeighbors) {
       this.activeBox.updateNeighbors(this.selectionBoxes);
+      if (this.activeBox.updateIntersections) {
+        this.activeBox.updateIntersections(this.selectionBoxes);
+      }
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.keyC) && this.keyCtrl.isDown) {

@@ -42,6 +42,8 @@ export class SelectionBox {
 
   // STEP 3: Collaborative Context Merging - Neighbor tracking
   private neighbors: Set<SelectionBox> = new Set();
+  // Intersections with boxes on different z-levels
+  private intersections: Set<SelectionBox> = new Set();
   private lastNeighborCheck: number = 0;
   private neighborCheckInterval: number = 500; // Check every 500ms
 
@@ -211,6 +213,35 @@ export class SelectionBox {
         this.onNeighborRemoved(previousNeighbor);
       }
     });
+  }
+
+  /**
+   * Check for intersections with boxes on different z-levels
+   */
+  public updateIntersections(allBoxes: SelectionBox[]): void {
+    const previous = new Set(this.intersections);
+    this.intersections.clear();
+
+    const myBounds = this.getBounds();
+    for (const box of allBoxes) {
+      if (box === this) continue;
+      if (box.getZLevel && box.getZLevel() === this.zLevel) continue; // only different z-levels
+      try {
+        const otherBounds = box.getBounds();
+        if (
+          Phaser.Geom.Intersects.RectangleToRectangle(myBounds, otherBounds)
+        ) {
+          this.intersections.add(box);
+        }
+      } catch (e) {
+        // skip boxes that don't implement getBounds
+      }
+    }
+
+    // If intersections changed, update visuals
+    if (this.intersections.size !== previous.size) {
+      this.updateTabWithNetworkInfo();
+    }
   }
 
   /**
@@ -1061,17 +1092,23 @@ export class SelectionBox {
 
     const neighborCount = this.neighbors.size;
     const dataCount = this.localContext.data.size;
+    const intersectionCount = this.intersections.size;
 
     // Update tab text to show network info, but omit zero-valued parts
     const parts: string[] = [];
     if (neighborCount > 0) parts.push(`${neighborCount}n`);
     if (dataCount > 0) parts.push(`${dataCount}d`);
+    if (intersectionCount > 0) parts.push(`${intersectionCount}z`);
     const text = parts.length > 0 ? `Box (${parts.join(", ")})` : `Box`;
     this.tabText.setText(text);
 
     // Change color based on connectivity
     if (this.tabBg) {
-      if (neighborCount > 0) {
+      if (intersectionCount > 0) {
+        // Intersection present - orange stroke to warn
+        this.tabBg.setFillStyle(this.isActive ? 0xffe0cc : 0xfff0e6);
+        this.tabBg.setStrokeStyle(2, 0xffa500);
+      } else if (neighborCount > 0) {
         // Connected - use cyan to indicate network activity
         this.tabBg.setFillStyle(this.isActive ? 0x00ff88 : 0x00aaff);
       } else {

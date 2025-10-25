@@ -356,67 +356,67 @@ export class SelectionBox {
     // Pick color based on zLevel
     const color = this.getColorForZLevel(this.zLevel);
 
-    // Draw filled region
+    // Visual margin to include the tab/indicator above the box (in pixels)
+    const tabVisualMargin = 14;
+
+    // Pixel coordinates for drawing (expand upward by tabVisualMargin)
+    const pixelLeft = startX * 16;
+    const pixelTop = startY * 16 - tabVisualMargin;
+    const pixelRight = endX * 16 + 16;
+    const pixelBottom = endY * 16 + 16;
+    const pixelWidth = pixelRight - pixelLeft;
+    const pixelHeight = pixelBottom - pixelTop;
+
+    // Draw filled region (including margin for the tab)
     this.graphics.fillStyle(color, 0.3);
-    this.graphics.fillRect(
-      startX * 16,
-      startY * 16,
-      (endX - startX + 1) * 16,
-      (endY - startY + 1) * 16,
-    );
+    this.graphics.fillRect(pixelLeft, pixelTop, pixelWidth, pixelHeight);
 
     // Draw dashed border
     this.graphics.lineStyle(2, color, 1);
     this.graphics.beginPath();
 
-    const width = endX - startX + 1;
-    const height = endY - startY + 1;
+    // width/height (in tiles) were previously used for dashed border math; replaced by pixelWidth/pixelHeight
     const dashLength = 8;
     const gapLength = 4;
 
     if (this.isFinalized) {
-      // Solid rectangle border for finalized boxes
-      this.graphics.strokeRect(
-        startX * 16,
-        startY * 16,
-        (endX - startX + 1) * 16,
-        (endY - startY + 1) * 16,
-      );
+      // Solid rectangle border for finalized boxes (include margin)
+      this.graphics.strokeRect(pixelLeft, pixelTop, pixelWidth, pixelHeight);
     } else {
       // Dashed border for temporary boxes
-      // Top border
-      for (let i = 0; i < width * 16; i += dashLength + gapLength) {
-        this.graphics.moveTo(startX * 16 + i, startY * 16);
+      // Top border (use pixelTop so the dashed border includes the tab area)
+      for (let i = 0; i < pixelWidth; i += dashLength + gapLength) {
+        this.graphics.moveTo(pixelLeft + i, pixelTop);
         this.graphics.lineTo(
-          Math.min(startX * 16 + i + dashLength, endX * 16 + 16),
-          startY * 16,
+          Math.min(pixelLeft + i + dashLength, pixelRight),
+          pixelTop,
         );
       }
 
       // Bottom border
-      for (let i = 0; i < width * 16; i += dashLength + gapLength) {
-        this.graphics.moveTo(startX * 16 + i, endY * 16 + 16);
+      for (let i = 0; i < pixelWidth; i += dashLength + gapLength) {
+        this.graphics.moveTo(pixelLeft + i, pixelBottom);
         this.graphics.lineTo(
-          Math.min(startX * 16 + i + dashLength, endX * 16 + 16),
-          endY * 16 + 16,
+          Math.min(pixelLeft + i + dashLength, pixelRight),
+          pixelBottom,
         );
       }
 
       // Left border
-      for (let i = 0; i < height * 16; i += dashLength + gapLength) {
-        this.graphics.moveTo(startX * 16, startY * 16 + i);
+      for (let i = 0; i < pixelHeight; i += dashLength + gapLength) {
+        this.graphics.moveTo(pixelLeft, pixelTop + i);
         this.graphics.lineTo(
-          startX * 16,
-          Math.min(startY * 16 + i + dashLength, endY * 16 + 16),
+          pixelLeft,
+          Math.min(pixelTop + i + dashLength, pixelBottom),
         );
       }
 
       // Right border
-      for (let i = 0; i < height * 16; i += dashLength + gapLength) {
-        this.graphics.moveTo(endX * 16 + 16, startY * 16 + i);
+      for (let i = 0; i < pixelHeight; i += dashLength + gapLength) {
+        this.graphics.moveTo(pixelRight, pixelTop + i);
         this.graphics.lineTo(
-          endX * 16 + 16,
-          Math.min(startY * 16 + i + dashLength, endY * 16 + 16),
+          pixelRight,
+          Math.min(pixelTop + i + dashLength, pixelBottom),
         );
       }
 
@@ -1062,8 +1062,12 @@ export class SelectionBox {
     const neighborCount = this.neighbors.size;
     const dataCount = this.localContext.data.size;
 
-    // Update tab text to show network info
-    this.tabText.setText(`Box (${neighborCount}n, ${dataCount}d)`);
+    // Update tab text to show network info, but omit zero-valued parts
+    const parts: string[] = [];
+    if (neighborCount > 0) parts.push(`${neighborCount}n`);
+    if (dataCount > 0) parts.push(`${dataCount}d`);
+    const text = parts.length > 0 ? `Box (${parts.join(", ")})` : `Box`;
+    this.tabText.setText(text);
 
     // Change color based on connectivity
     if (this.tabBg) {

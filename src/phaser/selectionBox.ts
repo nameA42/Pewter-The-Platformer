@@ -1102,6 +1102,37 @@ export class SelectionBox {
     const text = parts.length > 0 ? `Box (${parts.join(", ")})` : `Box`;
     this.tabText.setText(text);
 
+    // Make the tab wider when visual indicators are added: add 20px per indicator
+    if (this.tabBg && this.tabText) {
+      const baseWidth = 48;
+      const padding = 8;
+      const indicatorsExtra = parts.length * 3;
+      const measured = Math.ceil(this.tabText.width || 0) + padding * 2;
+      const newWidth = Math.max(baseWidth, measured + indicatorsExtra);
+
+      try {
+        // Update rectangle display size (some Phaser builds support setDisplaySize)
+        if (typeof (this.tabBg as any).setDisplaySize === "function") {
+          (this.tabBg as any).setDisplaySize(
+            newWidth,
+            (this.tabBg as any).height || 14,
+          );
+        } else {
+          // Fallback: directly set width property
+          (this.tabBg as any).width = newWidth;
+        }
+      } catch (e) {
+        // ignore if resizing not supported
+      }
+
+      // Update container size and text padding
+      this.tabContainer?.setSize(newWidth, (this.tabBg as any).height || 14);
+      // Keep text positioned with left padding
+      try {
+        this.tabText.x = padding;
+      } catch (e) {}
+    }
+
     // Change color based on connectivity
     if (this.tabBg) {
       if (intersectionCount > 0) {

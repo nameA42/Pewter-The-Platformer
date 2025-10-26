@@ -86,7 +86,6 @@ export class EditorScene extends Phaser.Scene {
   private keyCtrl!: Phaser.Input.Keyboard.Key;
   private keyDelete!: Phaser.Input.Keyboard.Key;
 
-
   private setPointerOverUI = (v: boolean) =>
     this.registry.set("uiPointerOver", v);
 
@@ -103,6 +102,16 @@ export class EditorScene extends Phaser.Scene {
 
   constructor() {
     super({ key: "editorScene" });
+  }
+
+  // Collaborative Context Merging - Expose active box for chat system
+  private setupGlobalActiveBoxAccess(): void {
+    // Expose active selection box to the chat system
+    if (typeof window !== "undefined") {
+      (window as any).getActiveSelectionBox = () => {
+        return this.activeBox;
+      };
+    }
   }
 
   preload() {
@@ -159,8 +168,10 @@ export class EditorScene extends Phaser.Scene {
   }
 
   create() {
-    this.map = this.make.tilemap({ key: "defaultMap" });
+    // Setup global access for collaborative context
+    // this.setupGlobalActiveBoxAccess(); // Temporarily commented out to fix loading issue
 
+    this.map = this.make.tilemap({ key: "defaultMap" });
     this.worldFacts = new WorldFacts(this);
 
     console.log("Map loaded:", this.map);
@@ -283,7 +294,9 @@ export class EditorScene extends Phaser.Scene {
       typeof window.addEventListener === "function"
     ) {
       window.addEventListener("toolCalled", (_ev: any) => {
-        console.log("toolCalled event received; finalizing active box if present");
+        console.log(
+          "toolCalled event received; finalizing active box if present",
+        );
         if (this.activeBox) {
           // Mark the box as finalized (permanent)
           this.activeBox.finalize?.();
@@ -317,8 +330,12 @@ export class EditorScene extends Phaser.Scene {
       this.keyN = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.N);
       this.keyZ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
       this.keyB = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B);
-      this.keyDelete = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.DELETE);
-      this.keyCtrl = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.CTRL);
+      this.keyDelete = this.input.keyboard!.addKey(
+        Phaser.Input.Keyboard.KeyCodes.DELETE,
+      );
+      this.keyCtrl = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.CTRL,
+      );
     }
 
     // scrolling
@@ -418,7 +435,7 @@ export class EditorScene extends Phaser.Scene {
             ?.index || 0;
       }
     });
-    
+
     this.keyDelete.on("down", () => {
       if (!this.activeBox) return;
       // remove from permanent list if present
@@ -686,6 +703,22 @@ export class EditorScene extends Phaser.Scene {
       box.updateTabPosition?.();
     }
     this.activeBox?.updateTabPosition?.();
+
+    // Collaborative Context Merging - Update neighbor detection for all boxes
+    for (const box of this.selectionBoxes) {
+      if (box.updateNeighbors) {
+        box.updateNeighbors(this.selectionBoxes);
+      }
+      if (box.updateIntersections) {
+        box.updateIntersections(this.selectionBoxes);
+      }
+    }
+    if (this.activeBox && this.activeBox.updateNeighbors) {
+      this.activeBox.updateNeighbors(this.selectionBoxes);
+      if (this.activeBox.updateIntersections) {
+        this.activeBox.updateIntersections(this.selectionBoxes);
+      }
+    }
 
     if (Phaser.Input.Keyboard.JustDown(this.keyC) && this.keyCtrl.isDown) {
       this.copySelection();

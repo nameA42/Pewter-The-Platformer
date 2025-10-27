@@ -22,6 +22,18 @@ export class PlacePlatform {
       .max(32)
       .optional()
       .describe("Platform width in tiles."),
+    // Uniform height (Y tile) for the whole platform
+    height: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe("Uniform Y coordinate (tile) to place the platform row at."),
+    // Per-column heights: when provided, its length may be used as width
+    heights: z
+      .array(z.number().int().min(0))
+      .optional()
+      .describe("Optional per-column Y coordinates (array length = width)."),
     tileIndex: z
       .number()
       .int()
@@ -54,7 +66,10 @@ export class PlacePlatform {
       if (!scene) return "Tool Failed: no reference to scene.";
 
       const side = args.side ?? "left";
-      const width = Number(args.width ?? 5);
+      // prefer heights length if provided and width not explicitly set
+      const heightsArg = (args as any).heights as number[] | undefined;
+      const heightArg = (args as any).height as number | undefined;
+      let width = Number(args.width ?? (heightsArg ? heightsArg.length : 5));
       const tileIndex = Number(args.tileIndex ?? 5);
       const layerName = args.layerName ?? "Ground_Layer";
 
@@ -63,6 +78,7 @@ export class PlacePlatform {
       if (!layer) return `Tool Failed: layer '${layerName}' not found.`;
 
       let startX: number | null = null;
+      // startY may be a single number or null if using per-column heights
       let startY: number | null = null;
 
       // Prefer explicit coordinates if provided
@@ -88,24 +104,62 @@ export class PlacePlatform {
         startY = bounds.y + Math.floor(bounds.height / 2);
       }
 
-      // Ensure startX/startY are numbers
-      if (startX === null || startY === null) {
-        return "Tool Failed: unable to compute start coordinates.";
-      }
-      // Bounds check
+      // If we have no explicit startY and no heights, we cannot proceed
+      if (startX === null && typeof args.x !== "number")
+        return "Tool Failed: unable to compute start X coordinate.";
+
+      // Bounds check preparatory
       const w = map.width;
       const h = map.height;
-      if (startX < 0 || startX + width - 1 >= w || startY < 0 || startY >= h) {
-        return `Tool Failed: target platform (${startX}-${startX + width - 1}, ${startY}) out of map bounds.`;
+
+      // If heights provided, validate length and Y ranges
+      if (heightsArg && Array.isArray(heightsArg)) {
+        if (heightsArg.length !== width)
+          return `Tool Failed: heights length (${heightsArg.length}) does not match width (${width}).`;
+        for (let i = 0; i < heightsArg.length; i++) {
+          const yv = heightsArg[i];
+          if (yv < 0 || yv >= h)
+            return `Tool Failed: heights[${i}]=${yv} out of map vertical bounds (0..${h - 1}).`;
+        }
+      }
+
+      // If a uniform height was provided, validate it
+      if (typeof heightArg === "number") {
+        if (heightArg < 0 || heightArg >= h)
+          return `Tool Failed: height=${heightArg} out of map vertical bounds (0..${h - 1}).`;
+      }
+
+      // If we still need a single startY and none provided, ensure selection provided startY
+      if (!heightsArg && typeof heightArg !== "number") {
+        if (startY === null)
+          return "Tool Failed: unable to compute start Y coordinate.";
+        if (startY < 0 || startY >= h)
+          return `Tool Failed: target Y ${startY} out of bounds.`;
       }
 
       // Place tiles
       const placedTiles: { x: number; y: number; index: number }[] = [];
       try {
         for (let i = 0; i < width; i++) {
-          const x = startX + i;
-          const y = startY;
-          map.putTileAt(tileIndex, x, y, true, layer);
+          const x = (startX as number) + i;
+          const y =
+            heightsArg && heightsArg[i] != null
+              ? heightsArg[i]
+              : typeof heightArg === "number"
+                ? heightArg
+                : (startY as number);
+          if (x < 0 || x >= w || y < 0 || y >= h)
+            return `Tool Failed: computed tile (${x},${y}) out of bounds.`;
+          // place tile using map or layer
+          try {
+            map.putTileAt(tileIndex, x, y, true, layer);
+          } catch (e) {
+            try {
+              layer.putTileAt(tileIndex, x, y);
+            } catch (er) {
+              throw er || e;
+            }
+          }
           placedTiles.push({ x: x, y: y, index: tileIndex });
           // record in selection box if available
           try {
@@ -117,6 +171,7 @@ export class PlacePlatform {
           } catch (e) {}
         }
       } catch (e) {
+        // eslint-disable-next-line no-console
         console.error("PlacePlatform failed while putting tiles:", e);
         return "Tool Failed: error while placing platform tiles.";
       }
@@ -136,7 +191,7 @@ export class PlacePlatform {
       } catch (e) {}
 
       try {
-        scene.worldFacts?.setFact("Structure");
+        (scene as any).worldFacts?.refresh?.();
       } catch (e) {}
 
       return `✅ Placed ${width}-tile platform at (${startX}, ${startY}) on ${layerName} (side=${side}).`;

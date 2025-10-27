@@ -33,6 +33,13 @@ export class SelectionBox {
   private _dragInitialEnd?: Phaser.Math.Vector2;
   private _dragPointerTileX?: number;
   private _dragPointerTileY?: number;
+  // Snapshot of placedTiles at the start of a drag so we can keep them in sync
+  private _dragOriginalPlacedTiles?: {
+    tileIndex: number;
+    x: number;
+    y: number;
+    layerName: string;
+  }[];
   private _dragStartHandler?: (pointer: Phaser.Input.Pointer, obj: any) => void;
   private _dragHandler?: (
     pointer: Phaser.Input.Pointer,
@@ -315,6 +322,28 @@ export class SelectionBox {
             }
           }
           if (!intersects) {
+            // compute integer delta relative to initial start
+            const deltaX = Math.floor(
+              candidateStart.x - (this._dragInitialStart?.x ?? 0),
+            );
+            const deltaY = Math.floor(
+              candidateStart.y - (this._dragInitialStart?.y ?? 0),
+            );
+            // update placedTiles positions relative to the original snapshot
+            try {
+              if (
+                this._dragOriginalPlacedTiles &&
+                this._dragOriginalPlacedTiles.length > 0
+              ) {
+                this.placedTiles = this._dragOriginalPlacedTiles.map((p) => ({
+                  tileIndex: p.tileIndex,
+                  x: p.x + deltaX,
+                  y: p.y + deltaY,
+                  layerName: p.layerName,
+                }));
+              }
+            } catch (e) {}
+
             this.start = candidateStart;
             this.end = candidateEnd;
             this.redraw();
@@ -336,6 +365,10 @@ export class SelectionBox {
           if (this._pointerUpHandler)
             this.scene.input.off("pointerup", this._pointerUpHandler);
         } catch (e) {}
+        // clear drag snapshot
+        try {
+          this._dragOriginalPlacedTiles = undefined;
+        } catch (e) {}
       };
 
       // Start drag on pointerdown on the tab if finalized
@@ -356,6 +389,17 @@ export class SelectionBox {
           // prepare drag
           this._dragInitialStart = this.start.clone();
           this._dragInitialEnd = this.end.clone();
+          // snapshot placed tiles so we can update their coordinates while dragging
+          try {
+            this._dragOriginalPlacedTiles = this.placedTiles.map((p) => ({
+              tileIndex: p.tileIndex,
+              x: p.x,
+              y: p.y,
+              layerName: p.layerName,
+            }));
+          } catch (err) {
+            this._dragOriginalPlacedTiles = undefined;
+          }
           const cam =
             this.scene.cameras && this.scene.cameras.main
               ? this.scene.cameras.main

@@ -12,13 +12,14 @@ import {
   initializeTools,
   registerTool,
 } from "./languageModel/modelConnector.ts";
-// import { MoveTool } from "./languageModel/tools/moveTool.ts";
+import { MoveTool } from "./languageModel/tools/moveTool.ts";
 // import { sendSystemMessage } from "./languageModel/chatBox.ts";
 // import { ZoomTool } from "./languageModel/tools/zoomTool.ts";
 
 import { PlaceSingleTile } from "./languageModel/tools/placeSingleTile.ts";
 import { PlaceEnemy } from "./languageModel/tools/placeEnemy.ts";
 import { PlaceGridofTiles } from "./languageModel/tools/placeGridofTiles.ts";
+import { PlacePlatform } from "./languageModel/tools/placePlatform.ts";
 import { ClearTile } from "./languageModel/tools/clearTile.ts";
 import { WorldFactsTool } from "./languageModel/tools/worldFactsTool.ts";
 import { GetPlacedTiles } from "./languageModel/tools/getPlacedTiles.ts";
@@ -34,6 +35,8 @@ const tools = {
   placeSingleTile: new PlaceSingleTile(getScene),
   placeEnemy: new PlaceEnemy(getScene),
   placeGridofTiles: new PlaceGridofTiles(getScene),
+  placePlatform: new PlacePlatform(getScene),
+  movePlayer: new MoveTool(getScene as any),
   clearTile: new ClearTile(getScene),
   WorldFactsTool: new WorldFactsTool(getScene),
   getPlacedTiles: new GetPlacedTiles(getScene),

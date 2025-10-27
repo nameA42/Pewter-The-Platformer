@@ -102,6 +102,61 @@ export class Regenerator {
         (this.scene as any).groundLayer;
       if (!layer) return 0;
 
+      // Micro-optimizations: cache commonly used values and build protected tile set
+      const mapWidth = (this.scene as any).map.width;
+
+      // Build a fast lookup Set of tiles explicitly placed by selection boxes for this layer
+      const protectedTiles = new Set<string>();
+      try {
+        const boxes: any[] = (this.scene as any).selectionBoxes || [];
+        for (const b of boxes) {
+          try {
+            const placed =
+              (typeof b.getPlacedTiles === "function"
+                ? b.getPlacedTiles()
+                : b.placedTiles) || [];
+            for (const p of placed) {
+              if (p && p.layerName === layerName)
+                protectedTiles.add(`${p.x},${p.y}`);
+            }
+          } catch (e) {}
+        }
+      } catch (e) {}
+
+      // Cache structure facts once per chunk pass to avoid repeated refresh/calls
+      let structureFacts: any[] | null = null;
+      try {
+        const wf = (this.scene as any).worldFacts;
+        if (wf && typeof wf.getFact === "function") {
+          // Do not call refresh here; assume caller keeps worldFacts reasonably up-to-date.
+          structureFacts = (wf.getFact("Structure") || []) as any[];
+        }
+      } catch (e) {
+        structureFacts = null;
+      }
+
+      const isPlatformTileFast = (tx: number, ty: number) => {
+        try {
+          if (!structureFacts) return false;
+          for (const f of structureFacts) {
+            if (
+              f &&
+              f.structureType === "Platform" &&
+              tx >= f.xStart &&
+              tx <= f.xEnd
+            ) {
+              const idx = tx - f.xStart;
+              const expectedY = f.heights?.[idx];
+              if (typeof expectedY === "number") {
+                if (expectedY === ty) return true;
+              }
+              return true;
+            }
+          }
+        } catch (e) {}
+        return false;
+      };
+
       const posKey = (x: number, y: number) => `${x},${y}`;
       const moves = new Map<
         string,
@@ -123,15 +178,25 @@ export class Regenerator {
           const tile = layer.getTileAt(tx, ty);
           if (!tile) continue;
 
+          // Fast checks: protected tiles (LLM/user placed) and platform tiles
+          if (protectedTiles.has(fKey)) continue;
+          if (isPlatformTileFast(tx, ty)) continue;
+
           const destX = tx + 1;
-          if (destX > (this.scene as any).map.width - 1) continue;
+          if (destX > mapWidth - 1) continue;
 
           const chain: Array<{ x: number; y: number; index: number }> = [];
           let curX = destX;
           let blocked = false;
-          while (curX <= (this.scene as any).map.width - 1) {
+          while (curX <= mapWidth - 1) {
             const t = layer.getTileAt(curX, ty);
             if (!t) break;
+            // Fast: if the chain contains a protected/LLM tile or platform tile, block
+            const cKey = posKey(curX, ty);
+            if (protectedTiles.has(cKey) || isPlatformTileFast(curX, ty)) {
+              blocked = true;
+              break;
+            }
             chain.push({ x: curX, y: ty, index: t.index });
             curX++;
             if (chain.length > maxChain) {
@@ -349,6 +414,162 @@ export class Regenerator {
       return true;
     } catch (e) {
       return false;
+    }
+  }
+
+  /**
+   * Delete objects (tiles and enemies) inside the given chunk.
+   * Returns number of deletions performed.
+   */
+  public deleteObjectsInChunk(
+    chunkKey: ChunkKey,
+    options: { layers?: string[]; removeEnemies?: boolean } = {},
+  ): number {
+    try {
+      const { cx, cy } = this.parseChunkKey(chunkKey);
+      const startX = cx * this.chunkSize;
+      const startY = cy * this.chunkSize;
+      const endX = Math.min(
+        startX + this.chunkSize - 1,
+        (this.scene as any).map.width - 1,
+      );
+      const endY = Math.min(
+        startY + this.chunkSize - 1,
+        (this.scene as any).map.height - 1,
+      );
+
+      const layers = options.layers ?? ["Collectables_Layer", "Ground_Layer"];
+      let removed = 0;
+
+      for (const lname of layers) {
+        try {
+          const layer = (this.scene as any).map.getLayer(lname)?.tilemapLayer;
+          if (!layer) continue;
+          for (let x = startX; x <= endX; x++) {
+            for (let y = startY; y <= endY; y++) {
+              const tile = layer.getTileAt(x, y);
+              if (tile) {
+                try {
+                  layer.removeTileAt(x, y);
+                  removed++;
+                } catch (e) {}
+              }
+            }
+          }
+        } catch (e) {}
+      }
+
+      if (options.removeEnemies) {
+        try {
+          const enemies: any[] = (this.scene as any).enemies || [];
+          for (let i = enemies.length - 1; i >= 0; i--) {
+            const e = enemies[i];
+            if (
+              typeof e.x === "number" &&
+              typeof e.y === "number" &&
+              e.x >= startX &&
+              e.x <= endX &&
+              e.y >= startY &&
+              e.y <= endY
+            ) {
+              // remove enemy from scene array and destroy if possible
+              try {
+                if (typeof e.destroy === "function") e.destroy();
+              } catch (er) {}
+              enemies.splice(i, 1);
+              removed++;
+            }
+          }
+        } catch (e) {}
+      }
+
+      // Mark affected chunks & refresh facts
+      const touched: Array<{ x: number; y: number }> = [];
+      for (let x = startX; x <= endX; x++)
+        for (let y = startY; y <= endY; y++) touched.push({ x, y });
+      this.markChunksForTilePositions(touched);
+      try {
+        (this.scene as any).worldFacts?.refresh?.();
+      } catch (e) {}
+
+      return removed;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /**
+   * Move a set of objects. Movements is an array describing tile or enemy moves.
+   * Each entry: { type: 'tile'|'enemy', layerName?, from: {x,y}, to: {x,y}, index? }
+   */
+  public moveObjects(
+    movements: Array<{
+      type: "tile" | "enemy";
+      layerName?: string;
+      from: { x: number; y: number };
+      to: { x: number; y: number };
+      index?: number;
+    }>,
+  ): number {
+    try {
+      if (!Array.isArray(movements) || movements.length === 0) return 0;
+      const map = (this.scene as any).map;
+      let applied = 0;
+      const affectedTiles: Array<{ x: number; y: number }> = [];
+
+      for (const m of movements) {
+        if (m.type === "tile") {
+          const lname = m.layerName ?? "Ground_Layer";
+          const layer = map.getLayer(lname)?.tilemapLayer;
+          if (!layer) continue;
+          try {
+            const t = layer.getTileAt(m.from.x, m.from.y);
+            const idx = m.index ?? (t ? t.index : undefined);
+            // remove source
+            layer.removeTileAt(m.from.x, m.from.y);
+            // place target if index available
+            if (typeof idx === "number") {
+              layer.putTileAt(idx, m.to.x, m.to.y);
+              applied++;
+              affectedTiles.push({ x: m.from.x, y: m.from.y });
+              affectedTiles.push({ x: m.to.x, y: m.to.y });
+            }
+          } catch (e) {}
+        } else if (m.type === "enemy") {
+          try {
+            const enemies: any[] = (this.scene as any).enemies || [];
+            for (const e of enemies) {
+              if (e && e.x === m.from.x && e.y === m.from.y) {
+                // move enemy
+                try {
+                  e.x = m.to.x;
+                  e.y = m.to.y;
+                  // also update sprite position if present (pixel coords)
+                  if (e.body && e.body.gameObject) {
+                    const sprite = e.body.gameObject as any;
+                    sprite.x = m.to.x * 16 + 8;
+                    sprite.y = m.to.y * 16 + 8;
+                  }
+                } catch (er) {}
+                applied++;
+                affectedTiles.push({ x: m.from.x, y: m.from.y });
+                affectedTiles.push({ x: m.to.x, y: m.to.y });
+                break;
+              }
+            }
+          } catch (e) {}
+        }
+      }
+
+      if (affectedTiles.length > 0)
+        this.markChunksForTilePositions(affectedTiles);
+      try {
+        (this.scene as any).worldFacts?.refresh?.();
+      } catch (e) {}
+
+      return applied;
+    } catch (e) {
+      return 0;
     }
   }
 

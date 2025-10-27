@@ -365,6 +365,68 @@ export class SelectionBox {
           if (this._pointerUpHandler)
             this.scene.input.off("pointerup", this._pointerUpHandler);
         } catch (e) {}
+        // If we had a snapshot of placed tiles, commit a move of those tiles on the map
+        try {
+          const orig = this._dragOriginalPlacedTiles;
+          if (orig && orig.length > 0) {
+            const rg = (this.scene as any).regenerator as any;
+            // compute delta from initial drag start if needed
+            const deltaX = Math.floor(
+              this.start.x - (this._dragInitialStart?.x ?? 0),
+            );
+            const deltaY = Math.floor(
+              this.start.y - (this._dragInitialStart?.y ?? 0),
+            );
+
+            const movements: Array<any> = [];
+            if (this.placedTiles && this.placedTiles.length === orig.length) {
+              for (let i = 0; i < orig.length; i++) {
+                const o = orig[i];
+                const n = this.placedTiles[i];
+                if (!n) continue;
+                // only add movement if different
+                if (o.x === n.x && o.y === n.y) continue;
+                movements.push({
+                  type: "tile",
+                  layerName: o.layerName,
+                  from: { x: o.x, y: o.y },
+                  to: { x: n.x, y: n.y },
+                  index: o.tileIndex,
+                });
+              }
+            } else {
+              // fallback: apply delta to each original
+              for (const o of orig) {
+                const toX = o.x + deltaX;
+                const toY = o.y + deltaY;
+                if (o.x === toX && o.y === toY) continue;
+                movements.push({
+                  type: "tile",
+                  layerName: o.layerName,
+                  from: { x: o.x, y: o.y },
+                  to: { x: toX, y: toY },
+                  index: o.tileIndex,
+                });
+              }
+            }
+
+            if (
+              movements.length > 0 &&
+              rg &&
+              typeof rg.moveObjects === "function"
+            ) {
+              try {
+                rg.moveObjects(movements);
+              } catch (e) {
+                // ignore move errors but log for debugging
+                // eslint-disable-next-line no-console
+                console.error("SelectionBox: moveObjects failed", e);
+              }
+            }
+          }
+        } catch (e) {
+          // swallow
+        }
         // clear drag snapshot
         try {
           this._dragOriginalPlacedTiles = undefined;

@@ -4,12 +4,8 @@ import Phaser from "phaser";
 type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
   isFalling?: boolean;
 };
-import {
-  sendUserPrompt,
-  sendUserPromptWithContext,
-  sendUserPromptHidden,
-} from "../languageModel/chatBox";
-import { invokeTool } from "../languageModel/modelConnector";
+import { sendUserPrompt } from "../languageModel/chatBox";
+import { regenerateSelection as regenerateSelectionModule } from "./regenerator";
 import { setActiveSelectionBox } from "../languageModel/chatBox";
 import { Slime } from "./ExternalClasses/Slime.ts";
 import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
@@ -1353,252 +1349,23 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
-  // Simple stub regenerate implementation for UI demo: fills the active box with a demo tile
-  // extraHiddenContext: optional string that will be appended to the hidden context sent to the model
+  // Thin wrapper that delegates regeneration to the extracted module.
   async regenerateSelection(
     box: SelectionBox,
     propagateLower: boolean = true,
     extraHiddenContext: string = "",
     visited: Set<SelectionBox> = new Set(),
   ): Promise<void> {
-    if (!box) throw new Error("No box provided");
-    if (visited.has(box)) return; // avoid cycles
-    visited.add(box);
-    // Save map history for undo
     try {
-      this.bindMapHistory();
+      await regenerateSelectionModule(
+        this,
+        box,
+        propagateLower,
+        extraHiddenContext,
+        visited,
+      );
     } catch (e) {
-      // ignore
-    }
-
-    // Helper: regenerate a single box (clear -> ask model -> place tiles -> update cache)
-    const singleRegen = async (targetBox: SelectionBox, ctxSuffix: string) => {
-      // bounds for target
-      const start = targetBox.getStart();
-      const end = targetBox.getEnd();
-      const sX = Math.min(start.x, end.x);
-      const sY = Math.min(start.y, end.y);
-      const eX = Math.max(start.x, end.x);
-      const eY = Math.max(start.y, end.y);
-
-      const layer = targetBox.getLayer();
-
-      // Determine mask of higher boxes (if provided in ctxSuffix) so we don't clear/place within them
-      const higherRects: Phaser.Geom.Rectangle[] = [];
-      try {
-        if (ctxSuffix && ctxSuffix.startsWith("HIGHER_BOUNDS:")) {
-          const jsonPart = ctxSuffix.substring("HIGHER_BOUNDS:".length);
-          const parsed = JSON.parse(jsonPart);
-          if (Array.isArray(parsed)) {
-            for (const h of parsed) {
-              try {
-                const r = new Phaser.Geom.Rectangle(
-                  h.x,
-                  h.y,
-                  h.width,
-                  h.height,
-                );
-                higherRects.push(r);
-              } catch (e) {
-                // ignore
-              }
-            }
-          }
-        }
-      } catch (e) {
-        // ignore parse errors
-      }
-
-      const isInsideAnyHigher = (tx: number, ty: number) => {
-        for (const r of higherRects) {
-          // selectionBox.getBounds width/height are end-start, inclusive end = x+width
-          const x0 = r.x;
-          const x1 = r.x + r.width; // inclusive
-          const y0 = r.y;
-          const y1 = r.y + r.height; // inclusive
-          if (tx >= x0 && tx <= x1 && ty >= y0 && ty <= y1) return true;
-        }
-        return false;
-      };
-
-      // Clear area, but preserve tiles inside higher boxes
-      if (higherRects.length === 0) {
-        try {
-          await invokeTool("clearTiles", {
-            xMin: sX,
-            xMax: eX + 1,
-            yMin: sY,
-            yMax: eY + 1,
-            layerName: layer.layer.name,
-          });
-        } catch (toolErr) {
-          // fallback manual clear
-          for (let y = sY; y <= eY; y++) {
-            for (let x = sX; x <= eX; x++) {
-              if (x < 0 || y < 0 || x >= this.map.width || y >= this.map.height)
-                continue;
-              this.placeTile(layer, x, y, -1);
-            }
-          }
-        }
-      } else {
-        // manual per-tile clear outside higher boxes
-        for (let y = sY; y <= eY; y++) {
-          for (let x = sX; x <= eX; x++) {
-            if (x < 0 || y < 0 || x >= this.map.width || y >= this.map.height)
-              continue;
-            if (isInsideAnyHigher(x, y)) continue; // preserve
-            this.placeTile(layer, x, y, -1);
-          }
-        }
-      }
-
-      // Build hidden context for this targetBox. Per request, ONLY include bounds and layer; DO NOT include theme or placed tiles from other boxes.
-      const baseHidden = `SELECTION_BOUNDS:${sX},${sY},${eX},${eY};LAYER:${layer.layer.name}`;
-      const suffix = ctxSuffix ? `;${ctxSuffix}` : "";
-      const hiddenContext = baseHidden + suffix;
-
-      // get last user message for this box
-      let lastUserMessageT = "";
-      try {
-        const chatHistory = targetBox.getChatHistory
-          ? targetBox.getChatHistory()
-          : [];
-        for (let i = chatHistory.length - 1; i >= 0; i--) {
-          const msg: any = chatHistory[i];
-          if (msg && typeof msg._getType === "function") {
-            const t = String(msg._getType()).toLowerCase();
-            if (t === "human" || t === "user") {
-              lastUserMessageT =
-                typeof msg.content === "string"
-                  ? msg.content
-                  : JSON.stringify(msg.content);
-              break;
-            }
-          }
-        }
-      } catch (e) {
-        lastUserMessageT = "";
-      }
-
-      // ask LLM
-      let tileMatrix: number[][] | null = null;
-      try {
-        const userPrompt =
-          lastUserMessageT ||
-          `Regenerate tiles for selection (${sX},${sY})-(${eX},${eY})`;
-        const replyText = await sendUserPromptHidden(userPrompt, hiddenContext);
-        try {
-          const parsed = JSON.parse(replyText);
-          if (Array.isArray(parsed) && Array.isArray(parsed[0])) {
-            tileMatrix = parsed as number[][];
-          }
-        } catch (e) {
-          // ignore parse errors
-        }
-      } catch (e) {
-        console.warn("Model call failed during regeneration:", e);
-      }
-
-      if (tileMatrix) {
-        const height = tileMatrix.length;
-        const width = tileMatrix[0]?.length || 0;
-        for (let ry = 0; ry < height; ry++) {
-          for (let rx = 0; rx < width; rx++) {
-            const tileIdx = tileMatrix[ry][rx];
-            const worldX = sX + rx;
-            const worldY = sY + ry;
-            if (
-              worldX < 0 ||
-              worldY < 0 ||
-              worldX >= this.map.width ||
-              worldY >= this.map.height
-            )
-              continue;
-            if (isInsideAnyHigher(worldX, worldY)) continue; // do not overwrite higher box area
-            this.placeTile(layer, worldX, worldY, tileIdx);
-            // record placed tile in box for tooling/context
-            try {
-              targetBox.addPlacedTile(
-                tileIdx,
-                worldX,
-                worldY,
-                layer.layer.name,
-              );
-            } catch (e) {}
-          }
-        }
-      }
-
-      try {
-        targetBox.copyTiles();
-      } catch (e) {}
-
-      // return bounds-only metadata for this box so lower boxes can preserve higher areas
-      const brect = targetBox.getBounds
-        ? targetBox.getBounds()
-        : { x: sX, y: sY, width: eX - sX + 1, height: eY - sY + 1 };
-      return {
-        x: brect.x,
-        y: brect.y,
-        width: brect.width,
-        height: brect.height,
-      };
-    };
-
-    // Orchestration: if propagateLower is true, regenerate all boxes that intersect this
-    // selection (including this one) in descending z-order so higher/intersecting boxes
-    // regenerate first and their placedTiles/theme are available to lower boxes.
-    if (propagateLower) {
-      try {
-        const allBoxes: any[] = (this as any).selectionBoxes || [];
-        const thisBounds = box.getBounds();
-        // collect all boxes that intersect our box (including itself)
-        const intersecting: SelectionBox[] = [];
-        for (const b of allBoxes) {
-          if (!b) continue;
-          try {
-            const bb = b.getBounds();
-            if (Phaser.Geom.Intersects.RectangleToRectangle(thisBounds, bb)) {
-              intersecting.push(b);
-            }
-          } catch (e) {}
-        }
-        // ensure the current box is included
-        if (!intersecting.includes(box)) intersecting.push(box);
-
-        // sort descending by z so highest z regenerates first
-        intersecting.sort(
-          (a, b) =>
-            (b.getZLevel ? b.getZLevel() : 0) -
-            (a.getZLevel ? a.getZLevel() : 0),
-        );
-
-        const regeneratedBounds: any[] = [];
-        for (const b of intersecting) {
-          const higherContext = regeneratedBounds.length
-            ? `HIGHER_BOUNDS:${JSON.stringify(regeneratedBounds)}`
-            : "";
-          try {
-            const info = await singleRegen(b, higherContext);
-            // info is bounds-only {x,y,width,height}
-            regeneratedBounds.push(info);
-          } catch (e) {
-            console.warn("singleRegen failed for box during orchestration:", e);
-          }
-        }
-      } catch (e) {
-        console.warn("Regeneration orchestration failed:", e);
-      }
-      return;
-    }
-
-    // Non-orchestration path: delegate to the centralized singleRegen helper so
-    // each box uses only its own chat history and respects higher-box bounds.
-    try {
-      await singleRegen(box, extraHiddenContext);
-    } catch (e) {
-      console.warn("singleRegen failed for box:", e);
+      console.warn("Regeneration (module) failed:", e);
     }
   }
 }

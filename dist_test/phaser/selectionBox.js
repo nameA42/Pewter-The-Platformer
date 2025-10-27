@@ -1,17 +1,21 @@
-import Phaser from "phaser";
-
-export class SelectionBox {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.SelectionBox = void 0;
+const phaser_1 = require("phaser");
+class SelectionBox {
   /**
    * Summarize the chat log into a single keyword using the LLM and set as themeIntent
    */
-  async summarizeChatToThemeIntent(): Promise<string> {
+  async summarizeChatToThemeIntent() {
     // Import sendUserPrompt from chatBox dynamically to avoid circular deps
     // (or you can import at the top if safe)
     // @ts-ignore
-    const { sendUserPrompt } = await import("../languageModel/chatBox");
+    const { sendUserPrompt } = await Promise.resolve().then(() =>
+      require("../languageModel/chatBox"),
+    );
     // Flatten chat history into a single string
     const chatLog = this.localContext.chatHistory
-      .map((msg: any) =>
+      .map((msg) =>
         typeof msg.content === "string"
           ? msg.content
           : JSON.stringify(msg.content),
@@ -23,113 +27,63 @@ export class SelectionBox {
     this.setThemeIntent(keyword);
     return keyword;
   }
-  private graphics: Phaser.GameObjects.Graphics;
-  private start: Phaser.Math.Vector2;
-  private end: Phaser.Math.Vector2;
-  /**
-   * Thematic intent or user prompt context for this box (e.g., story, purpose, tags)
-   */
-  private themeIntent: string = "";
-  public getStart(): Phaser.Math.Vector2 {
+  getStart() {
     return this.start.clone();
   }
-  public getEnd(): Phaser.Math.Vector2 {
+  getEnd() {
     return this.end.clone();
   }
-  private scene: Phaser.Scene;
-  private zLevel: number;
-  public selectedTiles: number[][] = [];
-  private layer: Phaser.Tilemaps.TilemapLayer;
-  public localContext: { chatHistory: any[] };
-  public placedTiles: {
-    tileIndex: number;
-    x: number;
-    y: number;
-    layerName: string;
-  }[] = [];
-  private tabContainer: Phaser.GameObjects.Container | null = null;
-  private onSelect?: (box: SelectionBox) => void;
-  private tabBg: Phaser.GameObjects.Rectangle | null = null;
-  private tabText: Phaser.GameObjects.Text | null = null;
-  private isActive: boolean = false;
-  private isFinalized: boolean = false;
-
-  // Drag helpers
-  private _dragInitialStart?: Phaser.Math.Vector2;
-  private _dragInitialEnd?: Phaser.Math.Vector2;
-  private _dragInitialContainerX?: number;
-  private _dragInitialContainerY?: number;
-  private _dragPointerTileX?: number;
-  private _dragPointerTileY?: number;
-  private _dragPointerOffsetX?: number;
-  private _dragPointerOffsetY?: number;
-  private _dragStartHandler?: (pointer: Phaser.Input.Pointer, obj: any) => void;
-  private _dragHandler?: (
-    pointer: Phaser.Input.Pointer,
-    obj: any,
-    dragX: number,
-    dragY: number,
-  ) => void;
-  private _pointerMoveHandler?: (pointer: Phaser.Input.Pointer) => void;
-  private _pointerUpHandler?: (pointer: Phaser.Input.Pointer) => void;
-
-  constructor(
-    scene: Phaser.Scene,
-    start: Phaser.Math.Vector2,
-    end: Phaser.Math.Vector2,
-    zLevel: number = 1,
-    layer: Phaser.Tilemaps.TilemapLayer,
-    onSelect?: (box: SelectionBox) => void,
-  ) {
+  constructor(scene, start, end, zLevel = 1, layer, onSelect) {
+    /**
+     * Thematic intent or user prompt context for this box (e.g., story, purpose, tags)
+     */
+    this.themeIntent = "";
+    this.selectedTiles = [];
+    this.placedTiles = [];
+    this.tabContainer = null;
+    this.tabBg = null;
+    this.tabText = null;
+    this.isActive = false;
+    this.isFinalized = false;
     this.scene = scene;
     this.start = start.clone();
     this.end = end.clone();
     this.zLevel = zLevel;
     this.layer = layer;
-
     this.graphics = scene.add.graphics();
     this.graphics.setDepth(100);
     this.redraw();
-
     // Initialize localContext with its own chatHistory
     this.localContext = { chatHistory: [] };
     this.onSelect = onSelect;
     // create tab after initial draw
     this.createTab();
   }
-
-  getZLevel(): number {
+  getZLevel() {
     return this.zLevel;
   }
-
-  updateStart(start: Phaser.Math.Vector2) {
+  updateStart(start) {
     if (this.isFinalized) return; // don't allow resizing finalized boxes
     this.start = start.clone();
     this.redraw();
   }
-
-  updateEnd(end: Phaser.Math.Vector2) {
+  updateEnd(end) {
     if (this.isFinalized) return; // don't allow resizing finalized boxes
     this.end = end.clone();
     this.redraw();
   }
-
-  setZLevel(zLevel: number) {
+  setZLevel(zLevel) {
     this.zLevel = zLevel;
     this.redraw();
   }
-
-  private redraw() {
+  redraw() {
     this.graphics.clear();
-
     const startX = Math.min(this.start.x, this.end.x);
     const startY = Math.min(this.start.y, this.end.y);
     const endX = Math.max(this.start.x, this.end.x);
     const endY = Math.max(this.start.y, this.end.y);
-
     // Pick color based on zLevel
     const color = this.getColorForZLevel(this.zLevel);
-
     // Draw filled region
     this.graphics.fillStyle(color, 0.3);
     this.graphics.fillRect(
@@ -138,16 +92,13 @@ export class SelectionBox {
       (endX - startX + 1) * 16,
       (endY - startY + 1) * 16,
     );
-
     // Draw dashed border
     this.graphics.lineStyle(2, color, 1);
     this.graphics.beginPath();
-
     const width = endX - startX + 1;
     const height = endY - startY + 1;
     const dashLength = 8;
     const gapLength = 4;
-
     if (this.isFinalized) {
       // Solid rectangle border for finalized boxes
       this.graphics.strokeRect(
@@ -166,7 +117,6 @@ export class SelectionBox {
           startY * 16,
         );
       }
-
       // Bottom border
       for (let i = 0; i < width * 16; i += dashLength + gapLength) {
         this.graphics.moveTo(startX * 16 + i, endY * 16 + 16);
@@ -175,7 +125,6 @@ export class SelectionBox {
           endY * 16 + 16,
         );
       }
-
       // Left border
       for (let i = 0; i < height * 16; i += dashLength + gapLength) {
         this.graphics.moveTo(startX * 16, startY * 16 + i);
@@ -184,7 +133,6 @@ export class SelectionBox {
           Math.min(startY * 16 + i + dashLength, endY * 16 + 16),
         );
       }
-
       // Right border
       for (let i = 0; i < height * 16; i += dashLength + gapLength) {
         this.graphics.moveTo(endX * 16 + 16, startY * 16 + i);
@@ -193,21 +141,17 @@ export class SelectionBox {
           Math.min(startY * 16 + i + dashLength, endY * 16 + 16),
         );
       }
-
       this.graphics.strokePath();
     }
-
     this.updateTabPosition();
   }
-
-  private createTab() {
+  createTab() {
     // Create a small clickable tab that sits above the selection box
     if (this.tabContainer) {
       this.tabContainer.destroy();
     }
     const startX = Math.min(this.start.x, this.end.x);
     const startY = Math.min(this.start.y, this.end.y);
-
     const worldX = startX * 16;
     const worldY = startY * 16;
     // smaller, neater tab
@@ -224,7 +168,6 @@ export class SelectionBox {
       : this.isFinalized
         ? 0x111111
         : 0x123a66;
-
     const bg = this.scene.add
       .rectangle(0, 0, w, h, initialFill)
       .setOrigin(0, 0.5);
@@ -232,43 +175,30 @@ export class SelectionBox {
     const txt = this.scene.add
       .text(6, 0, `Box`, { fontSize: "10px", color: "#ffffff" })
       .setOrigin(0, 0.5);
-
     const container = this.scene.add.container(worldX, worldY - 10, [bg, txt]);
     container.setDepth(1001);
     container.setSize(w, h);
-
     // Store references for state changes
     this.tabBg = bg;
     this.tabText = txt;
-
     // Make interactive on the background rectangle
     bg.setInteractive({ useHandCursor: true });
-    bg.on(
-      "pointerdown",
-      (
-        _pointer: Phaser.Input.Pointer,
-        _localX: number,
-        _localY: number,
-        event: any,
-      ) => {
-        // Prevent global pointer handlers (like EditorScene startSelection)
-        // from also reacting to this click.
-        try {
-          if (event && typeof event.stopPropagation === "function") {
-            event.stopPropagation();
-          }
-        } catch (e) {
-          // ignore
+    bg.on("pointerdown", (_pointer, _localX, _localY, event) => {
+      // Prevent global pointer handlers (like EditorScene startSelection)
+      // from also reacting to this click.
+      try {
+        if (event && typeof event.stopPropagation === "function") {
+          event.stopPropagation();
         }
-        if (this.onSelect) this.onSelect(this);
-      },
-    );
-
+      } catch (e) {
+        // ignore
+      }
+      if (this.onSelect) this.onSelect(this);
+    });
     // Implement pointer-driven drag so the box follows the mouse without snapping
     try {
       let dragging = false;
-
-      const pointerMove = (pointer: Phaser.Input.Pointer) => {
+      const pointerMove = (pointer) => {
         if (!dragging) return;
         if (!this._dragInitialStart || !this._dragInitialEnd) return;
         const cam =
@@ -280,27 +210,22 @@ export class SelectionBox {
           : { x: pointer.worldX, y: pointer.worldY };
         const currentTileX = Math.floor(world.x / 16);
         const currentTileY = Math.floor(world.y / 16);
-
         const startTileX = this._dragPointerTileX ?? currentTileX;
         const startTileY = this._dragPointerTileY ?? currentTileY;
         const tileDX = currentTileX - startTileX;
         const tileDY = currentTileY - startTileY;
-
         const newStart = this._dragInitialStart
           .clone()
-          .add(new Phaser.Math.Vector2(tileDX, tileDY));
+          .add(new phaser_1.default.Math.Vector2(tileDX, tileDY));
         const newEnd = this._dragInitialEnd
           .clone()
-          .add(new Phaser.Math.Vector2(tileDX, tileDY));
-
+          .add(new phaser_1.default.Math.Vector2(tileDX, tileDY));
         const boxWidth =
           Math.max(newEnd.x, newStart.x) - Math.min(newStart.x, newEnd.x) + 1;
         const boxHeight =
           Math.max(newEnd.y, newStart.y) - Math.min(newStart.y, newEnd.y) + 1;
-
         let newStartX = newStart.x;
         let newStartY = newStart.y;
-
         const worldMinX = 0;
         const worldMinY = 0;
         const worldMaxX = cam
@@ -309,26 +234,26 @@ export class SelectionBox {
         const worldMaxY = cam
           ? Math.floor((cam.worldView.height + cam.worldView.y) / 16)
           : Number.MAX_SAFE_INTEGER;
-
         if (newStartX < worldMinX) newStartX = worldMinX;
         if (newStartY < worldMinY) newStartY = worldMinY;
         if (newStartX + boxWidth - 1 > worldMaxX)
           newStartX = worldMaxX - (boxWidth - 1);
         if (newStartY + boxHeight - 1 > worldMaxY)
           newStartY = worldMaxY - (boxHeight - 1);
-
-        const candidateStart = new Phaser.Math.Vector2(newStartX, newStartY);
-        const candidateEnd = new Phaser.Math.Vector2(
+        const candidateStart = new phaser_1.default.Math.Vector2(
+          newStartX,
+          newStartY,
+        );
+        const candidateEnd = new phaser_1.default.Math.Vector2(
           newStartX + boxWidth - 1,
           newStartY + boxHeight - 1,
         );
-
         // Prevent intersection with other boxes on same z-level
         try {
-          const editor = this.scene as any as any;
-          const boxes: any[] = editor.selectionBoxes || [];
+          const editor = this.scene;
+          const boxes = editor.selectionBoxes || [];
           let intersects = false;
-          const candRect = new Phaser.Geom.Rectangle(
+          const candRect = new phaser_1.default.Geom.Rectangle(
             candidateStart.x,
             candidateStart.y,
             candidateEnd.x - candidateStart.x,
@@ -338,7 +263,12 @@ export class SelectionBox {
             if (b === this) continue;
             if (b.getZLevel && b.getZLevel() === this.zLevel) {
               const br = b.getBounds();
-              if (Phaser.Geom.Intersects.RectangleToRectangle(candRect, br)) {
+              if (
+                phaser_1.default.Geom.Intersects.RectangleToRectangle(
+                  candRect,
+                  br,
+                )
+              ) {
                 intersects = true;
                 break;
               }
@@ -355,8 +285,7 @@ export class SelectionBox {
           this.redraw();
         }
       };
-
-      const pointerUp = (_pointer: Phaser.Input.Pointer) => {
+      const pointerUp = (_pointer) => {
         dragging = false;
         try {
           if (this._pointerMoveHandler)
@@ -367,44 +296,35 @@ export class SelectionBox {
             this.scene.input.off("pointerup", this._pointerUpHandler);
         } catch (e) {}
       };
-
       // Start drag on pointerdown on the tab if finalized
-      bg.on(
-        "pointerdown",
-        (
-          pointer: Phaser.Input.Pointer,
-          _lx: number,
-          _ly: number,
-          event: any,
-        ) => {
-          try {
-            if (event && typeof event.stopPropagation === "function")
-              event.stopPropagation();
-          } catch (e) {}
-          if (this.onSelect) this.onSelect(this);
-          if (!this.isFinalized) return;
-          // prepare drag
-          this._dragInitialStart = this.start.clone();
-          this._dragInitialEnd = this.end.clone();
-          const cam =
-            this.scene.cameras && this.scene.cameras.main
-              ? this.scene.cameras.main
-              : null;
-          const world = cam
-            ? cam.getWorldPoint(pointer.x, pointer.y)
-            : { x: pointer.worldX, y: pointer.worldY };
-          const pTileX = Math.floor(world.x / 16);
-          const pTileY = Math.floor(world.y / 16);
-          // store pointer-start tile so subsequent moves compute a delta from this origin
-          this._dragPointerTileX = pTileX;
-          this._dragPointerTileY = pTileY;
-          dragging = true;
-          this._pointerMoveHandler = pointerMove;
-          this._pointerUpHandler = pointerUp;
-          this.scene.input.on("pointermove", this._pointerMoveHandler);
-          this.scene.input.on("pointerup", this._pointerUpHandler);
-        },
-      );
+      bg.on("pointerdown", (pointer, _lx, _ly, event) => {
+        try {
+          if (event && typeof event.stopPropagation === "function")
+            event.stopPropagation();
+        } catch (e) {}
+        if (this.onSelect) this.onSelect(this);
+        if (!this.isFinalized) return;
+        // prepare drag
+        this._dragInitialStart = this.start.clone();
+        this._dragInitialEnd = this.end.clone();
+        const cam =
+          this.scene.cameras && this.scene.cameras.main
+            ? this.scene.cameras.main
+            : null;
+        const world = cam
+          ? cam.getWorldPoint(pointer.x, pointer.y)
+          : { x: pointer.worldX, y: pointer.worldY };
+        const pTileX = Math.floor(world.x / 16);
+        const pTileY = Math.floor(world.y / 16);
+        // store pointer-start tile so subsequent moves compute a delta from this origin
+        this._dragPointerTileX = pTileX;
+        this._dragPointerTileY = pTileY;
+        dragging = true;
+        this._pointerMoveHandler = pointerMove;
+        this._pointerUpHandler = pointerUp;
+        this.scene.input.on("pointermove", this._pointerMoveHandler);
+        this.scene.input.on("pointerup", this._pointerUpHandler);
+      });
     } catch (e) {
       // ignore if input system not available
     }
@@ -427,11 +347,9 @@ export class SelectionBox {
         }
       }
     });
-
     this.tabContainer = container;
   }
-
-  public updateTabPosition() {
+  updateTabPosition() {
     if (!this.tabContainer) return;
     const startX = Math.min(this.start.x, this.end.x);
     const startY = Math.min(this.start.y, this.end.y);
@@ -439,9 +357,8 @@ export class SelectionBox {
     const worldY = startY * 16;
     this.tabContainer.setPosition(worldX, worldY - 12);
   }
-
   // Toggle active visual state on the tab
-  public setActive(active: boolean) {
+  setActive(active) {
     this.isActive = active;
     console.log(`SelectionBox.setActive called: ${active}`);
     if (!this.tabBg || !this.tabText) return;
@@ -461,16 +378,14 @@ export class SelectionBox {
       this.tabText.setStyle({ color: "#ffffff" });
     }
   }
-
   copyTiles() {
     const sX = Math.min(this.start.x, this.end.x);
     const sY = Math.min(this.start.y, this.end.y);
     const eX = Math.max(this.start.x, this.end.x);
     const eY = Math.max(this.start.y, this.end.y);
-
     this.selectedTiles = [];
     for (let y = sY; y <= eY; y++) {
-      const row: number[] = [];
+      const row = [];
       for (let x = sX; x <= eX; x++) {
         const tile = this.layer.getTileAt(x, y);
         row.push(tile ? tile.index : -1);
@@ -478,8 +393,7 @@ export class SelectionBox {
       this.selectedTiles.push(row);
     }
   }
-
-  private getColorForZLevel(zLevel: number): number {
+  getColorForZLevel(zLevel) {
     switch (zLevel) {
       case 1:
         return 0xff5555; // red
@@ -491,47 +405,40 @@ export class SelectionBox {
         return 0xffffff; // white (This is not gonna happen)
     }
   }
-
   // Checking the possible bounds without finalizing the update
-  tempBounds(possibleEnd: Phaser.Math.Vector2): Phaser.Geom.Rectangle {
+  tempBounds(possibleEnd) {
     const startX = Math.min(this.start.x, possibleEnd.x);
     const startY = Math.min(this.start.y, possibleEnd.y);
     const endX = Math.max(this.start.x, possibleEnd.x);
     const endY = Math.max(this.start.y, possibleEnd.y);
-
-    return new Phaser.Geom.Rectangle(
+    return new phaser_1.default.Geom.Rectangle(
       startX,
       startY,
       endX - startX,
       endY - startY,
     );
   }
-
   // Returns the current Bounds of that box
-  getBounds(): Phaser.Geom.Rectangle {
+  getBounds() {
     const startX = Math.min(this.start.x, this.end.x);
     const startY = Math.min(this.start.y, this.end.y);
     const endX = Math.max(this.start.x, this.end.x);
     const endY = Math.max(this.start.y, this.end.y);
-
-    return new Phaser.Geom.Rectangle(
+    return new phaser_1.default.Geom.Rectangle(
       startX,
       startY,
       endX - startX,
       endY - startY,
     );
   }
-
   // Returns the selected tiles
-  getSelectedTiles(): number[][] {
+  getSelectedTiles() {
     return this.selectedTiles;
   }
-
   // Expose the layer this selection box is associated with
-  public getLayer(): Phaser.Tilemaps.TilemapLayer {
+  getLayer() {
     return this.layer;
   }
-
   destroy() {
     this.graphics.destroy();
     if (this.tabContainer) {
@@ -543,10 +450,9 @@ export class SelectionBox {
       this.scene.input.off("dragstart", this._dragStartHandler);
     if (this._dragHandler) this.scene.input.off("drag", this._dragHandler);
   }
-
   // Mark this selection as finalized (permanent). Keeps a tab for dragging but
   // prevents further resizing via updateStart/updateEnd.
-  public finalize() {
+  finalize() {
     this.isFinalized = true;
     // Update visuals immediately so dashed -> solid border swap happens
     this.redraw();
@@ -561,43 +467,36 @@ export class SelectionBox {
     // ensure tab is activeable for dragging
     // nothing else needed for now
   }
-
   // Chat history management for this selection box
-  addChatMessage(msg: any) {
+  addChatMessage(msg) {
     this.localContext.chatHistory.push(msg);
   }
-
-  getChatHistory(): any[] {
+  getChatHistory() {
     return this.localContext.chatHistory;
   }
-
   clearChatHistory() {
     this.localContext.chatHistory.length = 0;
   }
-
   /**
    * Set the thematic intent or user prompt context for this box
    */
-  setThemeIntent(intent: string) {
+  setThemeIntent(intent) {
     this.themeIntent = intent;
   }
-
   /**
    * Get the thematic intent or user prompt context for this box
    */
-  getThemeIntent(): string {
+  getThemeIntent() {
     return this.themeIntent;
   }
-
   /**
    * Communicate this box's themeIntent to another box (for later interactions)
    */
-  communicateThemeTo(box: SelectionBox) {
+  communicateThemeTo(box) {
     if (box && typeof box.setThemeIntent === "function") {
       box.setThemeIntent(this.themeIntent);
     }
   }
-
   //Working Code - Jason Cho
   printChatHistory() {
     console.log("Chat History for this SelectionBox:");
@@ -605,26 +504,19 @@ export class SelectionBox {
       console.log(`${index + 1}: ${JSON.stringify(msg)}`);
     });
   }
-
   //TODO: clear placed tiles accordingly, especially with user actions
-  public addPlacedTile(
-    tileIndex: number,
-    x: number,
-    y: number,
-    layerName: string,
-  ) {
+  addPlacedTile(tileIndex, x, y, layerName) {
     this.placedTiles.push({ tileIndex, x, y, layerName });
     console.log("Added placed tile:", { tileIndex, x, y, layerName });
   }
-
-  public getPlacedTiles() {
+  getPlacedTiles() {
     return this.placedTiles;
   }
-
-  public printPlacedTiles() {
+  printPlacedTiles() {
     console.log("Placed Tiles for this SelectionBox:");
     this.placedTiles.forEach((tile, index) => {
       console.log(`${index + 1}: ${JSON.stringify(tile)}`);
     });
   }
 }
+exports.SelectionBox = SelectionBox;

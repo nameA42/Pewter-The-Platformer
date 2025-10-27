@@ -1,58 +1,36 @@
-import Phaser from "phaser";
-import {
-  sendUserPromptWithContext,
-  getDisplayChatHistory,
-} from "../languageModel/chatBox";
-import { EditorScene } from "./editorScene.ts";
-
-export class UIScene extends Phaser.Scene {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.UIScene = void 0;
+const phaser_1 = require("phaser");
+const chatBox_1 = require("../languageModel/chatBox");
+class UIScene extends phaser_1.default.Scene {
   constructor() {
     super({ key: "UIScene" });
+    //Variables
+    //Data
+    this.currentBlock = "";
+    this.blocks = ["block1", "block2", "block3"];
+    //Registry (Global variables)
+    this.setPointerOverUI = (v) => this.registry.set("uiPointerOver", v);
+    this.buttons = [];
+    //private selectedTileIndex = 0; // index of the tile to place
+    // Latest selection context
+    this.latestSelectionContext = "";
   }
-
-  //Variables
-
-  //Data
-  private currentBlock: string = "";
-  private blocks: string[] = ["block1", "block2", "block3"];
-  //Registry (Global variables)
-  private setPointerOverUI = (v: boolean) =>
-    this.registry.set("uiPointerOver", v);
-
-  //UI
-  private panel!: Phaser.GameObjects.Container;
-  private buttons: Phaser.GameObjects.Text[] = [];
-  private playButton!: Phaser.GameObjects.Container;
-  private regenerateButton!: Phaser.GameObjects.Container;
-
-  //Inputs
-  private keyR!: Phaser.Input.Keyboard.Key;
-
-  //Chat LLM
-  private chatBox!: Phaser.GameObjects.DOMElement;
-  //private selectedTileIndex = 0; // index of the tile to place
-
-  // Latest selection context
-  private latestSelectionContext: string = "";
-
   create() {
     // Transparent background
     //this.cameras.main.setBackgroundColor("rgba(0,0,0,0.3)");
-
     // Build UI panel container
     this.panel = this.add.container(-100, 0);
     this.panel.setDepth(1000);
-
     //Variables
     this.blocks = ["block1", "block2", "block3"]; //Add more blocks to see capabilities
-
     //Input
     const keys = [
-      Phaser.Input.Keyboard.KeyCodes.ONE,
-      Phaser.Input.Keyboard.KeyCodes.TWO,
-      Phaser.Input.Keyboard.KeyCodes.THREE,
+      phaser_1.default.Input.Keyboard.KeyCodes.ONE,
+      phaser_1.default.Input.Keyboard.KeyCodes.TWO,
+      phaser_1.default.Input.Keyboard.KeyCodes.THREE,
     ];
-
     //Event Input
     // keys.forEach((code, index) => {
     //   const key = this.input.keyboard!.addKey(code);
@@ -60,7 +38,6 @@ export class UIScene extends Phaser.Scene {
     //     this.changeBlock(this.blocks[index]);
     //   });
     // });
-
     // Buttons - compact, centered on middle button, text 'block#', lifted off bottom
     const buttonWidth = 110;
     const buttonHeight = 38;
@@ -71,7 +48,6 @@ export class UIScene extends Phaser.Scene {
     const centerX = screenWidth / 2;
     const startY = this.cameras.main.height - buttonHeight - 64; // lifted off bottom
     this.buttons = [];
-
     this.blocks.forEach((block, i) => {
       // Position relative to center button
       const offset = (i - centerIndex) * (buttonWidth + gap);
@@ -97,9 +73,7 @@ export class UIScene extends Phaser.Scene {
       );
       this.panel.add(btn);
     });
-
     //Working Code - Manvir
-
     // Create hidden chatbox
     this.chatBox = this.add.dom(1100, 350).createFromHTML(`
       <div id="chatbox" style="
@@ -128,23 +102,20 @@ export class UIScene extends Phaser.Scene {
     `);
     this.chatBox.setVisible(true);
     let isChatVisible = true;
-
-    window.addEventListener("keydown", (e: KeyboardEvent) => {
+    window.addEventListener("keydown", (e) => {
       if (e.key.toLowerCase() === "c" && !e.ctrlKey) {
         isChatVisible = !isChatVisible;
         this.chatBox.setVisible(isChatVisible);
       }
     });
-
-    const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
-    const log = this.chatBox.getChildByID("chat-log") as HTMLDivElement;
-
+    const input = this.chatBox.getChildByID("chat-input");
+    const log = this.chatBox.getChildByID("chat-log");
     // Blur input when clicking/tapping outside the chatbox
     try {
-      const rootNode = (this.chatBox.node as HTMLElement) || null;
-      const onPointerDown = (e: PointerEvent) => {
+      const rootNode = this.chatBox.node || null;
+      const onPointerDown = (e) => {
         try {
-          const target = e.target as Node | null;
+          const target = e.target;
           if (!rootNode || !target) return;
           if (!rootNode.contains(target)) {
             input.blur();
@@ -154,7 +125,6 @@ export class UIScene extends Phaser.Scene {
         }
       };
       window.addEventListener("pointerdown", onPointerDown);
-
       // clean up when scene shuts down to avoid leaks
       this.events.on("shutdown", () => {
         try {
@@ -164,7 +134,6 @@ export class UIScene extends Phaser.Scene {
     } catch (e) {
       // ignore if DOM not available
     }
-
     // Listen for changes to the active selection so we always render only the
     // currently-active selection box history.
     if (
@@ -173,44 +142,38 @@ export class UIScene extends Phaser.Scene {
     ) {
       window.addEventListener("activeSelectionChanged", () => {
         try {
-          log.innerHTML = getDisplayChatHistory();
+          log.innerHTML = (0, chatBox_1.getDisplayChatHistory)();
           log.scrollTop = log.scrollHeight;
         } catch (e) {
           console.warn("Failed to render active selection history:", e);
         }
       });
     }
-
-    input.addEventListener("keydown", (e: KeyboardEvent) => {
+    input.addEventListener("keydown", (e) => {
       // Prevent Phaser from capturing WASD and other keys when typing in chat
       e.stopPropagation();
     });
-
     // Only display new messages as they are sent (not history)
-    input.addEventListener("keydown", async (e: KeyboardEvent) => {
+    input.addEventListener("keydown", async (e) => {
       if (e.key === "Enter") {
         const userMsg = input.value.trim();
         if (!userMsg) return;
-
         input.value = "";
-        const sendPromise = sendUserPromptWithContext(
+        const sendPromise = (0, chatBox_1.sendUserPromptWithContext)(
           userMsg,
           this.latestSelectionContext,
         );
         // Render the user's message immediately (sendUserPrompt pushes it sync).
-        log.innerHTML = getDisplayChatHistory();
+        log.innerHTML = (0, chatBox_1.getDisplayChatHistory)();
         log.scrollTop = log.scrollHeight;
-
         // Wait for the reply to complete; the activeSelectionChanged listener
         // will re-render the full history (including AI reply), so we don't
         // render again here to avoid double-render or double-push issues.
         await sendPromise;
       }
     });
-
     // Play mode button - Shawn
     this.createPlayButton();
-
     // Add a small helper button to select the current temporary selection box
     const selectBoxBtn = this.createButton(
       this,
@@ -233,7 +196,6 @@ export class UIScene extends Phaser.Scene {
       },
     );
     selectBoxBtn.setDepth(1001);
-
     // Regenerate selection button - emits a request the EditorScene will handle
     this.regenerateButton = this.createButton(
       this,
@@ -255,13 +217,11 @@ export class UIScene extends Phaser.Scene {
       },
     );
     this.regenerateButton.setDepth(1001);
-
     // Listen for regeneration lifecycle events so the button can show feedback
     this.game.events.on("regenerate:started", () => {
       try {
-        const bg = this.regenerateButton
-          .list[0] as Phaser.GameObjects.Rectangle;
-        const txt = this.regenerateButton.list[1] as Phaser.GameObjects.Text;
+        const bg = this.regenerateButton.list[0];
+        const txt = this.regenerateButton.list[1];
         // Visual feedback: disable interaction and change text
         try {
           bg.disableInteractive();
@@ -273,12 +233,10 @@ export class UIScene extends Phaser.Scene {
         // ignore
       }
     });
-
-    this.game.events.on("regenerate:finished", (_payload?: any) => {
+    this.game.events.on("regenerate:finished", (_payload) => {
       try {
-        const bg = this.regenerateButton
-          .list[0] as Phaser.GameObjects.Rectangle;
-        const txt = this.regenerateButton.list[1] as Phaser.GameObjects.Text;
+        const bg = this.regenerateButton.list[0];
+        const txt = this.regenerateButton.list[1];
         try {
           bg.setInteractive({ useHandCursor: true });
         } catch (e) {}
@@ -289,9 +247,8 @@ export class UIScene extends Phaser.Scene {
         // ignore
       }
     });
-
-    this.input.keyboard!.on("keydown-H", () => {
-      const editorScene = this.scene.get("editorScene") as EditorScene;
+    this.input.keyboard.on("keydown-H", () => {
+      const editorScene = this.scene.get("editorScene");
       const activeBox = editorScene.activeBox;
       if (activeBox) {
         activeBox.printPlacedTiles();
@@ -301,45 +258,22 @@ export class UIScene extends Phaser.Scene {
     });
   }
   // Receives selection info from EditorScene and displays it in the chatbox
-  public handleSelectionInfo(msg: string) {
+  handleSelectionInfo(msg) {
     this.latestSelectionContext = msg;
   }
-
   //Working Code - Jason Cho (Helper functions)
-
   //Change currentBlock to block
-  private changeBlock(block: string) {
+  changeBlock(block) {
     this.currentBlock = block;
     console.log("CurrentBlock changed to:", this.currentBlock);
   }
-
   //Placeholder for placing a block
-  private placeBlock() {
+  placeBlock() {
     console.log("Placing block:", this.currentBlock);
     // Add actual placement logic here later
   }
-
   // Return a Container [bg + label], but attach interactivity to the bg rectangle.
-  public createButton(
-    scene: Phaser.Scene,
-    x: number,
-    y: number,
-    label: string,
-    onClick: () => void,
-    opts?: {
-      paddingX?: number;
-      paddingY?: number;
-      strokeWidth?: number;
-      stroke?: number;
-      fill?: number;
-      hoverFill?: number;
-      downFill?: number;
-      textColor?: string;
-      fontSize?: number;
-      fixedWidth?: number;
-      minHeight?: number;
-    },
-  ): Phaser.GameObjects.Container {
+  createButton(scene, x, y, label, onClick, opts) {
     const paddingX = opts?.paddingX ?? 14;
     const paddingY = opts?.paddingY ?? 8;
     const strokeW = opts?.strokeWidth ?? 2;
@@ -349,7 +283,6 @@ export class UIScene extends Phaser.Scene {
     const downFill = opts?.downFill ?? 0xdddddd;
     const fontSize = opts?.fontSize ?? 25;
     const textColor = opts?.textColor ?? "#111111";
-
     // Label
     const txt = scene.add
       .text(0, 0, label, {
@@ -357,7 +290,6 @@ export class UIScene extends Phaser.Scene {
         color: textColor,
       })
       .setOrigin(0.5);
-
     // Size
     const w = Math.max(
       opts?.fixedWidth ?? Math.ceil(txt.width) + paddingX * 2,
@@ -367,77 +299,63 @@ export class UIScene extends Phaser.Scene {
       opts?.minHeight ?? Math.ceil(txt.height) + paddingY * 2,
       28,
     );
-
     /*const bg1 = scene.add.rectangle(0, 0, w, h, fill)
-      .setOrigin(0.5)
-      .setStrokeStyle(strokeW, stroke)
-      .setInteractive({ useHandCursor: true });
-      */
-
+          .setOrigin(0.5)
+          .setStrokeStyle(strokeW, stroke)
+          .setInteractive({ useHandCursor: true });
+          */
     // Background with real border — make THIS the interactive thing
     const bg = scene.add
       .rectangle(0, 0, w, h, fill)
       .setOrigin(0.5)
       .setStrokeStyle(strokeW, stroke)
       .setInteractive({ useHandCursor: true }); // attach events to bg
-
     // Container groups them (so you can add to panel)
     const btn = scene.add.container(x, y, [bg, txt]).setSize(w, h);
-
     // ----- States -----
     bg.on("pointerover", () => {
       bg.setFillStyle(hoverFill);
-      (scene as UIScene).setPointerOverUI?.(true);
+      scene.setPointerOverUI?.(true);
     });
-
     bg.on("pointerout", () => {
       bg.setFillStyle(fill);
-      (scene as UIScene).setPointerOverUI?.(false);
+      scene.setPointerOverUI?.(false);
     });
-
     bg.on("pointerdown", () => {
       bg.setFillStyle(downFill);
     });
-
     // Fire only on release *inside*; also handle outside release to reset color
     bg.on("pointerup", () => {
       bg.setFillStyle(hoverFill);
       onClick();
     });
-
     bg.on("pointerupoutside", () => {
       // released outside: revert to normal, don't click
       bg.setFillStyle(fill);
     });
-
     return btn;
   }
-
-  private emitSelect(block: string) {
+  emitSelect(block) {
     this.game.events.emit("ui:selectBlock", block);
   }
-
   //Working Code - Manvir (Helper Functions)
   // ...existing code...
-
-  public showChatboxAt(x: number, y: number): void {
+  showChatboxAt(x, y) {
     this.chatBox.setPosition(x, y);
     this.chatBox.setVisible(true);
-    const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
+    const input = this.chatBox.getChildByID("chat-input");
     input.focus();
     // Clear chat log when chatbox is shown
-    const log = this.chatBox.getChildByID("chat-log") as HTMLDivElement;
+    const log = this.chatBox.getChildByID("chat-log");
     log.innerHTML = "";
   }
-
-  private startGame() {
+  startGame() {
     console.log("Play button clicked!");
-    (this.scene.get("editorScene") as EditorScene).startGame();
+    this.scene.get("editorScene").startGame();
     this.scene.stop("UIScene");
   }
-
   // Create the play button - Shawn K
-  private createPlayButton() {
+  createPlayButton() {
     this.playButton = this.createButton(
       this,
       100, // 100 pixels from left of screen
@@ -456,8 +374,8 @@ export class UIScene extends Phaser.Scene {
         paddingY: 10,
       },
     );
-
     // Set high depth so it appears above other UI elements
     this.playButton.setDepth(1001);
   }
 }
+exports.UIScene = UIScene;

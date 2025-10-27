@@ -29,11 +29,16 @@ export function getDisplayChatHistory(): string {
 let currentChatHistory: BaseMessage[] = [];
 
 // Set the active selection box context for chat
-export function setActiveSelectionBox(box: { localContext: { chatHistory: BaseMessage[] } } | null) {
+export function setActiveSelectionBox(
+  box: { localContext: { chatHistory: BaseMessage[] } } | null,
+) {
   if (!box) {
     // Clear active context
     currentChatHistory = [];
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
     return;
@@ -66,7 +71,10 @@ export function setActiveSelectionBox(box: { localContext: { chatHistory: BaseMe
     );
   }
   // Notify any UI listeners that the active selection (and its history) changed
-  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+  if (
+    typeof window !== "undefined" &&
+    typeof window.dispatchEvent === "function"
+  ) {
     window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
   }
 }
@@ -133,7 +141,10 @@ export async function sendUserPrompt(message: string): Promise<string> {
     historyRef.push(aiMessage);
 
     // Let UI know new content is available for the active selection
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
 
@@ -142,7 +153,10 @@ export async function sendUserPrompt(message: string): Promise<string> {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     const fallback = new AIMessage("Error: " + errorMessage);
     historyRef.push(fallback);
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
     return fallback.content as string;
@@ -184,7 +198,10 @@ export async function sendUserPromptWithContext(
     const aiMessage = new AIMessage(replyText);
     historyRef.push(aiMessage);
 
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
 
@@ -193,10 +210,46 @@ export async function sendUserPromptWithContext(
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     const fallback = new AIMessage("Error: " + errorMessage);
     historyRef.push(fallback);
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
     return fallback.content as string;
+  } finally {
+    setBotResponding(false);
+  }
+}
+
+/**
+ * Send a user prompt to the LLM but do NOT modify the visible chat history.
+ * This is intended for background/regeneration calls where we want the model
+ * to see the selection's history + an optional hidden context, but we do not
+ * want to add the user or AI messages to the UI-visible chat feed.
+ */
+export async function sendUserPromptHidden(
+  userMessageText: string,
+  hiddenContext?: string,
+): Promise<string> {
+  // Keep the visible history untouched; build a temporary history for the model
+  const tempHistory: BaseMessage[] = currentChatHistory.slice();
+  tempHistory.push(new HumanMessage(userMessageText));
+  if (hiddenContext && hiddenContext.trim().length > 0) {
+    tempHistory.push(new HumanMessage(`[WORLD CONTEXT]: ${hiddenContext}`));
+  }
+
+  setBotResponding(true);
+  try {
+    const reply = await getChatResponse(tempHistory);
+    const replyText = Array.isArray(reply.text)
+      ? reply.text.join("\n")
+      : String(reply.text);
+    // Do NOT push AIMessage into currentChatHistory and DO NOT dispatch UI events.
+    return replyText;
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    return "Error: " + errorMessage;
   } finally {
     setBotResponding(false);
   }
@@ -220,7 +273,10 @@ export async function sendSystemMessage(message: string): Promise<string> {
     const aiMessage = new AIMessage(replyText);
     historyRef.push(aiMessage);
 
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
 
@@ -229,7 +285,10 @@ export async function sendSystemMessage(message: string): Promise<string> {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     const fallback = new AIMessage("Error: " + errorMessage);
     historyRef.push(fallback);
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
     return fallback.content as string;

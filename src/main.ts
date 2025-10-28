@@ -35,7 +35,7 @@ const tools = {
   placeEnemy: new PlaceEnemy(getScene),
   placeGridofTiles: new PlaceGridofTiles(getScene),
   clearTile: new ClearTile(getScene),
-  WorldFactsTool: new WorldFactsTool(getScene),
+  //WorldFactsTool: new WorldFactsTool(getScene),
   getPlacedTiles: new GetPlacedTiles(getScene),
 };
 

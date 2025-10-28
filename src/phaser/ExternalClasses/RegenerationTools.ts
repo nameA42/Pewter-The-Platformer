@@ -149,6 +149,8 @@ function createGuidePrompt(info: any): string {
   return `
 You are an intelligent world builder regenerating a visual layer in a Phaser scene.
 
+Your job requires you to use multiple different tools at once so use each tool multiple times and use all the tools if necessary to process each request/prompt.
+
 ### Local Context
 World facts: ${worldFacts.toString()}
 Placed tiles: ${JSON.stringify(placedTiles, null, 2)}
@@ -156,9 +158,11 @@ Placed tiles: ${JSON.stringify(placedTiles, null, 2)}
 ### Full history of recent discussion
 ${summary}
 
-For each of the prompt within the full history of recent discussion, just redo what I have mentioned before. Do not ask questions. Make assumptions and just do it. Do not question anything and just regenerate for each of the prompts.
+For each of the prompt within the full history of recent discussion, just redo what is mentioned within the prompt. Do not ask questions. Make assumptions and just do it. Do not question anything and just regenerate for each of the prompts.
 
 You are in an asynchornous mode with the user. You cannot ask any clarification questions and you must just complete the tasks. You have full control over what you need to do. Just do it. Never ask any clarification questions and do not tell the user that you will do something as this is not the point of regeneration. Your goal is to just use tool calls and present the changes for the regeneration. 
+
+Before processing any requests, always clear tiles. 
 
 Here are some steps with an example: 
  • Clear selection fully (only clear the selection please. Do not clear outside the selection)
@@ -212,10 +216,17 @@ export async function regenerate(
     const chatMessageHistory: BaseMessage[] = [];
 
     // Inject your system prompt properly
-    await initializeLLM(chatMessageHistory); // assumes this pushes a SystemMessage
+    //await initializeLLM(chatMessageHistory); // assumes this pushes a SystemMessage
 
     // Add conversation history
-    chatMessageHistory.push(new HumanMessage({ content: String(guidePrompt) }));
+    chatMessageHistory.push(
+      new SystemMessage({ content: String(guidePrompt) }),
+    );
+    for (let i = 1; i < selection.getChatHistory().length; i++) {
+      if (selection.getChatHistory()[i].getType() == "human") {
+        chatMessageHistory.push(selection.getChatHistory()[i]);
+      }
+    }
 
     // Debug output to verify structure
     console.log(

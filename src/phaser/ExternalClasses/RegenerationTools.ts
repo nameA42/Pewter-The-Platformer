@@ -217,13 +217,6 @@ export async function regenerate(
     // Add conversation history
     chatMessageHistory.push(new HumanMessage({ content: String(guidePrompt) }));
 
-    for (const line of info.convoHistory) {
-      // Only push valid human messages
-      if (line.getType() == "human") {
-        chatMessageHistory.push(line);
-      }
-    }
-
     // Debug output to verify structure
     console.log(
       "chatMessageHistory before LLM call:",

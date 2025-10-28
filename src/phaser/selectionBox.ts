@@ -32,7 +32,7 @@ export class SelectionBox {
   private zLevel: number;
   public selectedTiles: number[][] = [];
   private layer: Phaser.Tilemaps.TilemapLayer;
-  public localContext: { chatHistory: any[]; BoxContext: any };
+  public localContext: BoxContext;
   public placedTiles: {
     tileIndex: number;
     x: number;

@@ -387,7 +387,6 @@ export class SelectionBox {
   // Toggle active visual state on the tab
   public setActive(active: boolean) {
     this.isActive = active;
-    console.log(`SelectionBox.setActive called: ${active}`);
     if (!this.tabBg || !this.tabText) return;
     if (active) {
       this.tabBg.setFillStyle(0x127803); // green when active
@@ -529,16 +528,15 @@ export class SelectionBox {
 
   //Working Code - Jason Cho
   printChatHistory() {
-    console.log("Chat History for this SelectionBox:");
+    // Debug method - removed console logs for production
     this.localContext.chatHistory.forEach((msg, index) => {
-      console.log(`${index + 1}: ${JSON.stringify(msg)}`);
+      // Debug: ${index + 1}: ${JSON.stringify(msg)}
     });
   }
 
   //TODO: clear placed tiles accordingly, especially with user actions
   public addPlacedTile(tileIndex: number, x: number, y: number, layerName: string) {
     this.placedTiles.push({ tileIndex, x, y, layerName });
-    console.log("Added placed tile:", { tileIndex, x, y, layerName });
   } 
 
   public getPlacedTiles() {
@@ -546,9 +544,9 @@ export class SelectionBox {
   }
 
   public printPlacedTiles() {
-    console.log("Placed Tiles for this SelectionBox:");
+    // Debug method - removed console logs for production
     this.placedTiles.forEach((tile, index) => {
-      console.log(`${index + 1}: ${JSON.stringify(tile)}`);
+      // Debug: ${index + 1}: ${JSON.stringify(tile)}
     });
   }
 }

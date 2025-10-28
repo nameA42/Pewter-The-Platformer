@@ -559,7 +559,6 @@ export class EditorScene extends Phaser.Scene {
       layer.tilemap.tilesets[0].total - 1,
     );
     tileIndex = tileIndex === 0 ? -1 : tileIndex; // Allow -1 for erasing tiles
-    console.log(`Placing tile at (${x}, ${y}) with index ${tileIndex}`);
     layer.putTileAt(tileIndex, x, y);
 
     // Determine layerName for provenance if possible
@@ -574,8 +573,8 @@ export class EditorScene extends Phaser.Scene {
 
     // Record history/provenance via the history-aware API when available
     try {
-      if ((this as any).applyTileMatrixWithHistoryPublic) {
-        (this as any).applyTileMatrixWithHistoryPublic(
+      if (this.applyTileMatrixWithHistoryPublic) {
+        this.applyTileMatrixWithHistoryPublic(
           { x, y, w: 1, h: 1 },
           [[tileIndex]],
           null,
@@ -1001,7 +1000,6 @@ export class EditorScene extends Phaser.Scene {
     this.isSelecting = false;
 
     this.selectedTiles = [];
-    console.log("ending selection");
 
     const sX = Math.min(this.selectionStart.x, this.selectionEnd.x);
     const sY = Math.min(this.selectionStart.y, this.selectionEnd.y);

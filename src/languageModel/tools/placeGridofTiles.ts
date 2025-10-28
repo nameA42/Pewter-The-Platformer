@@ -51,7 +51,6 @@ export class PlaceGridofTiles {
     async (args: z.infer<typeof PlaceGridofTiles.argsSchema>) => {
       const scene = this.sceneGetter();
       if (!scene) {
-        console.log("getSceneFailed");
         return "❌ Tool Failed: no reference to scene.";
       }
 
@@ -60,7 +59,17 @@ export class PlaceGridofTiles {
       const layer = map.getLayer(layerName)?.tilemapLayer;
 
       if (!layer) {
-        return `❌ Tool Failed: layer '${layerName}' not found.`;
+        return `❌ Tool Failed: layer '${layerName}' not found. Available layers: ${map.layers.map(l => l.name).join(', ')}`;
+      }
+
+      // Validate coordinates are within map bounds
+      if (xMin < 0 || yMin < 0 || xMax >= map.width || yMax >= map.height) {
+        return `❌ Tool Failed: grid coordinates (${xMin},${yMin}) to (${xMax},${yMax}) are outside map bounds (0,0) to (${map.width-1},${map.height-1})`;
+      }
+
+      // Validate grid dimensions
+      if (xMin > xMax || yMin > yMax) {
+        return `❌ Tool Failed: invalid grid dimensions - min coordinates must be <= max coordinates`;
       }
 
       try {
@@ -68,8 +77,8 @@ export class PlaceGridofTiles {
         const w = xMax - xMin + 1;
         const h = yMax - yMin + 1;
         const matrix = Array.from({ length: h }, () => Array.from({ length: w }, () => tileIndex));
-        if ((scene as any).applyTileMatrixWithHistoryPublic) {
-          (scene as any).applyTileMatrixWithHistoryPublic(
+        if (scene.applyTileMatrixWithHistoryPublic) {
+          scene.applyTileMatrixWithHistoryPublic(
             { x: xMin, y: yMin, w, h },
             matrix,
             null,
@@ -96,7 +105,7 @@ export class PlaceGridofTiles {
         return `✅ Placed grid of tile ${tileIndex} from (${xMin}, ${yMin}) up to (${xMax}, ${yMax}) on layer '${layerName}'.`;
       } catch (e) {
         console.error("putTileAt failed:", e);
-        return "❌ Tool Failed: error while placing grid of tiles.";
+        return `❌ Tool Failed: error while placing grid of tiles. Details: ${e instanceof Error ? e.message : String(e)}`;
       }
     },
     {

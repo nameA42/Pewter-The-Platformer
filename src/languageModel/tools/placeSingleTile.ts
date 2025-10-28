@@ -39,7 +39,6 @@ export class PlaceSingleTile {
     async (args: z.infer<typeof PlaceSingleTile.argsSchema>) => {
       const scene = this.sceneGetter();
       if (!scene) {
-        console.log("getSceneFailed");
         return "Tool Failed: no reference to scene.";
       }
 
@@ -48,7 +47,12 @@ export class PlaceSingleTile {
       const layer = map.getLayer(layerName)?.tilemapLayer;
 
       if (!layer) {
-        return `Tool Failed: layer '${layerName}' not found.`;
+        return `Tool Failed: layer '${layerName}' not found. Available layers: ${map.layers.map(l => l.name).join(', ')}`;
+      }
+
+      // Validate coordinates are within map bounds
+      if (x < 0 || y < 0 || x >= map.width || y >= map.height) {
+        return `Tool Failed: coordinates (${x}, ${y}) are outside map bounds (0,0) to (${map.width-1},${map.height-1})`;
       }
 
       map.putTileAt(tileIndex, x, y, true, layer);
@@ -56,8 +60,8 @@ export class PlaceSingleTile {
       //Record the placement
       // Prefer history-aware API when present
       try {
-        if ((scene as any).applyTileMatrixWithHistoryPublic) {
-          (scene as any).applyTileMatrixWithHistoryPublic(
+        if (scene.applyTileMatrixWithHistoryPublic) {
+          scene.applyTileMatrixWithHistoryPublic(
             { x, y, w: 1, h: 1 },
             [[tileIndex]],
             null,
@@ -70,6 +74,7 @@ export class PlaceSingleTile {
           if (scene.activeBox) scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
         }
       } catch (e) {
+        console.error("Failed to record tile placement in history:", e);
         if (scene.activeBox) scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
       }
 

@@ -27,6 +27,7 @@ import { GetRegionHistory } from "./languageModel/tools/getRegionHistory.ts";
 import { GetTileHistory } from "./languageModel/tools/getTileHistory.ts";
 import { ListSelectionBoxes } from "./languageModel/tools/listSelectionBoxes.ts";
 
+
 ////****LLM Tool Setup****////
 // const tools = {
 //   gravity: new GravityTool(getScene),
@@ -45,6 +46,7 @@ const tools = {
   getRegionHistory: new GetRegionHistory(getScene),
   getTileHistory: new GetTileHistory(getScene),
   listSelectionBoxes: new ListSelectionBoxes(getScene),
+
 };
 
 // // Register all tools with the LLM

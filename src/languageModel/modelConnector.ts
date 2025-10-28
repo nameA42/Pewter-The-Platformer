@@ -35,7 +35,7 @@ const sysPrompt =
   "Do NOT use `getPlacedTiles` to answer current/visible contents, and do NOT use `getSelectionTiles` to answer history. " +
   "Always be friendly and helpful. Make the level playable and visually consistent. You may offer suggestions occasionally, but you must always follow these rules.";
 
-let tools: any = []; // tool functions and their schemas
+let tools: any[] = []; // tool functions and their schemas
 let toolsByName: Record<string, any> = {}; // Backwards references to tool functions by name
 
 const llm = new ChatGoogleGenerativeAI({

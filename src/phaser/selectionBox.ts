@@ -21,6 +21,11 @@ export class SelectionBox {
     y: number;
     layerName: string;
   }[] = [];
+  public placedEnemies: {
+    enemyType: string;
+    x: number;
+    y: number;
+  }[] = [];
   private tabContainer: Phaser.GameObjects.Container | null = null;
   private onSelect?: (box: SelectionBox) => void;
   private tabBg: Phaser.GameObjects.Rectangle | null = null;
@@ -39,6 +44,11 @@ export class SelectionBox {
     x: number;
     y: number;
     layerName: string;
+  }[];
+  private _dragOriginalPlacedEnemies?: {
+    enemyType: string;
+    x: number;
+    y: number;
   }[];
   private _dragStartHandler?: (pointer: Phaser.Input.Pointer, obj: any) => void;
   private _dragHandler?: (
@@ -427,6 +437,61 @@ export class SelectionBox {
         } catch (e) {
           // swallow
         }
+        // Also handle any placed enemies that were moved with the box
+        try {
+          const origE = this._dragOriginalPlacedEnemies;
+          if (origE && origE.length > 0) {
+            const rg = (this.scene as any).regenerator as any;
+            const deltaX = Math.floor(
+              this.start.x - (this._dragInitialStart?.x ?? 0),
+            );
+            const deltaY = Math.floor(
+              this.start.y - (this._dragInitialStart?.y ?? 0),
+            );
+            const eMoves: Array<any> = [];
+            if (
+              this.placedEnemies &&
+              this.placedEnemies.length === origE.length
+            ) {
+              for (let i = 0; i < origE.length; i++) {
+                const o = origE[i];
+                const n = this.placedEnemies[i];
+                if (!n) continue;
+                if (o.x === n.x && o.y === n.y) continue;
+                eMoves.push({
+                  type: "enemy",
+                  from: { x: o.x, y: o.y },
+                  to: { x: n.x, y: n.y },
+                });
+              }
+            } else {
+              for (const o of origE) {
+                const toX = o.x + deltaX;
+                const toY = o.y + deltaY;
+                if (o.x === toX && o.y === toY) continue;
+                eMoves.push({
+                  type: "enemy",
+                  from: { x: o.x, y: o.y },
+                  to: { x: toX, y: toY },
+                });
+              }
+            }
+            if (
+              eMoves.length > 0 &&
+              rg &&
+              typeof rg.moveObjects === "function"
+            ) {
+              try {
+                rg.moveObjects(eMoves);
+              } catch (er) {
+                // eslint-disable-next-line no-console
+                console.error("SelectionBox: moveObjects (enemies) failed", er);
+              }
+            }
+          }
+        } catch (e) {
+          // swallow
+        }
         // clear drag snapshot
         try {
           this._dragOriginalPlacedTiles = undefined;
@@ -459,8 +524,14 @@ export class SelectionBox {
               y: p.y,
               layerName: p.layerName,
             }));
+            this._dragOriginalPlacedEnemies = this.placedEnemies.map((e) => ({
+              enemyType: e.enemyType,
+              x: e.x,
+              y: e.y,
+            }));
           } catch (err) {
             this._dragOriginalPlacedTiles = undefined;
+            this._dragOriginalPlacedEnemies = undefined;
           }
           const cam =
             this.scene.cameras && this.scene.cameras.main
@@ -663,6 +734,16 @@ export class SelectionBox {
   ) {
     this.placedTiles.push({ tileIndex, x, y, layerName });
     console.log("Added placed tile:", { tileIndex, x, y, layerName });
+  }
+
+  // Register an enemy placed within this selection box (tile coords)
+  public addPlacedEnemy(enemyType: string, x: number, y: number) {
+    this.placedEnemies.push({ enemyType, x, y });
+    console.log("Added placed enemy:", { enemyType, x, y });
+  }
+
+  public getPlacedEnemies() {
+    return this.placedEnemies;
   }
 
   public getPlacedTiles() {

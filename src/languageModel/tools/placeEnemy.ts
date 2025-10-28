@@ -41,6 +41,14 @@ export class PlaceEnemy {
             scene.groundLayer,
           );
           enemies.push(slime);
+          // record in active selection box if present
+          try {
+            const anyScene: any = scene as any;
+            const activeBox = anyScene.activeBox as any;
+            if (activeBox && typeof activeBox.addPlacedEnemy === "function") {
+              activeBox.addPlacedEnemy("Slime", x, y);
+            }
+          } catch (e) {}
           scene.worldFacts.setFact("Enemy", x, y, "Slime");
           return `✅ Placed Slime at (${x}, ${y}).`;
         } else if (enemyType === "UltraSlime") {
@@ -52,6 +60,14 @@ export class PlaceEnemy {
             scene.groundLayer,
           );
           enemies.push(ultraSlime);
+          // record in active selection box if present
+          try {
+            const anyScene: any = scene as any;
+            const activeBox = anyScene.activeBox as any;
+            if (activeBox && typeof activeBox.addPlacedEnemy === "function") {
+              activeBox.addPlacedEnemy("UltraSlime", x, y);
+            }
+          } catch (e) {}
           scene.worldFacts.setFact("Enemy", x, y, "Ultra Slime");
           return `✅ Placed UltraSlime at (${x}, ${y}).`;
         }

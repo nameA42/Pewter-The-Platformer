@@ -538,24 +538,46 @@ export class Regenerator {
         } else if (m.type === "enemy") {
           try {
             const enemies: any[] = (this.scene as any).enemies || [];
+            const tileW = map.tileWidth ?? 16;
+            const tileH = map.tileHeight ?? tileW;
             for (const e of enemies) {
-              if (e && e.x === m.from.x && e.y === m.from.y) {
-                // move enemy
-                try {
-                  e.x = m.to.x;
-                  e.y = m.to.y;
-                  // also update sprite position if present (pixel coords)
-                  if (e.body && e.body.gameObject) {
-                    const sprite = e.body.gameObject as any;
-                    sprite.x = m.to.x * 16 + 8;
-                    sprite.y = m.to.y * 16 + 8;
-                  }
-                } catch (er) {}
-                applied++;
-                affectedTiles.push({ x: m.from.x, y: m.from.y });
-                affectedTiles.push({ x: m.to.x, y: m.to.y });
-                break;
-              }
+              try {
+                if (!e) continue;
+                // convert enemy pixel position to tile coords for comparison
+                const exTile =
+                  typeof e.x === "number" ? Math.floor(e.x / tileW) : undefined;
+                const eyTile =
+                  typeof e.y === "number" ? Math.floor(e.y / tileH) : undefined;
+                if (exTile === m.from.x && eyTile === m.from.y) {
+                  // move enemy: set pixel coords and update body/sprite
+                  const toPixelX = m.to.x * tileW + Math.floor(tileW / 2);
+                  const toPixelY = m.to.y * tileH + Math.floor(tileH / 2);
+                  try {
+                    // update sprite position if present
+                    if (e.body && e.body.gameObject) {
+                      const sprite = e.body.gameObject as any;
+                      sprite.x = toPixelX;
+                      sprite.y = toPixelY;
+                      // also set the physics body if available
+                      if (sprite.body) {
+                        sprite.body.x =
+                          toPixelX - (sprite.displayWidth ?? tileW) / 2;
+                        sprite.body.y =
+                          toPixelY - (sprite.displayHeight ?? tileH) / 2;
+                      }
+                    }
+                    // set the object's x/y to pixel coords to remain consistent
+                    try {
+                      e.x = toPixelX;
+                      e.y = toPixelY;
+                    } catch (er) {}
+                  } catch (er) {}
+                  applied++;
+                  affectedTiles.push({ x: m.from.x, y: m.from.y });
+                  affectedTiles.push({ x: m.to.x, y: m.to.y });
+                  break;
+                }
+              } catch (er) {}
             }
           } catch (e) {}
         }

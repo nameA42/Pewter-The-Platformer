@@ -926,6 +926,8 @@ export class EditorScene extends Phaser.Scene {
       this.selectionEnd.set(x, y);
       this.activeBox.updateEnd(this.selectionEnd);
     }
+
+    this.renderZLevelOverlaps();
   }
 
   async endSelection() {
@@ -986,6 +988,7 @@ export class EditorScene extends Phaser.Scene {
     if (uiScene && typeof uiScene.handleSelectionInfo === "function") {
       uiScene.handleSelectionInfo(msg);
     }
+    
   }
 
   // Copy selection of tiles function
@@ -1219,50 +1222,6 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
-  /*
-  // Goes through each Z Level
-  cycleZLevel() {
-    if (!this.activeBox) return;
-
-    this.currentZLevel++;
-    if (this.currentZLevel > 3) {
-      this.currentZLevel = 1;
-    }
-
-    // Proposed rectangle of the active box
-    const checkedRect = this.activeBox.getBounds();
-    let overlap = false;
-
-    for (const box of this.selectionBoxes) {
-      if (box === this.activeBox) continue; // skip the box currently being edited
-
-      if (box.getZLevel() === this.currentZLevel) {
-        // only check boxes on same level
-        const bound = box.getBounds(); // MUST be tile-space rectangle
-        if (Phaser.Geom.Intersects.RectangleToRectangle(checkedRect, bound)) {
-          overlap = true;
-          break;
-        }
-      }
-    }
-
-    if (overlap) {
-      console.log("Skipping one Z-Level");
-      this.currentZLevel++;
-      if (this.currentZLevel > 3) {
-        this.currentZLevel = 1;
-      }
-    }
-
-    console.log("Z-Level changed to:", this.currentZLevel);
-
-    // If a box is being drawn, update its z-level immediately
-    if (this.activeBox) {
-      this.activeBox.setZLevel(this.currentZLevel);
-    }
-  }
-  */
-
   // Increases the Z Level
   increaseZLevel() {
     if (!this.activeBox) return;
@@ -1395,5 +1354,43 @@ export class EditorScene extends Phaser.Scene {
   getHighlightColorForZLevel(zLevel: number): number {
     // Cycle through the colors endlessly
     return Z_LEVEL_COLORS[(zLevel - 1) % Z_LEVEL_COLORS.length];
+  }
+
+  renderZLevelOverlaps() {
+    // Remove previous overlap visuals if you’re redrawing every frame
+    this.children.list
+      .filter(obj => obj.name === "zOverlapIndicator")
+      .forEach(obj => obj.destroy());
+
+    for (let i = 0; i < this.selectionBoxes.length; i++) {
+      const boxA = this.selectionBoxes[i];
+      for (let j = i + 1; j < this.selectionBoxes.length; j++) {
+        const boxB = this.selectionBoxes[j];
+
+        // Skip same z-level — we only care about different z-levels sharing color
+        if (boxA.getZLevel() === boxB.getZLevel()) continue;
+
+        // Only compare if color is the same
+        const colorA = Z_LEVEL_COLORS[(boxA.getZLevel() - 1) % Z_LEVEL_COLORS.length];
+        const colorB = Z_LEVEL_COLORS[(boxB.getZLevel() - 1) % Z_LEVEL_COLORS.length];
+        if (colorA !== colorB) continue;
+
+        const rectA = boxA.getBounds();
+        const rectB = boxB.getBounds();
+
+        // Use Phaser's rectangle intersection function
+        if (Phaser.Geom.Intersects.RectangleToRectangle(rectA, rectB)) {
+          // Get intersection rectangle
+          const intersection = Phaser.Geom.Rectangle.Intersection(rectA, rectB);
+
+          // Draw a white overlay rectangle
+          const overlapGraphics = this.add.graphics();
+          overlapGraphics.fillStyle(0xffffff, 0.5); // white with transparency
+          overlapGraphics.fillRect(intersection.x, intersection.y, intersection.width, intersection.height);
+          overlapGraphics.setDepth(9999); // on top of everything
+          console.log("Rendered Z-Level overlap indicator at:", intersection);
+        }
+      }
+    }
   }
 }

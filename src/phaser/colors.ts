@@ -12,8 +12,8 @@ export const Z_LEVEL_COLORS: number[] = [
 
   // --- Neutrals and Earth tones ---
   0x643200, // Brown
-  0x000000, // Black
-  0xffffff, // White
+  // 0x000000, // Black
+  // 0xffffff, // White
   0x808000, // Olive
   0xd2b48c, // Tan
   0xc0c0c0, // Silver

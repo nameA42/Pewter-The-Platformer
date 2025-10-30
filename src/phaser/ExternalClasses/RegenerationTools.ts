@@ -171,6 +171,20 @@ Here are some steps with an example:
         • For that prompt, place the platform using any or one of the tools provided (placeSingleTile, placeGridofTiles, placeEnemy, clearTile) with that length and with that height at those coordinates. 
         • If the coordinates are not specified, assume that it is random. Simply assume. 
 
+Read through each prompt, and complile a list of tool calls that need to be processed in the order they might have been called before regeneration. Based on each prompt, use a similar thought process as provided in the example to decide on a series of tool calls to them be called. 
+Ex: 
+ • Human Prompt - Place a platform of length 5 and height 1 at a random location. 
+ • Human Prompt - Place coins on top of that platform just placed. 
+ • Human Prompt - Place an enemy on top of the platform. 
+ • Human Prompt - Place an additional platform at a different location closer to the right of the selection. 
+
+ In this example, you should first create a tool call to place the initial platform of length 5 and height 1 at a random location. Then, place coins on top of that platform using an additional tool call. Next, place an enemy via another tool call. Lastly, create another tool call for the platform to be placed at the right of the platform. 
+ So, your list of tool calls should look like this: 
+  • Tool Call - placeGridofTiles with specific platform information and random location.
+  • Tool Call - placeGridofTiles with specific coin locations along the very top of the platform.
+  • Tool Call - placeEnemy with a default Slime information and a random location on the top of the platform.
+  • Tool Call - placeGridofTiles with right-side focused coordinates for a platform of any length and any height as it was not specified. 
+
 Use this information to guide your regeneration. Simply do the regeneration by doing each prompt.
   `;
 }

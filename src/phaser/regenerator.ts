@@ -70,30 +70,54 @@ export async function regenerateSelection(
     // Clear area, preserve tiles inside higher boxes
     if (higherRects.length === 0) {
       try {
+        // Clear both Ground and Collectables layers via the tool
         await invokeTool("clearTiles", {
           xMin: sX,
           xMax: eX + 1,
           yMin: sY,
           yMax: eY + 1,
-          layerName: layer.layer.name,
+          layerName: "Ground_Layer",
         });
+        console.log("Cleared Ground_Layer via tool");
+        await invokeTool("clearTiles", {
+          xMin: sX,
+          xMax: eX + 1,
+          yMin: sY,
+          yMax: eY + 1,
+          layerName: "Collectables_Layer",
+        });
+        console.log("Cleared Collectables_Layer via tool");
       } catch (toolErr) {
-        // fallback manual clear
+        // fallback manual clear: clear both layers
         for (let y = sY; y <= eY; y++) {
           for (let x = sX; x <= eX; x++) {
             if (x < 0 || y < 0 || x >= scene.map.width || y >= scene.map.height)
               continue;
-            scene.placeTile(layer, x, y, -1);
+            try {
+              if (scene.groundLayer)
+                scene.placeTile(scene.groundLayer, x, y, -1);
+            } catch (e) {}
+            try {
+              if (scene.collectablesLayer)
+                scene.placeTile(scene.collectablesLayer, x, y, -1);
+            } catch (e) {}
           }
         }
       }
     } else {
+      // manual per-tile clear outside higher boxes - clear both layers where allowed
       for (let y = sY; y <= eY; y++) {
         for (let x = sX; x <= eX; x++) {
           if (x < 0 || y < 0 || x >= scene.map.width || y >= scene.map.height)
             continue;
           if (isInsideAnyHigher(x, y)) continue;
-          scene.placeTile(layer, x, y, -1);
+          try {
+            if (scene.groundLayer) scene.placeTile(scene.groundLayer, x, y, -1);
+          } catch (e) {}
+          try {
+            if (scene.collectablesLayer)
+              scene.placeTile(scene.collectablesLayer, x, y, -1);
+          } catch (e) {}
         }
       }
     }

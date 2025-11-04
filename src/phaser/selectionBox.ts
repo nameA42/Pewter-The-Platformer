@@ -41,7 +41,6 @@ export class SelectionBox {
     y: number;
     layerName: string;
   }[] = [];
-  public worldFacts: WorldFacts;
   private tabContainer: Phaser.GameObjects.Container | null = null;
   private onSelect?: (box: SelectionBox) => void;
   private tabBg: Phaser.GameObjects.Rectangle | null = null;
@@ -103,14 +102,6 @@ export class SelectionBox {
     this.onSelect = onSelect;
     // create tab after initial draw
     this.createTab();
-
-    this.worldFacts = new WorldFacts(
-      this.scene,
-      this.start.x,
-      this.start.y,
-      this.end.x,
-      this.end.y,
-    );
   }
 
   // Collaborative Context Merging - Basic data management methods

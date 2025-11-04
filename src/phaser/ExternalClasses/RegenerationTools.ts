@@ -1,20 +1,17 @@
 import { SelectionBox } from "../selectionBox.ts";
 import { WorldFacts } from "./worldFacts.ts";
-import {
-  BaseMessage,
-  SystemMessage,
-  HumanMessage,
-} from "@langchain/core/messages";
-import {
-  getChatResponse,
-  initializeLLM,
-} from "../../languageModel/modelConnector.ts";
+import { BaseMessage, SystemMessage } from "@langchain/core/messages";
+import { getChatResponse } from "../../languageModel/modelConnector.ts";
 
 class SelectionInfo {
   worldFacts: WorldFacts;
   placedTiles: { tileIndex: number; x: number; y: number; layerName: string }[];
   convoHistory: any[];
   zLevel: number;
+  selectionStartX: number;
+  selectionStartY: number;
+  selectionEndX: number;
+  selectionEndY: number;
 
   constructor(
     worldFacts: WorldFacts,
@@ -26,11 +23,19 @@ class SelectionInfo {
     }[],
     convoHistory: any[],
     zLevel: number,
+    selectionStartX: number,
+    selectionStartY: number,
+    selectionEndX: number,
+    selectionEndY: number,
   ) {
     this.worldFacts = worldFacts;
     this.placedTiles = placedTiles;
     this.convoHistory = convoHistory;
     this.zLevel = zLevel;
+    this.selectionStartX = selectionStartX;
+    this.selectionStartY = selectionStartY;
+    this.selectionEndX = selectionEndX;
+    this.selectionEndY = selectionEndY;
   }
 }
 
@@ -51,6 +56,10 @@ export class RegenerationRequest {
       selection.getPlacedTiles(),
       selection.getChatHistory(),
       selection.getZLevel(),
+      selection.getStart().x,
+      selection.getStart().y,
+      selection.getEnd().x,
+      selection.getEnd().y,
     );
   }
 
@@ -129,20 +138,27 @@ function computePriority(
 ): number {
   const z = selection.getZLevel();
   const dep = dependencies.get(selection) ?? 0;
-  const normZ = (z - zMin) / Math.max(1, zMax - zMin);
+  const normZ = Math.max(1, zMax - zMin) / (z - zMin);
   return Z_WEIGHT * normZ + DEP_WEIGHT * (1 - dep); // Lower = higher priority
 }
 
 /* ---------------- Prompt Construction ---------------- */
 
-function createGuidePrompt(info: any): string {
-  const { worldFacts, placedTiles, convoHistory } = info;
-  console.log(worldFacts.toString());
+function createGuidePrompt(info: SelectionInfo): string {
+  const {
+    worldFacts,
+    placedTiles,
+    convoHistory,
+    selectionStartX,
+    selectionStartY,
+    selectionEndX,
+    selectionEndY,
+  } = info;
 
   let summary = "";
   for (let i = 0; i < convoHistory.length; i++) {
     if (convoHistory[i].getType() == "human") {
-      summary += convoHistory[i].content + "\n\n";
+      summary += "Human Prompt - " + convoHistory[i].content + "\n\n";
     }
   }
 
@@ -152,7 +168,11 @@ You are an intelligent world builder regenerating a visual layer in a Phaser sce
 Your job requires you to use multiple different tools at once so use each tool multiple times and use all the tools if necessary to process each request/prompt.
 
 ### Local Context
-World facts: ${worldFacts.toString()}
+World facts: 
+${worldFacts.getFact("Structure", selectionStartX, selectionEndX, selectionStartY, selectionEndY)}
+${worldFacts.getFact("Enemy", selectionStartX, selectionEndX, selectionStartY, selectionEndY)}
+${worldFacts.getFact("Collectable", selectionStartX, selectionEndX, selectionStartY, selectionEndY)}
+
 Placed tiles: ${JSON.stringify(placedTiles, null, 2)}
 
 ### Full history of recent discussion
@@ -161,6 +181,12 @@ ${summary}
 For each of the prompt within the full history of recent discussion, just redo what is mentioned within the prompt. Do not ask questions. Make assumptions and just do it. Do not question anything and just regenerate for each of the prompts.
 
 You are in an asynchornous mode with the user. You cannot ask any clarification questions and you must just complete the tasks. You have full control over what you need to do. Just do it. Never ask any clarification questions and do not tell the user that you will do something as this is not the point of regeneration. Your goal is to just use tool calls and present the changes for the regeneration. 
+
+Send a message stating "Completed Regeneration" as your final message. 
+
+Always work only within the selection box. Never edit anything outside of the selection box (Start Coordinates of (${selectionStartX}, ${selectionStartY}) and End Coordinates of (${selectionEndX}, ${selectionEndY})). Your knowledge should only be limited to the selection box. You will explode otherwise. 
+
+You are only allowed to touch the Ground_Layer and the Collectables_Layer. 
 
 Before processing any requests, always clear tiles. 
 
@@ -194,6 +220,7 @@ Use this information to guide your regeneration. Simply do the regeneration by d
 export async function regenerate(
   allSelections: SelectionBox[],
   dependencies: Map<SelectionBox, number>,
+  worldFacts: WorldFacts,
 ) {
   const queue = new RegenerationQueue();
   let zMin = Infinity;
@@ -206,11 +233,8 @@ export async function regenerate(
     zMax = Math.max(zMax, z);
 
     const priority = computePriority(selection, zMin, zMax, dependencies);
-    const request = new RegenerationRequest(
-      selection,
-      priority,
-      selection.worldFacts,
-    );
+    const request = new RegenerationRequest(selection, priority, worldFacts);
+    console.log(selection.getStart(), selection.getEnd());
     queue.push(request);
   }
 

@@ -58,11 +58,11 @@ export class PlaceSingleTile {
         scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
       }
 
-      // if (layerName == "Ground_Layer") {
-      //   scene.worldFacts.setFact("Structure");
-      // } else if (layerName == "Collectables_Layer") {
-      //   scene.worldFacts.setFact("Collectable");
-      // }
+      if (layerName == "Ground_Layer") {
+        scene.worldFacts.setFact("Structure");
+      } else if (layerName == "Collectables_Layer") {
+        scene.worldFacts.setFact("Collectable");
+      }
       return `✅ Placed tile ${tileIndex} at (${x}, ${y}) on layer '${layerName}'.`;
     },
     {

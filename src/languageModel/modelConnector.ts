@@ -3,6 +3,7 @@ import {
   BaseMessage,
   ToolMessage,
   SystemMessage,
+  AIMessageChunk,
 } from "@langchain/core/messages";
 
 const apiKey: string | undefined = import.meta.env.VITE_LLM_API_KEY;
@@ -190,79 +191,87 @@ export async function getChatResponse(
     }
 
     // Step 3: Handle tool calls
-    for await (const toolCall of response.tool_calls ?? []) {
-      const tool = toolsByName[toolCall.name];
-      if (!tool) {
-        const errorMsg = `Error: Unknown tool "${toolCall.name}".`;
-        console.error(errorMsg);
-        output.errors.push(errorMsg);
-        chatMessageHistory.push(
-          new ToolMessage({
-            name: toolCall.name,
-            content: errorMsg,
-            tool_call_id: String(toolCall.id ?? ""),
-          }),
-        );
-        continue;
-      }
-
-      try {
-        const result = await tool.invoke(toolCall.args);
-        console.log(`Tool called ${toolCall.name} with result:`, result);
-
-        output.toolCalls.push({
-          name: toolCall.name,
-          args: toolCall.args,
-          result: result,
-        });
-
-        chatMessageHistory.push(
-          new ToolMessage({
-            name: toolCall.name,
-            content: result,
-            tool_call_id: String(toolCall.id ?? ""),
-          }),
-        );
-        // Notify UI/editor that a tool was called so selection boxes can finalize
-        try {
-          if (
-            typeof window !== "undefined" &&
-            typeof window.dispatchEvent === "function"
-          ) {
-            window.dispatchEvent(
-              new CustomEvent("toolCalled", {
-                detail: { name: toolCall.name, args: toolCall.args, result },
-              }),
-            );
-          }
-        } catch (e) {
-          // ignore
+    async function handleToolCall() {
+      for await (const toolCall of response.tool_calls ?? []) {
+        const tool = toolsByName[toolCall.name];
+        if (!tool) {
+          const errorMsg = `Error: Unknown tool "${toolCall.name}".`;
+          console.error(errorMsg);
+          output.errors.push(errorMsg);
+          chatMessageHistory.push(
+            new ToolMessage({
+              name: toolCall.name,
+              content: errorMsg,
+              tool_call_id: String(toolCall.id ?? ""),
+            }),
+          );
+          continue;
         }
-      } catch (toolError) {
-        const errorMsg = `Error: Tool '${toolCall.name}' failed with args: ${JSON.stringify(toolCall.args)}.\nDetails: ${toolError}`;
-        console.error(errorMsg);
-        output.errors.push(errorMsg);
 
-        chatMessageHistory.push(
-          new ToolMessage({
+        try {
+          const result = await tool.invoke(toolCall.args);
+          console.log(`Tool called ${toolCall.name} with result:`, result);
+
+          output.toolCalls.push({
             name: toolCall.name,
-            content: errorMsg,
-            tool_call_id: String(toolCall.id ?? ""),
-          }),
-        );
+            args: toolCall.args,
+            result: result,
+          });
+
+          chatMessageHistory.push(
+            new ToolMessage({
+              name: toolCall.name,
+              content: result,
+              tool_call_id: String(toolCall.id ?? ""),
+            }),
+          );
+          // Notify UI/editor that a tool was called so selection boxes can finalize
+          try {
+            if (
+              typeof window !== "undefined" &&
+              typeof window.dispatchEvent === "function"
+            ) {
+              window.dispatchEvent(
+                new CustomEvent("toolCalled", {
+                  detail: { name: toolCall.name, args: toolCall.args, result },
+                }),
+              );
+            }
+          } catch (e) {
+            // ignore
+          }
+        } catch (toolError) {
+          const errorMsg = `Error: Tool '${toolCall.name}' failed with args: ${JSON.stringify(toolCall.args)}.\nDetails: ${toolError}`;
+          console.error(errorMsg);
+          output.errors.push(errorMsg);
+
+          chatMessageHistory.push(
+            new ToolMessage({
+              name: toolCall.name,
+              content: errorMsg,
+              tool_call_id: String(toolCall.id ?? ""),
+            }),
+          );
+        }
       }
     }
+
+    handleToolCall();
 
     // Step 4: Re-invoke LLM if tools were used
     if ((response.tool_calls?.length ?? 0) > 0) {
       response = await llmWithTools.invoke(chatMessageHistory);
       console.log("Raw LLM response after tool calls:", response);
-
       if (typeof response.content === "string") {
         output.text.push(response.content);
       } else if (Array.isArray(response.content)) {
+        handleToolCall();
         for (const part of response.content) {
-          if (part.type === "text" && typeof part.text === "string") {
+          if (
+            part.type &&
+            part.type === "text" &&
+            typeof part.text === "string"
+          ) {
             output.text.push(part.text);
           }
         }

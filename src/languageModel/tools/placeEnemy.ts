@@ -52,7 +52,7 @@ export class PlaceEnemy {
             scene.groundLayer,
           );
           enemies.push(ultraSlime);
-          // scene.worldFacts.setFact("Enemy", x, y, "Ultra Slime");
+          scene.worldFacts.setFact("Enemy", x, y, "UltraSlime");
           return `✅ Placed UltraSlime at (${x}, ${y}).`;
         }
       } catch (e) {

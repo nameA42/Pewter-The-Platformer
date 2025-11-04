@@ -205,6 +205,9 @@ export class EditorScene extends Phaser.Scene {
     this.gridGraphics.setDepth(10);
     this.drawGrid();
 
+    this.worldFacts = new WorldFacts(this);
+    this.worldFacts.refresh();
+
     // zoom in & zoom out
     this.input.on(
       "wheel",
@@ -727,6 +730,7 @@ export class EditorScene extends Phaser.Scene {
       regenerate(
         this.selectionBoxes,
         this.computeDependencyMap(this.selectionBoxes),
+        this.worldFacts,
       );
     }
   }

@@ -60,11 +60,11 @@ export class ClearTile {
           }
         }
 
-        // if (layerName == "Ground_Layer") {
-        //   scene.worldFacts.setFact("Structure");
-        // } else if (layerName == "Collectables_Layer") {
-        //   scene.worldFacts.setFact("Collectable");
-        // }
+        if (layerName == "Ground_Layer") {
+          scene.worldFacts.setFact("Structure");
+        } else if (layerName == "Collectables_Layer") {
+          scene.worldFacts.setFact("Collectable");
+        }
 
         console.log(layer);
         return `✅ Cleared tiles from (${xMin}, ${yMin}) up to (${xMax}, ${yMax}) on layer '${layerName}'.`;

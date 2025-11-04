@@ -270,100 +270,64 @@ export class WorldFacts {
   private enemyFacts: EnemyFact[] = [];
   private scene: EditorScene;
 
-  private width: number;
-  private height: number;
-
-  private startXCoord: number;
-  private startYCoord: number;
-
-  constructor(
-    scene: EditorScene,
-    startXCoord: number,
-    startYCoord: number,
-    endXCoord: number,
-    endYCoord: number,
-  ) {
+  constructor(scene: EditorScene) {
     this.scene = scene;
-    this.startXCoord = startXCoord;
-    this.startYCoord = startYCoord;
-    this.width = endXCoord - startXCoord;
-    this.height = endYCoord - startYCoord;
-    this.refresh();
+    this.refresh(); // populate facts for the entire scene
   }
 
   refresh() {
-    this.structureFacts = [];
-    this.collectableFacts = [];
-    this.enemyFacts = [];
-    this.extractFromScene(this.scene);
+    this.structureFacts = this.extractStructures(this.scene);
+    this.collectableFacts = this.extractCollectables(this.scene);
+    this.enemyFacts = this.extractEnemies(this.scene);
   }
 
-  private extractFromScene(scene: EditorScene) {
-    // 1. Structures
-    this.structureFacts = this.extractStructures(scene);
-
-    // 2. Collectables
-    const collectablesLayer =
-      scene.map.getLayer("Collectables_Layer")?.tilemapLayer;
-    if (collectablesLayer) {
-      const xs: number[] = [];
-      const ys: number[] = [];
-      const types: number[] = [];
-
-      for (let x = this.startXCoord; x < this.width; x++) {
-        for (let y = this.startYCoord; y < this.height; y++) {
-          const tile = collectablesLayer.getTileAt(x, y);
-          if (tile) {
-            xs.push(x);
-            ys.push(y);
-            types.push(tile.index);
-          }
-        }
-      }
-      if (xs.length > 0) {
-        this.collectableFacts.push(new CollectableFact(xs, ys, types));
-      }
-    }
-
-    // 3. Enemies
-    for (const e of scene.enemies ?? []) {
-      this.enemyFacts.push(new EnemyFact(e.x, e.y, e.type));
+  setFact(category: FactCategory, x?: number, y?: number, type?: string): void {
+    switch (category) {
+      case "Structure":
+        // Recompute structure facts directly from the scene
+        this.structureFacts = this.extractStructures(this.scene);
+        break;
+      case "Enemy":
+        if (x === undefined || y === undefined) return;
+        // Remove any existing enemy at (x, y)
+        this.enemyFacts = this.enemyFacts.filter(
+          (f) => !(f.x === x && f.y === y),
+        );
+        this.enemyFacts.push(new EnemyFact(x, y, type ?? "unknown"));
+        break;
+      case "Collectable":
+        // Always recompute collectables from layer (keeps it consistent)
+        this.extractCollectables(this.scene);
     }
   }
 
+  // --- Extract all structures in the scene ---
   private extractStructures(scene: EditorScene): StructureFact[] {
     const structures: StructureFact[] = [];
     const groundLayer = scene.map.getLayer("Ground_Layer")?.tilemapLayer;
     if (!groundLayer) return structures;
 
-    const xEnd = this.startXCoord + this.width;
-    const yEnd = this.startYCoord + this.height;
+    const width = groundLayer.width;
+    const height = groundLayer.height;
 
-    const hasTile = (x: number, y: number) =>
-      x >= this.startXCoord &&
-      x < xEnd &&
-      y >= this.startYCoord &&
-      y < yEnd &&
-      !!groundLayer.getTileAt(x, y);
+    const hasTile = (x: number, y: number) => !!groundLayer.getTileAt(x, y);
 
-    // --- topmost (smallest y) and bottommost (largest y) tile per column
+    // --- topmost and bottommost tile per column
     const columnTop: Record<number, number> = {};
     const columnBottom: Record<number, number> = {};
 
-    for (let x = this.startXCoord; x < xEnd; x++) {
+    for (let x = 0; x < width; x++) {
       let topY = -1;
       let bottomY = -1;
 
-      // Find topmost
-      for (let y = this.startYCoord; y < yEnd; y++) {
+      for (let y = 0; y < height; y++) {
         if (hasTile(x, y)) {
           topY = y;
           break;
         }
       }
 
-      // Find bottommost
-      for (let y = yEnd - 1; y >= this.startYCoord; y--) {
+      for (let y = height - 1; y >= 0; y--) {
         if (hasTile(x, y)) {
           bottomY = y;
           break;
@@ -376,7 +340,7 @@ export class WorldFacts {
 
     // --- Determine base ground level (mode of bottoms)
     const freq = new Map<number, number>();
-    for (let x = this.startXCoord; x < xEnd; x++) {
+    for (let x = 0; x < width; x++) {
       const b = columnBottom[x];
       if (b !== -1) freq.set(b, (freq.get(b) ?? 0) + 1);
     }
@@ -433,7 +397,7 @@ export class WorldFacts {
       runTop = null;
     };
 
-    for (let x = this.startXCoord; x < xEnd; x++) {
+    for (let x = 0; x < width; x++) {
       const top = columnTop[x];
       if (runStart === null) {
         runStart = x;
@@ -446,12 +410,12 @@ export class WorldFacts {
         runTop = top;
       }
     }
-    flushRun(xEnd - 1);
+    flushRun(width - 1);
 
     // --- Identify pitfalls
     let pitStart: number | null = null;
     const baseExists = baseGroundY !== null;
-    for (let x = this.startXCoord; x < xEnd; x++) {
+    for (let x = 0; x < width; x++) {
       const isPit = baseExists
         ? columnBottom[x] !== baseGroundY
         : columnBottom[x] === -1;
@@ -466,85 +430,99 @@ export class WorldFacts {
       }
     }
     if (pitStart !== null) {
-      structures.push(new StructureFact(pitStart, xEnd - 1, "Pitfall"));
+      structures.push(new StructureFact(pitStart, width - 1, "Pitfall"));
     }
 
-    // Sort deterministically
     structures.sort((a, b) => a.xStart - b.xStart);
-
     return structures;
   }
 
-  setFact(category: FactCategory, x?: number, y?: number, type?: string): void {
-    switch (category) {
-      case "Structure": {
-        // Recompute structure facts directly from the scene
-        this.structureFacts = this.extractStructures(this.scene);
-        break;
-      }
+  private extractCollectables(scene: EditorScene): CollectableFact[] {
+    const collectablesLayer =
+      scene.map.getLayer("Collectables_Layer")?.tilemapLayer;
+    if (!collectablesLayer) return [];
 
-      case "Enemy": {
-        if (x === undefined || y === undefined) return;
+    const xs: number[] = [];
+    const ys: number[] = [];
+    const types: number[] = [];
 
-        // Remove any existing enemy at (x, y)
-        this.enemyFacts = this.enemyFacts.filter(
-          (f) => !(f.x === x && f.y === y),
-        );
-
-        this.enemyFacts.push(new EnemyFact(x, y, type ?? "unknown"));
-        break;
-      }
-
-      case "Collectable": {
-        // Always recompute collectables from layer (keeps it consistent)
-        this.collectableFacts = [];
-
-        const collectablesLayer =
-          this.scene.map.getLayer("Collectables_Layer")?.tilemapLayer;
-
-        if (collectablesLayer) {
-          const xs: number[] = [];
-          const ys: number[] = [];
-          const types: number[] = [];
-
-          for (let cx = 0; cx < collectablesLayer.width; cx++) {
-            for (let cy = 0; cy < collectablesLayer.height; cy++) {
-              const tile = collectablesLayer.getTileAt(cx, cy);
-              if (tile) {
-                xs.push(cx);
-                ys.push(cy);
-                types.push(tile.index);
-              }
-            }
-          }
-
-          if (xs.length > 0) {
-            this.collectableFacts.push(new CollectableFact(xs, ys, types));
-          }
+    for (let x = 0; x < collectablesLayer.width; x++) {
+      for (let y = 0; y < collectablesLayer.height; y++) {
+        const tile = collectablesLayer.getTileAt(x, y);
+        if (tile) {
+          xs.push(x);
+          ys.push(y);
+          types.push(tile.index);
         }
-        break;
       }
     }
 
-    console.log(this.toString());
+    return xs.length > 0 ? [new CollectableFact(xs, ys, types)] : [];
   }
 
-  getFact(category: FactCategory): Fact[] {
+  private extractEnemies(scene: EditorScene): EnemyFact[] {
+    if (!scene.enemies) return [];
+    return scene.enemies.map((e) => new EnemyFact(e.x, e.y, e.type));
+  }
+
+  // --- Filtered getFact ---
+  getFact(
+    category: FactCategory,
+    xMin?: number,
+    xMax?: number,
+    yMin?: number,
+    yMax?: number,
+  ): Fact[] {
+    let facts: Fact[] = [];
     switch (category) {
       case "Structure":
-        return this.structureFacts;
+        facts = this.structureFacts.filter((f) => {
+          const sf = f as StructureFact;
+          return (!xMin || sf.xEnd >= xMin) && (!xMax || sf.xStart <= xMax);
+        });
+        break;
       case "Collectable":
-        return this.collectableFacts;
+        facts = this.collectableFacts
+          .map((c) => {
+            const cf = c as CollectableFact;
+            const xs: number[] = [];
+            const ys: number[] = [];
+            const types: number[] = [];
+            for (let i = 0; i < cf.xs.length; i++) {
+              const x = cf.xs[i];
+              const y = cf.ys[i];
+              if (
+                (!xMin || x >= xMin) &&
+                (!xMax || x <= xMax) &&
+                (!yMin || y >= yMin) &&
+                (!yMax || y <= yMax)
+              ) {
+                xs.push(x);
+                ys.push(y);
+                types.push(cf.types[i]);
+              }
+            }
+            if (xs.length > 0) return new CollectableFact(xs, ys, types);
+            return null;
+          })
+          .filter((c) => c !== null) as CollectableFact[];
+        break;
       case "Enemy":
-        return this.enemyFacts;
-      default:
-        return [];
+        facts = this.enemyFacts.filter((e) => {
+          return (
+            (!xMin || e.x >= xMin) &&
+            (!xMax || e.x <= xMax) &&
+            (!yMin || e.y >= yMin) &&
+            (!yMax || e.y <= yMax)
+          );
+        });
+        break;
     }
+    return facts;
   }
 
   toString(): string {
     const parts: string[] = [];
-
     if (this.structureFacts.length > 0) {
       parts.push(this.structureFacts.map((s) => s.toString()).join(" "));
     }
@@ -554,7 +532,6 @@ export class WorldFacts {
     if (this.enemyFacts.length > 0) {
       parts.push(this.enemyFacts.map((e) => e.toString()).join(" "));
     }
-
     return parts.join(" ");
   }
 }

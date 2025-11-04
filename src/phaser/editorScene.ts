@@ -11,6 +11,7 @@ import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
 import { UIScene } from "./UIScene.ts";
 import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
 import { SelectionBox } from "./selectionBox.ts";
+import { MapRegenerator } from "./ExternalClasses/MapRegenerator.ts";
 
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
@@ -21,6 +22,7 @@ export class EditorScene extends Phaser.Scene {
   private backgroundLayer!: Phaser.Tilemaps.TilemapLayer;
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private playButton!: Phaser.GameObjects.Text;
+  private regenerateButton!: Phaser.GameObjects.Text;
   private mapHistory: Phaser.Tilemaps.Tilemap[] = [];
   private currentMapIteration: number = 0;
 
@@ -99,6 +101,7 @@ export class EditorScene extends Phaser.Scene {
   private currentZLevel: number = 1; // 1 = red, 2 = green, 3 = blue
 
   public worldFacts!: WorldFacts;
+  public mapRegenerator!: MapRegenerator;
 
   constructor() {
     super({ key: "editorScene" });
@@ -173,6 +176,7 @@ export class EditorScene extends Phaser.Scene {
 
     this.map = this.make.tilemap({ key: "defaultMap" });
     this.worldFacts = new WorldFacts(this);
+    this.mapRegenerator = new MapRegenerator(this);
 
     console.log("Map loaded:", this.map);
     const tileset = this.map.addTilesetImage(
@@ -259,6 +263,9 @@ export class EditorScene extends Phaser.Scene {
     //UI Scene setup
     this.scene.launch("UIScene");
     this.scene.bringToTop("UIScene");
+
+    // Create regenerate button
+    this.createRegenerateButton();
 
     // Listen for a UI request to select the current temporary selection box
     this.game.events.on("ui:selectCurrentBox", () => {
@@ -1347,5 +1354,381 @@ export class EditorScene extends Phaser.Scene {
       default:
         return 0xffffff; // white (This is not gonna happen)
     }
+  }
+
+  // Create regenerate button and menu
+  private createRegenerateButton() {
+    this.regenerateButton = this.add
+      .text(50, 100, "🔄 Regenerate Map", {
+        fontSize: "11px",
+        color: "#ffffff",
+        backgroundColor: "#2a2a2a",
+        padding: { x: 8, y: 5 },
+      })
+      .setDepth(1000)
+      .setInteractive()
+      .on("pointerdown", () => {
+        this.showRegenerateMenu();
+      })
+      .on("pointerover", () => {
+        this.regenerateButton.setStyle({ backgroundColor: "#4a4a4a" });
+      })
+      .on("pointerout", () => {
+        this.regenerateButton.setStyle({ backgroundColor: "#2a2a2a" });
+      });
+  }
+
+  private showRegenerateMenu() {
+    // Clean up any existing menu
+    const existingMenu = this.children.getByName("regenerateMenu");
+    if (existingMenu) {
+      existingMenu.destroy();
+      return;
+    }
+
+    const menu = this.add.container(200, 150);
+    menu.setName("regenerateMenu");
+    menu.setDepth(1001);
+
+    const background = this.add.rectangle(0, 0, 220, 150, 0x1a1a1a, 0.95);
+    background.setStrokeStyle(2, 0x4a4a4a);
+    menu.add(background);
+
+    const title = this.add.text(0, -55, "Regenerate Map", {
+      fontSize: "14px",
+      color: "#ffffff",
+    });
+    title.setOrigin(0.5);
+    menu.add(title);
+
+    // Full Map option
+    const fullMapButton = this.add
+      .text(0, -15, "📋 Regenerate Full Map", {
+        fontSize: "11px",
+        color: "#ffffff",
+        backgroundColor: "#1a4a1a",
+        padding: { x: 6, y: 4 },
+      })
+      .setInteractive()
+      .on("pointerdown", async () => {
+        menu.destroy();
+        await this.handleFullMapRegenerate();
+      })
+      .on("pointerover", () => {
+        fullMapButton.setStyle({ backgroundColor: "#2a6a2a" });
+      })
+      .on("pointerout", () => {
+        fullMapButton.setStyle({ backgroundColor: "#1a4a1a" });
+      });
+    menu.add(fullMapButton);
+
+    // Selection option
+    const selectionButton = this.add
+      .text(0, 25, "📦 Regenerate Selection", {
+        fontSize: "11px",
+        color: "#ffffff",
+        backgroundColor: "#4a1a4a",
+        padding: { x: 6, y: 4 },
+      })
+      .setInteractive()
+      .on("pointerdown", async () => {
+        menu.destroy();
+        await this.handleSelectionRegenerate();
+      })
+      .on("pointerover", () => {
+        selectionButton.setStyle({ backgroundColor: "#5a2a5a" });
+      })
+      .on("pointerout", () => {
+        selectionButton.setStyle({ backgroundColor: "#4a1a4a" });
+      });
+    menu.add(selectionButton);
+
+    // Custom option
+    const customButton = this.add
+      .text(0, 65, "✏️ Custom Regenerate", {
+        fontSize: "11px",
+        color: "#ffffff",
+        backgroundColor: "#4a4a1a",
+        padding: { x: 6, y: 4 },
+      })
+      .setInteractive()
+      .on("pointerdown", () => {
+        menu.destroy();
+        this.showCustomRegenerateDialog();
+      })
+      .on("pointerover", () => {
+        customButton.setStyle({ backgroundColor: "#5a5a2a" });
+      })
+      .on("pointerout", () => {
+        customButton.setStyle({ backgroundColor: "#4a4a1a" });
+      });
+    menu.add(customButton);
+
+    // Close button
+    const closeButton = this.add
+      .text(0, 105, "Cancel", {
+        fontSize: "10px",
+        color: "#cccccc",
+      })
+      .setInteractive()
+      .on("pointerdown", () => {
+        menu.destroy();
+      })
+      .on("pointerover", () => {
+        closeButton.setStyle({ color: "#ffffff" });
+      })
+      .on("pointerout", () => {
+        closeButton.setStyle({ color: "#cccccc" });
+      });
+    menu.add(closeButton);
+  }
+
+  private async handleFullMapRegenerate() {
+    console.log("Regenerating full map...");
+    try {
+      await this.mapRegenerator.regenerateFullMap();
+    } catch (error) {
+      console.error("Full map regeneration failed:", error);
+    }
+  }
+
+  private async handleSelectionRegenerate() {
+    if (!this.activeBox) {
+      console.warn("No active selection box for regeneration");
+      return;
+    }
+
+    const start = this.activeBox.getStart();
+    const end = this.activeBox.getEnd();
+    const bounds = {
+      x: Math.min(start.x, end.x),
+      y: Math.min(start.y, end.y),
+      width: Math.abs(end.x - start.x),
+      height: Math.abs(end.y - start.y),
+    };
+
+    console.log("Regenerating selection:", bounds);
+    console.log(
+      "Selection box chat history:",
+      this.activeBox.localContext?.chatHistory,
+    );
+    try {
+      await this.mapRegenerator.regenerateSelection(bounds, this.activeBox);
+    } catch (error) {
+      console.error("Selection regeneration failed:", error);
+    }
+  }
+
+  private showCustomRegenerateDialog() {
+    // For now, just capture and show prompt
+    if (!this.activeBox) {
+      this.showFullMapCustomDialog();
+    } else {
+      const start = this.activeBox.getStart();
+      const end = this.activeBox.getEnd();
+      const bounds = {
+        x: Math.min(start.x, end.x),
+        y: Math.min(start.y, end.y),
+        width: Math.abs(end.x - start.x),
+        height: Math.abs(end.y - start.y),
+      };
+      this.showSelectionCustomDialog(bounds);
+    }
+  }
+
+  private async showFullMapCustomDialog() {
+    const snapshot = this.mapRegenerator.captureSnapshot();
+    const prompt = this.mapRegenerator.generatePrompt(snapshot);
+
+    const dialog = this.add.container(200, 150);
+    dialog.setName("customRegenerateDialog");
+    dialog.setDepth(1002);
+
+    const background = this.add.rectangle(0, 0, 450, 300, 0x1a1a1a, 0.98);
+    background.setStrokeStyle(2, 0x4a4a4a);
+    dialog.add(background);
+
+    const title = this.add.text(0, -130, "Custom Regenerate Prompt", {
+      fontSize: "14px",
+      color: "#ffffff",
+    });
+    title.setOrigin(0.5);
+    dialog.add(title);
+
+    // Note: Phaser doesn't have built-in multi-line text input
+    // We'll use a simple text area display and add/remove buttons
+    const promptText = this.add.text(0, -75, "Generated Prompt:", {
+      fontSize: "11px",
+      color: "#cccccc",
+    });
+    promptText.setOrigin(0.5);
+    dialog.add(promptText);
+
+    // Wrap text for display
+    const wrappedPrompt = this.wrapText(prompt, 80);
+    const promptDisplay = this.add.text(0, -20, wrappedPrompt, {
+      fontSize: "10px",
+      color: "#ffffff",
+      wordWrap: { width: 410 },
+    });
+    dialog.add(promptDisplay);
+
+    const regenerateBtn = this.add
+      .text(-70, 110, "Regenerate", {
+        fontSize: "11px",
+        color: "#ffffff",
+        backgroundColor: "#1a4a1a",
+        padding: { x: 10, y: 6 },
+      })
+      .setInteractive()
+      .on("pointerdown", async () => {
+        dialog.destroy();
+        this.mapRegenerator.clearMap();
+        await this.mapRegenerator.executeRegeneration(prompt);
+      })
+      .on("pointerover", () => {
+        regenerateBtn.setStyle({ backgroundColor: "#2a6a2a" });
+      })
+      .on("pointerout", () => {
+        regenerateBtn.setStyle({ backgroundColor: "#1a4a1a" });
+      });
+    dialog.add(regenerateBtn);
+
+    const cancelBtn = this.add
+      .text(70, 110, "Cancel", {
+        fontSize: "11px",
+        color: "#cccccc",
+      })
+      .setInteractive()
+      .on("pointerdown", () => {
+        dialog.destroy();
+      })
+      .on("pointerover", () => {
+        cancelBtn.setStyle({ color: "#ffffff" });
+      })
+      .on("pointerout", () => {
+        cancelBtn.setStyle({ color: "#cccccc" });
+      });
+    dialog.add(cancelBtn);
+  }
+
+  private async showSelectionCustomDialog(bounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) {
+    const snapshot = this.mapRegenerator.captureSnapshot(bounds);
+    let prompt = this.mapRegenerator.generatePrompt(snapshot);
+
+    // Prioritize stored summary, fallback to chat history
+    if (this.activeBox) {
+      // Try to get stored summary first
+      const storedSummary = this.activeBox.getContextData?.(
+        "regenerationSummary",
+      );
+
+      if (storedSummary) {
+        prompt = this.mapRegenerator.generatePromptFromSummary(
+          snapshot,
+          storedSummary,
+        );
+      } else if (
+        this.activeBox.localContext &&
+        this.activeBox.localContext.chatHistory
+      ) {
+        // Fallback to chat history parsing
+        prompt = this.mapRegenerator.generatePromptWithHistory(
+          snapshot,
+          this.activeBox.localContext.chatHistory,
+        );
+      }
+    }
+
+    const dialog = this.add.container(200, 150);
+    dialog.setName("customRegenerateDialog");
+    dialog.setDepth(1002);
+
+    const background = this.add.rectangle(0, 0, 450, 300, 0x1a1a1a, 0.98);
+    background.setStrokeStyle(2, 0x4a4a4a);
+    dialog.add(background);
+
+    const title = this.add.text(0, -130, "Custom Regenerate Selection", {
+      fontSize: "14px",
+      color: "#ffffff",
+    });
+    title.setOrigin(0.5);
+    dialog.add(title);
+
+    const promptText = this.add.text(0, -75, "Generated Prompt:", {
+      fontSize: "11px",
+      color: "#cccccc",
+    });
+    promptText.setOrigin(0.5);
+    dialog.add(promptText);
+
+    const wrappedPrompt = this.wrapText(prompt, 80);
+    const promptDisplay = this.add.text(0, -20, wrappedPrompt, {
+      fontSize: "10px",
+      color: "#ffffff",
+      wordWrap: { width: 410 },
+    });
+    dialog.add(promptDisplay);
+
+    const regenerateBtn = this.add
+      .text(-70, 110, "Regenerate", {
+        fontSize: "11px",
+        color: "#ffffff",
+        backgroundColor: "#1a4a1a",
+        padding: { x: 10, y: 6 },
+      })
+      .setInteractive()
+      .on("pointerdown", async () => {
+        dialog.destroy();
+        this.mapRegenerator.clearMap(bounds);
+        await this.mapRegenerator.executeRegeneration(prompt);
+      })
+      .on("pointerover", () => {
+        regenerateBtn.setStyle({ backgroundColor: "#2a6a2a" });
+      })
+      .on("pointerout", () => {
+        regenerateBtn.setStyle({ backgroundColor: "#1a4a1a" });
+      });
+    dialog.add(regenerateBtn);
+
+    const cancelBtn = this.add
+      .text(70, 110, "Cancel", {
+        fontSize: "11px",
+        color: "#cccccc",
+      })
+      .setInteractive()
+      .on("pointerdown", () => {
+        dialog.destroy();
+      })
+      .on("pointerover", () => {
+        cancelBtn.setStyle({ color: "#ffffff" });
+      })
+      .on("pointerout", () => {
+        cancelBtn.setStyle({ color: "#cccccc" });
+      });
+    dialog.add(cancelBtn);
+  }
+
+  private wrapText(text: string, maxWidth: number): string {
+    const words = text.split(" ");
+    let lines: string[] = [];
+    let currentLine = "";
+
+    for (const word of words) {
+      if ((currentLine + word).length <= maxWidth) {
+        currentLine += (currentLine ? " " : "") + word;
+      } else {
+        if (currentLine) lines.push(currentLine);
+        currentLine = word;
+      }
+    }
+    if (currentLine) lines.push(currentLine);
+
+    return lines.join("\n");
   }
 }

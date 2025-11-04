@@ -17,10 +17,8 @@ export class GameScene extends Phaser.Scene {
   private readonly particleVelocity = 50;
   private gameScale = 2;
 
-  public map!: Phaser.Tilemaps.Tilemap;
-  private passedmap!: Phaser.Tilemaps.Tilemap;
+  private map!: Phaser.Tilemaps.Tilemap;
   private groundLayer!: Phaser.Tilemaps.TilemapLayer;
-  private backgroundLayer!: Phaser.Tilemaps.TilemapLayer;
   private coinGroup!: Phaser.GameObjects.Group;
   //private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private partCountText!: Phaser.GameObjects.Text;
@@ -28,39 +26,17 @@ export class GameScene extends Phaser.Scene {
   private midground!: Phaser.GameObjects.TileSprite;
   private vfx: VFX = {};
   private player!: PlayerSprite;
-  private editorButton!: Phaser.GameObjects.Text;
-
-  private readonly PLAYER_SPEED = 400;   // Player run speed
-  private readonly JUMP_VELOCITY = -550; // Player jump height
-  private readonly ACCELERATION = 1500;  // Rate the player gets to max speed
-  private readonly FRICTION = 1200;      // Rate the player slows down
-  private readonly AIR_CONTROL = 0.8;    // % of ground control while in the air
-
-  private isJumpPressed = false;
 
   constructor() {
     super({ key: "GameScene" });
   }
 
-  init(data: { map: Phaser.Tilemaps.Tilemap }) {
+  init() {
     this.collectedItems = 0;
     this.isUpDown = false;
-    console.log("GameScene initialized with data:", data);
-    if (data.map) {
-      this.passedmap = data.map;
-    }
   }
 
   create() {
-    // Add keyboard controls
-    const cursors = this.input.keyboard!.createCursorKeys();
-    const wasd = this.input.keyboard!.addKeys('W,S,A,D');
-
-    // Store references
-    this.cursors = cursors;
-    this.wasd = wasd;
-
-    /*
     this.map = this.make.tilemap({
       key: "platformer-level-1",
       tileWidth: 18,
@@ -68,67 +44,17 @@ export class GameScene extends Phaser.Scene {
       width: 100,
       height: 40,
     });
-    */
-
-    this.map = this.make.tilemap(this.passedmap);
-
-    this
-    /*
     const tileset = this.map.addTilesetImage(
       "kenny_tilemap_packed",
       "tilemap_tiles",
     )!;
-    */
-
-    const tileset = this.map.addTilesetImage(
-      "pewterPlatformerTileset",
-      "tileset",
-      16,
-      16,
-      0,
-      0,
-    )!;
-
-    // Create ground and background layer
-    this.backgroundLayer = this.map.createLayer(
-      "Background_Layer",
-      tileset,
-      0,
-      0,
-    )!;
-
     this.groundLayer = this.map.createLayer(
-      "Ground_Layer", 
+      "Ground-n-Platforms",
       tileset,
       0,
       0,
     )!;
-
-    if (!this.groundLayer) {
-        console.error('GROUND LAYER FAILED TO CREATE!');
-        console.log('Available layers:', this.map.layers.map(l => l.name));
-        return; // Stop execution
-    }
-
-    // Gives everything in the ground layer collision except empty tiles
-    this.groundLayer.setCollisionByExclusion([-1]);
-
-    if (this.groundLayer.layer.data[19]) { // Check bottom row
-      console.log('Bottom row tile data:', this.groundLayer.layer.data[19].slice(0, 5)); // First 5 tiles
-    }
-
-    console.log('Checking tile collision after setting...');
-    const testTile = this.groundLayer.getTileAt(10, 15); // Check a tile in the ground area
-    if (testTile) {
-      console.log('Test tile ID:', testTile.index, 'Collides:', testTile.collides);
-    }
-
-    console.log('Ground layer exists:', !!this.groundLayer);
-    console.log('Ground layer data:', this.groundLayer.layer.data);
-    console.log('Map layers:', this.map.layers.map(layer => layer.name));
-
-
-
+    this.groundLayer.setCollisionByProperty({ collides: true });
     this.physics.world.setBounds(
       0,
       0,
@@ -137,7 +63,6 @@ export class GameScene extends Phaser.Scene {
     );
     this.physics.world.gravity.y = 1500;
 
-    /*
     //Not actually coins but whatever
     const coins = this.map.createFromObjects("Objects", {
       name: "coin",
@@ -146,58 +71,17 @@ export class GameScene extends Phaser.Scene {
     });
     this.physics.world.enable(coins, Phaser.Physics.Arcade.STATIC_BODY);
     this.coinGroup = this.add.group(coins);
-    */
 
-    /*
     this.player = this.physics.add.sprite(
       30,
       630,
       "platformer_characters",
       "tile_0000.png",
     ) as PlayerSprite;
-    */
-
-    if (!this.textures.exists('player-temp')) {
-      this.add.graphics()
-        .fillStyle(0xff0000)
-        .fillRect(0, 0, 16, 16)
-        .generateTexture('player-temp', 16, 16)
-        .destroy();
-    }
-
-    this.player = this.physics.add.sprite(100, 150, 'player-temp') as PlayerSprite;
-
     this.player.setCollideWorldBounds(false);
     this.player.isFalling = false;
-
-    this.player.setDrag(0, 0);
-    this.player.setMaxVelocity(this.PLAYER_SPEED * 1.2, 800);
-
-    // this.cameras.main.centerOn(this.player.x, this.player.y);
-    console.log('Player created at:', this.player.x, this.player.y);
-    console.log('Player visible:', this.player.visible);
-    console.log('Map height:', this.map.heightInPixels);
-    console.log('Camera bounds:', this.cameras.main.getBounds());
-
-    this.cameras.main
-      .setBounds(0, 0, this.map.widthInPixels, this.map.heightInPixels)
-      .startFollow(this.player, true, 0.25, 0.25)
-      .setDeadzone(50, 50)
-      .setZoom(2.25);
-
-    this.cameras.main.useBounds = true;
-
-    console.log('Camera scroll:', this.cameras.main.scrollX, this.cameras.main.scrollY);
-    console.log('Camera zoom:', this.cameras.main.zoom);
-
-    // Make sure player is big enough to see and positioned well
-    this.player.setScale(2); // Make it bigger
-    this.player.setTint(0xff0000); // Make sure it's red
-
     this.physics.add.collider(this.player, this.groundLayer);
 
-
-    /* coin collision
     this.physics.add.overlap(this.player, this.coinGroup, (_obj1, obj2) => {
       obj2.destroy();
       this.sound.play("partCollect");
@@ -206,7 +90,6 @@ export class GameScene extends Phaser.Scene {
         `Parts Collected: ${this.collectedItems} / 10`,
       );
     });
-    */
 
     //Debug Key bound to D
     //this.cursors = this.input.keyboard!.createCursorKeys();
@@ -214,12 +97,11 @@ export class GameScene extends Phaser.Scene {
     //  this.physics.world.drawDebug = !this.physics.world.drawDebug;
     //  this.physics.world.debugGraphic.clear();
     //});
-    this.physics.world.drawDebug = true;
+    this.physics.world.drawDebug = false;
 
     //Gravity switch
     //this.input.keyboard!.on("keydown-G", () => this.toggleGravity(), this);
 
-    /*
     //Dust particles while walking/Jumping
     this.vfx.walking = this.add.particles(0, 0, "kenny-particles", {
       frame: ["dirt_01.png"],
@@ -239,18 +121,16 @@ export class GameScene extends Phaser.Scene {
     });
     this.vfx.walking.stop();
     this.vfx.jump.stop();
-    */
 
-    // DEBUG: Check camera
-    //console.log('Camera following:', this.cameras.main.followTarget);
-    console.log('Player depth:', this.player.depth);
+    this.cameras.main
+      .setBounds(0, 0, this.map.widthInPixels, this.map.heightInPixels)
+      .startFollow(this.player, true, 0.25, 0.25)
+      .setDeadzone(50, 50)
+      .setZoom(this.gameScale);
 
-    /* sound
     if (!this.sound.get("bgm")?.isPlaying)
       this.sound.play("bgm", { loop: true, volume: 0.0 });
-    */
-    
-    /*
+
     //Parallax background
     this.background = this.add
       .tileSprite(
@@ -276,7 +156,6 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(-89)
       .setScale(5);
-      */
 
     this.partCountText = this.add
       .text(0, 0, "Parts Collected: 0 / 10", { fontSize: "20px" })
@@ -291,138 +170,87 @@ export class GameScene extends Phaser.Scene {
 
     this.cameras.main.on("cameraupdate", this.updateTextPosition, this);
     this.updateTextPosition();
-
-    // editor button
-    this.createEditorButton();
   }
 
   update() {
-    this.handlePlayerMovement();
+    if (this.player.y > this.map.heightInPixels || this.player.y < 20)
+      this.scene.restart();
+    if (this.collectedItems === 10) this.scene.restart();
+
+    if (this.player.body.blocked.down && this.player.isFalling) {
+      this.sound.play("landAudio");
+      this.player.isFalling = false;
+    }
+
+    this.background.tilePositionX = this.cameras.main.scrollX * 0.01;
+    this.midground.tilePositionX = this.cameras.main.scrollX * 0.05;
     this.updateTextPosition();
-
-    // update the edit button's position to the camera
-    if (this.editorButton) {
-      const cam = this.cameras.main;
-      this.editorButton.x = cam.worldView.x + cam.worldView.width - 550;
-      this.editorButton.y = cam.worldView.y + 250;
-    }
   }
-  
 
+  /**
+   * Moves the player in a given direction with a given force.
+   * @param direction 0: left, 1: up (jump), 2: right
+   * @param force The force/distance to apply in the given direction
+   */
+  handlePlayerMovement(direction?: number, force?: number) {
+    const p = this.player;
 
-  
-  public handlePlayerMovement() {
-    const player = this.player;
-    const body = player.body;
-    const onGround = body.blocked.down;
+    // Only act if direction and force are provided
+    if (typeof direction === "number" && typeof force === "number") {
+      let dx = 0,
+        dy = 0;
+      if (direction === 0)
+        dx = -force * 20; // left
+      else if (direction === 2)
+        dx = force * 20; // right
+      else if (direction === 1) dy = -force * 30; // up (jump)
 
-    let velocityX = body.velocity.x;
-    let velocityY = body.velocity.y;
+      // Stop any existing tweens on the player
+      this.tweens.killTweensOf(p);
 
-    let moveInput = 0;
-
-    if (this.cursors.left.isDown || this.wasd.A.isDown) {
-      moveInput = -1;
-      player.setFlipX(true);
-    } else if (this.cursors.right.isDown || this.wasd.D.isDown) {
-      moveInput = 1;
-      player.setFlipX(false);
-    }
-
-    if (moveInput !== 0) {
-      const acceleration = onGround ? this.ACCELERATION : this.ACCELERATION * this.AIR_CONTROL;
-      const targetVelocity = moveInput * this.PLAYER_SPEED;
-
-      if (Math.abs(velocityX - targetVelocity) > 5) {
-        velocityX += (targetVelocity - velocityX) * (acceleration / 1000) * (1/60);
-        velocityX = Phaser.Math.Clamp(velocityX, -this.PLAYER_SPEED, this.PLAYER_SPEED);
-      } else {
-        velocityX = targetVelocity;
-      }
-      
-      // Walking effects
-      if (onGround) {
+      if (direction === 0 || direction === 2) {
+        // Horizontal movement via tween for fixed distance
+        p.anims.play("walk", true);
+        p.setFlip(direction === 2, this.isUpDown);
         this.startWalkingVFX();
+        this.tweens.add({
+          targets: p,
+          x: p.x + dx,
+          duration: 200,
+          onComplete: () => {
+            p.setVelocityX(0);
+            p.anims.play("idle");
+            this.vfx.walking?.stop();
+          },
+        });
+      } else if (direction === 1) {
+        // Jump (vertical movement)
+        if (p.body.blocked.down || p.body.blocked.up) {
+          p.setVelocityY(-Math.abs(force) * 60);
+          this.sound.play("jumpAudio");
+          this.startJumpVFX();
+        }
       }
-
     } else {
-      // No horizontal input - apply friction
-      if (onGround) {
-        // Strong friction on ground
-        const frictionForce = this.FRICTION * (1/60); // 60fps assumption
-        if (Math.abs(velocityX) > frictionForce) {
-          velocityX -= Math.sign(velocityX) * frictionForce;
-        } else {
-          velocityX = 0; // Stop completely when velocity is small
-        }
-      } else {
-        // Less friction in air
-        const airFriction = this.FRICTION * 0.3 * (1/60);
-        if (Math.abs(velocityX) > airFriction) {
-          velocityX -= Math.sign(velocityX) * airFriction;
-        } else {
-          velocityX = 0;
-        }
-      }
-      
-      // Stop walking effects
-      if (this.vfx.walking) {
-        this.vfx.walking.stop();
-      }
-    
-    }
-    const jumpPressed = this.cursors.up.isDown || this.wasd.W.isDown;
-    
-    if (jumpPressed && !this.isJumpPressed && onGround) {
-      // Start jump
-      velocityY = this.JUMP_VELOCITY;
-      this.isJumpPressed = true;
-      player.isFalling = false;
-      
-      this.startJumpVFX();
-    } else if (!jumpPressed && this.isJumpPressed && velocityY < -50) {
-      // Jump button released early - cut jump short
-      velocityY *= 0.4;
-    }
-    
-    // Track jump button state
-    if (!jumpPressed) {
-      this.isJumpPressed = false;
+      // No movement input, play idle
+      p.anims.play("idle");
+      this.vfx.walking?.stop();
     }
 
-    // === APPLY VELOCITIES ===
-    player.setVelocity(velocityX, velocityY);
-
-    // === HANDLE LANDING ===
-    if (onGround && player.isFalling) {
-      player.isFalling = false;
-    } else if (!onGround && velocityY > 0) {
-      player.isFalling = true;
-    }
-
-    // === RESET IF FALLEN OFF WORLD ===
-    if (player.y > this.map.heightInPixels + 100) {
-      // Reset player position or restart scene
-      player.setPosition(100, 150);
-      player.setVelocity(0, 0);
+    // Handle jump/fall animation state
+    if (!p.body.blocked.down && !p.body.blocked.up) {
+      p.anims.play("jump");
+      p.isFalling = true;
     }
   }
-
-  
-
-  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private wasd!: any;
 
   private startWalkingVFX() {
     if (!this.vfx.walking) return;
     const { x, y } = this.getPlayerFootPos();
     this.vfx.walking.startFollow(this.player, x, y, false);
     this.vfx.walking.setParticleSpeed(this.particleVelocity, 0);
-
-    if (this.player.body.blocked.down) {
+    if (this.player.body.blocked.down || this.player.body.blocked.up)
       this.vfx.walking.start();
-    }
-    
   }
 
   private startJumpVFX() {
@@ -450,31 +278,6 @@ export class GameScene extends Phaser.Scene {
     const baseFontSize = 20;
     const scaledFontSize = Math.max(10, baseFontSize / cam.zoom);
     this.partCountText.setFontSize(scaledFontSize);
-  }
-
-  // Editor button
-  private createEditorButton() {
-
-    const button = this.add.text(100, 100, 'Play', {
-      fontSize:'24px',
-      color: '#ffffff',
-      backgroundColor: '#1a1a1a',
-      padding: { x: 15, y: 10 },
-    })
-    .setDepth(100)
-    .setInteractive()
-    .on('pointerdown', () => {
-      console.log('Editor button clicked!');
-      this.scene.start('editorScene');
-    })
-    .on('pointerover', () => {
-      button.setStyle({ backgroundColor: '#127803' });
-    })
-    .on('pointerout', () => {
-      button.setStyle({ backgroundColor: '#1a1a1a' });
-    });
-    
-    this.editorButton = button;
   }
 
   toggleGravity() {

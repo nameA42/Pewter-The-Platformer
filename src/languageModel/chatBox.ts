@@ -1,6 +1,7 @@
 import { getChatResponse } from "./modelConnector.ts";
 import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { SystemMessage } from "@langchain/core/messages";
+import { ConversationSummarizer } from "../phaser/ExternalClasses/ConversationSummarizer.ts";
 
 // Persistent history of all chat messages exchanged
 // Expose current chat history for UI rendering
@@ -29,14 +30,27 @@ export function getDisplayChatHistory(): string {
 let currentChatHistory: BaseMessage[] = [];
 
 let currentActiveBox: any = null; // Store reference to active selection box
+let conversationTracking: {
+  userMessage: string | null;
+  toolCalls: Array<{ name: string; args: Record<string, any>; result: string }>;
+  aiResponse: string | null;
+} = {
+  userMessage: null,
+  toolCalls: [],
+  aiResponse: null,
+};
 
 // Set the active selection box context for chat
 export function setActiveSelectionBox(
-  box: { localContext: { chatHistory: BaseMessage[] } } | null,
+  box: {
+    localContext: { chatHistory: BaseMessage[]; data?: Map<string, any> };
+    setContextData?: (key: string, value: any, shareable: boolean) => void;
+  } | null,
 ) {
   if (!box) {
     // Clear active context
     currentChatHistory = [];
+    currentActiveBox = null;
     if (
       typeof window !== "undefined" &&
       typeof window.dispatchEvent === "function"
@@ -47,6 +61,7 @@ export function setActiveSelectionBox(
   }
 
   currentChatHistory = box.localContext.chatHistory;
+  currentActiveBox = box;
   // Keep the original SelectionBox object reference if present so
   // we can finalize it when tools are invoked.
   // (no local object stored here; editor listens for tool events)
@@ -135,12 +150,31 @@ export async function sendUserPrompt(message: string): Promise<string> {
   setBotResponding(true);
 
   try {
+    // Track user message for summarization
+    conversationTracking.userMessage = message;
+    conversationTracking.toolCalls = [];
+    conversationTracking.aiResponse = null;
+
     const reply = await getChatResponse(historyRef);
     const replyText = Array.isArray(reply.text)
       ? reply.text.join("\n")
       : String(reply.text);
     const aiMessage = new AIMessage(replyText);
     historyRef.push(aiMessage);
+
+    // Capture tool calls and AI response for summarization
+    conversationTracking.toolCalls = reply.toolCalls || [];
+    conversationTracking.aiResponse = replyText;
+
+    // Summarize and store if tools were called
+    if (conversationTracking.toolCalls.length > 0 && currentActiveBox) {
+      await summarizeAndStoreConversation(
+        conversationTracking.userMessage!,
+        conversationTracking.toolCalls,
+        conversationTracking.aiResponse!,
+        currentActiveBox,
+      );
+    }
 
     // Let UI know new content is available for the active selection
     if (
@@ -272,6 +306,54 @@ export async function sendSystemMessage(message: string): Promise<string> {
 export function clearChatHistory(): void {
   currentChatHistory.length = 0;
   console.log("Chat history cleared.");
+}
+
+/**
+ * Summarize and store conversation in selection box
+ */
+async function summarizeAndStoreConversation(
+  userMessage: string,
+  toolCalls: Array<{ name: string; args: Record<string, any>; result: string }>,
+  aiResponse: string,
+  selectionBox: any,
+): Promise<void> {
+  try {
+    // Create markdown summary
+    const summary = await ConversationSummarizer.summarizeConversation(
+      userMessage,
+      toolCalls,
+      aiResponse,
+    );
+
+    // Get existing summary if any
+    let existingSummary = "";
+    if (selectionBox.localContext?.data) {
+      const existingData = selectionBox.localContext.data.get(
+        "regenerationSummary",
+      );
+      if (existingData && existingData.value) {
+        existingSummary = existingData.value;
+      }
+    }
+
+    // Append or replace summary
+    const finalSummary = existingSummary
+      ? ConversationSummarizer.appendToSummary(existingSummary, summary)
+      : summary;
+
+    // Store in selection box using setContextData method
+    if (selectionBox.setContextData) {
+      selectionBox.setContextData("regenerationSummary", finalSummary, false);
+      console.log(
+        "Stored conversation summary in selection box:",
+        finalSummary.substring(0, 100),
+      );
+    } else {
+      console.warn("Selection box does not have setContextData method");
+    }
+  } catch (error) {
+    console.error("Failed to summarize and store conversation:", error);
+  }
 }
 
 // Collaborative Context Merging - Enhanced chat functions with neighbor context

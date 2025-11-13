@@ -122,9 +122,26 @@ export async function regenerateSelection(
       }
     }
 
+    // Invoke relative regeneration to capture current tile state
+    // after clearing but before regenerating
+    let relativeGenContext = "";
+    try {
+      scene.activeBox = targetBox;
+      const relGenResult = await invokeTool("relativeGeneration", {});
+      if (relGenResult) {
+        relativeGenContext = `RELATIVE_TILES:${relGenResult}`;
+      }
+    } catch (e) {
+      // ignore if tool fails
+    }
+
     // Build hidden context (only bounds + layer; no cross-box chat/theme/tiles)
     const baseHidden = `SELECTION_BOUNDS:${sX},${sY},${eX},${eY};LAYER:${layer.layer.name}`;
-    const suffix = ctxSuffix ? `;${ctxSuffix}` : "";
+    const suffix = relativeGenContext
+      ? `;${relativeGenContext}`
+      : ctxSuffix
+        ? `;${ctxSuffix}`
+        : "";
     const hiddenContext = baseHidden + suffix;
 
     // Get last human message for this box

@@ -4,13 +4,22 @@ import {
   ToolMessage,
   SystemMessage,
 } from "@langchain/core/messages";
+import { tileDictionary } from "../TileDefinitions.ts";
 
 const apiKey: string | undefined = import.meta.env.VITE_LLM_API_KEY;
 const modelName: string | undefined = import.meta.env.VITE_LLM_MODEL_NAME;
 if (!apiKey) throw new Error("Missing VITE_LLM_API_KEY in .env file!");
 if (!modelName) throw new Error("Missing VITE_LLM_MODEL_NAME in .env file!");
 
-const llmTemp = 0;
+const groundTiles: number[] = tileDictionary
+  .filter((t) => t.layer === "ground")
+  .map((t) => t.index);
+
+const collectableTiles: number[] = tileDictionary
+  .filter((t) => t.layer === "collectable")
+  .map((t) => t.index);
+
+const llmTemp = 0.7;
 
 const sysPrompt =
   "You are 'Pewter', an expert tile-based map designer by day and an incredible video game player by night. " +
@@ -26,7 +35,7 @@ const sysPrompt =
   // Layer and tile info
   "Layers available: Collectables_Layer and Ground_Layer. " +
   "Tile ID mapping: 1 = empty tile, 2 = coin, 4 = fruit, 5 = platform block, 6 = dirt block, 7 = item (question mark) block. " +
-  "Category: Collectables = [2, 4], Ground = [5, 6, 7]" +
+  `Category: Collectables = ${JSON.stringify(collectableTiles)}  , Ground =  JSON.stringify(groundTiles). ` +
   // Tool rules
   "Tool rules: " +
   "Place Enemy: Only place enemies on ground. Find the nearest ground tile and place the enemy one tile above it. Ensure the enemy has enough space to move side-to-side. If placement is impossible, suggest an alternative location but do not place it. " +
@@ -37,6 +46,8 @@ const sysPrompt =
   "Get Placed Tiles: Use this tool to retrieve all tiles placed within a selection box. " +
   "PLEASE USE THE WORLD FACTS TOOL TO RECEIVE INFORMATION ABOUT THE LAYER YOU MIGHT NEED TO WORK ON. For example, if the player asks you to place an enemy within a selection, first check where the top of the ground is before placing making sure not to place it within the ground. Same applies to collectables or anything else. The world facts tool is your best guide as to what is within the game world. Use it to your advantage PLEASE. " +
   "Always be friendly and helpful. Make the level playable and visually consistent. You may offer suggestions occasionally, but you must always follow these rules.";
+
+console.log(sysPrompt);
 
 let tools: any = []; //tool functions and their schemas
 let toolsByName: Record<string, any> = {}; //Backwards references to tool functions by name
@@ -223,14 +234,21 @@ export async function getChatResponse(
             tool_call_id: String(toolCall.id ?? ""),
           }),
         );
-              // Notify UI/editor that a tool was called so selection boxes can finalize
-              try {
-                if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-                  window.dispatchEvent(new CustomEvent('toolCalled', { detail: { name: toolCall.name, args: toolCall.args, result } }));
-                }
-              } catch (e) {
-                // ignore
-              }
+        // Notify UI/editor that a tool was called so selection boxes can finalize
+        try {
+          if (
+            typeof window !== "undefined" &&
+            typeof window.dispatchEvent === "function"
+          ) {
+            window.dispatchEvent(
+              new CustomEvent("toolCalled", {
+                detail: { name: toolCall.name, args: toolCall.args, result },
+              }),
+            );
+          }
+        } catch (e) {
+          // ignore
+        }
       } catch (toolError) {
         const errorMsg = `Error: Tool '${toolCall.name}' failed with args: ${JSON.stringify(toolCall.args)}.\nDetails: ${toolError}`;
         console.error(errorMsg);

@@ -219,9 +219,10 @@ export async function regenerateSelection(
       }
       if (!intersecting.includes(box)) intersecting.push(box);
 
+      // Sort by Z level ascending so regeneration runs from lower -> higher
       intersecting.sort(
         (a, b) =>
-          (b.getZLevel ? b.getZLevel() : 0) - (a.getZLevel ? a.getZLevel() : 0),
+          (a.getZLevel ? a.getZLevel() : 0) - (b.getZLevel ? b.getZLevel() : 0),
       );
 
       const regeneratedBounds: any[] = [];

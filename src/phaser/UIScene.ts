@@ -128,12 +128,39 @@ export class UIScene extends Phaser.Scene {
     this.chatBox.setVisible(true);
     let isChatVisible = true;
 
-    window.addEventListener("keydown", (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === "c" && !e.ctrlKey) {
+    // Toggle chatbox (and notify other scenes to toggle overview/minimap)
+    if (this.input && this.input.keyboard) {
+      this.input.keyboard.on("keydown-C", (e: KeyboardEvent) => {
+        if ((e as KeyboardEvent).ctrlKey) return; // ignore Ctrl+C
         isChatVisible = !isChatVisible;
         this.chatBox.setVisible(isChatVisible);
-      }
-    });
+        try {
+          this.game.events.emit("ui:toggleMinimap", isChatVisible);
+        } catch (err) {
+          // ignore
+        }
+      });
+
+      this.events.on("shutdown", () => {
+        try {
+          // Guard against `this.input` or `this.input.keyboard` being null
+          this.input.keyboard?.off?.("keydown-C");
+        } catch (err) {
+          // ignore
+        }
+      });
+    } else {
+      // Fallback for non-Phaser environments
+      window.addEventListener("keydown", (e: KeyboardEvent) => {
+        if (e.key.toLowerCase() === "c" && !e.ctrlKey) {
+          isChatVisible = !isChatVisible;
+          this.chatBox.setVisible(isChatVisible);
+          try {
+            this.game.events.emit("ui:toggleMinimap", isChatVisible);
+          } catch (err) {}
+        }
+      });
+    }
 
     const input = this.chatBox.getChildByID("chat-input") as HTMLInputElement;
     const log = this.chatBox.getChildByID("chat-log") as HTMLDivElement;
@@ -233,13 +260,13 @@ export class UIScene extends Phaser.Scene {
     );
     selectBoxBtn.setDepth(1001);
 
-    this.input.keyboard!.on('keydown-H', () => {
-      const editorScene = this.scene.get('editorScene') as EditorScene;
+    this.input.keyboard!.on("keydown-H", () => {
+      const editorScene = this.scene.get("editorScene") as EditorScene;
       const activeBox = editorScene.activeBox;
       if (activeBox) {
         activeBox.printPlacedTiles();
       } else {
-        console.log('No active selection box.');
+        console.log("No active selection box.");
       }
     });
   }

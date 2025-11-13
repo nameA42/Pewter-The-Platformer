@@ -260,6 +260,28 @@ export class EditorScene extends Phaser.Scene {
     this.scene.launch("UIScene");
     this.scene.bringToTop("UIScene");
 
+    // Listen for UI toggles (chatbox C key) to also toggle the overview/minimap
+    try {
+      this.game.events.on("ui:toggleMinimap", (_isChatVisible?: boolean) => {
+        if (this.minimap) {
+          this.removeMinimap();
+        } else {
+          this.createMinimap();
+        }
+      });
+
+      // Remove listener on shutdown to avoid duplicates
+      this.events.on("shutdown", () => {
+        try {
+          this.game.events.off("ui:toggleMinimap");
+        } catch (e) {
+          // ignore
+        }
+      });
+    } catch (e) {
+      // ignore if game.events not available
+    }
+
     // Listen for a UI request to select the current temporary selection box
     this.game.events.on("ui:selectCurrentBox", () => {
       if (this.activeBox) {

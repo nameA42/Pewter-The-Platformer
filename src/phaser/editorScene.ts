@@ -790,50 +790,7 @@ export class EditorScene extends Phaser.Scene {
 
     // Begin the selection
     this.isSelecting = true;
-    /*
-    if (!this.activeBox) {
-      // Checking Overlapping
-      const candidate = new Phaser.Geom.Rectangle(x, y, 1, 1);
-      let overlap = false;
-      for (const box of this.selectionBoxes) {
-        const bound = box.getBounds(); // MUST be tile-space rectangle
-        if (Phaser.Geom.Intersects.RectangleToRectangle(candidate, bound)) {
-          console.log("Cannot create box here — overlap detected");
-          overlap = true;
-          break;
-        }
-      }
-      // If overlap does occur, do not make a box
-      if (overlap) {
-        console.log("Cannot create box there!! Overlap detected!!");
-        this.isSelecting = false;
-        return;
-      } else {
-        // If overlap does not occur, do make a box
-        console.log("Made a new box!");
-        this.currentZLevel = 1;
-        this.activeBox = new SelectionBox(
-          this,
-          this.selectionStart,
-          this.selectionEnd,
-          this.currentZLevel,
-          this.groundLayer,
-          (box) => {
-            // When the tab is clicked, make this box active and update chat context
-            this.selectBox(box);
-          },
-        );
-      }
-    } else {
-      // Continue working with the existing active box
-      this.selectionStart.set(x, y);
-      this.selectionEnd.set(x, y);
-      this.activeBox.updateEnd(this.selectionEnd);
-    }
-      this.activeBox.updateStart(this.selectionStart);
-      this.activeBox.updateEnd(this.selectionEnd);
-    }
-    */
+ 
     // Checking Overlapping
     const candidate = new Phaser.Geom.Rectangle(x, y, 1, 1);
     let overlap = false;

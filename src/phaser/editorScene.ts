@@ -926,8 +926,6 @@ export class EditorScene extends Phaser.Scene {
       this.selectionEnd.set(x, y);
       this.activeBox.updateEnd(this.selectionEnd);
     }
-
-    this.renderZLevelOverlaps();
   }
 
   async endSelection() {
@@ -1356,41 +1354,5 @@ export class EditorScene extends Phaser.Scene {
     return Z_LEVEL_COLORS[(zLevel - 1) % Z_LEVEL_COLORS.length];
   }
 
-  renderZLevelOverlaps() {
-    // Remove previous overlap visuals if you’re redrawing every frame
-    this.children.list
-      .filter(obj => obj.name === "zOverlapIndicator")
-      .forEach(obj => obj.destroy());
 
-    for (let i = 0; i < this.selectionBoxes.length; i++) {
-      const boxA = this.selectionBoxes[i];
-      for (let j = i + 1; j < this.selectionBoxes.length; j++) {
-        const boxB = this.selectionBoxes[j];
-
-        // Skip same z-level — we only care about different z-levels sharing color
-        if (boxA.getZLevel() === boxB.getZLevel()) continue;
-
-        // Only compare if color is the same
-        const colorA = Z_LEVEL_COLORS[(boxA.getZLevel() - 1) % Z_LEVEL_COLORS.length];
-        const colorB = Z_LEVEL_COLORS[(boxB.getZLevel() - 1) % Z_LEVEL_COLORS.length];
-        if (colorA !== colorB) continue;
-
-        const rectA = boxA.getBounds();
-        const rectB = boxB.getBounds();
-
-        // Use Phaser's rectangle intersection function
-        if (Phaser.Geom.Intersects.RectangleToRectangle(rectA, rectB)) {
-          // Get intersection rectangle
-          const intersection = Phaser.Geom.Rectangle.Intersection(rectA, rectB);
-
-          // Draw a white overlay rectangle
-          const overlapGraphics = this.add.graphics();
-          overlapGraphics.fillStyle(0xffffff, 0.5); // white with transparency
-          overlapGraphics.fillRect(intersection.x, intersection.y, intersection.width, intersection.height);
-          overlapGraphics.setDepth(9999); // on top of everything
-          console.log("Rendered Z-Level overlap indicator at:", intersection);
-        }
-      }
-    }
-  }
 }

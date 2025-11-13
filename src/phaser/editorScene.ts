@@ -1169,34 +1169,21 @@ export class EditorScene extends Phaser.Scene {
   // Create the editor button - Shawn K
   createEditorButton() {
     // some help text
-    this.add.rectangle(30, 310, 500, 20, 0x1a1a1a);
-    this.add.text(20, 300, "Press Q to quit play mode.");
+    const msgBg = this.add.rectangle(30, 310, 500, 20, 0x1a1a1a);
+    const msgTxt = this.add.text(20, 300, "Press Q to quit play mode.");
 
-    /* Someone help me! I can't get this button to draw.
-    var UIScene = this.scene.get("UIScene");
-    
-    this.editorButton = UIScene.createButton(
-      this,
-      100, // 100 pixels from left of screen
-      this.cameras.main.height - 50, // 100 pixels from bottom of screen
-      'Edit',
-      () => {
-        this.startEditor();
-      },
-      {
-        fill: 0x1a1a1a,        // Dark background
-        hoverFill: 0x127803,   // Green hover
-        downFill: 0x0f5f02,    // Darker green
-        textColor: '#ffffff',   // White text
-        fontSize: 24,
-        paddingX: 15,
-        paddingY: 10
-      }
-    );
-
-    // Set high depth so it appears above other UI elements
-    this.editorButton.setDepth(1001);
-    */
+    this.time.delayedCall(3000, () => {
+      this.tweens.add({
+        targets: [msgBg, msgTxt],
+        alpha: 0,
+        duration: 1500,
+        ease: "Sine.easeInOut",
+        onCompletete: () => {
+          msgBg.destroy();
+          msgTxt.destroy();
+        },
+      });
+    });
   }
 
   private startEditor() {

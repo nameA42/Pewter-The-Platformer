@@ -29,11 +29,16 @@ export function getDisplayChatHistory(): string {
 let currentChatHistory: BaseMessage[] = [];
 
 // Set the active selection box context for chat
-export function setActiveSelectionBox(box: { localContext: { chatHistory: BaseMessage[] } } | null) {
+export function setActiveSelectionBox(
+  box: { localContext: { chatHistory: BaseMessage[] } } | null,
+) {
   if (!box) {
     // Clear active context
     currentChatHistory = [];
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
     return;
@@ -66,7 +71,10 @@ export function setActiveSelectionBox(box: { localContext: { chatHistory: BaseMe
     );
   }
   // Notify any UI listeners that the active selection (and its history) changed
-  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+  if (
+    typeof window !== "undefined" &&
+    typeof window.dispatchEvent === "function"
+  ) {
     window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
   }
 }
@@ -133,7 +141,10 @@ export async function sendUserPrompt(message: string): Promise<string> {
     historyRef.push(aiMessage);
 
     // Let UI know new content is available for the active selection
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
 
@@ -142,7 +153,10 @@ export async function sendUserPrompt(message: string): Promise<string> {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     const fallback = new AIMessage("Error: " + errorMessage);
     historyRef.push(fallback);
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
     return fallback.content as string;
@@ -184,7 +198,10 @@ export async function sendUserPromptWithContext(
     const aiMessage = new AIMessage(replyText);
     historyRef.push(aiMessage);
 
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
 
@@ -193,7 +210,10 @@ export async function sendUserPromptWithContext(
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     const fallback = new AIMessage("Error: " + errorMessage);
     historyRef.push(fallback);
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
     return fallback.content as string;
@@ -220,7 +240,10 @@ export async function sendSystemMessage(message: string): Promise<string> {
     const aiMessage = new AIMessage(replyText);
     historyRef.push(aiMessage);
 
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
 
@@ -229,7 +252,10 @@ export async function sendSystemMessage(message: string): Promise<string> {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     const fallback = new AIMessage("Error: " + errorMessage);
     historyRef.push(fallback);
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
     return fallback.content as string;

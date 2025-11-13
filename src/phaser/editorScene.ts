@@ -24,6 +24,15 @@ type RegenRules = {
 type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
   isFalling?: boolean;
 };
+
+// Snapshot structure for selection save/restore
+type SelSnapshot = {
+  rect: { x0: number; y0: number; x1: number; y1: number };
+  ground: number[][];
+  collectables: number[][];
+  enemies: Array<{ x: number; y: number }>;
+};
+
 // removed: sendUserPrompt (unused)
 import { setActiveSelectionBox } from "../languageModel/chatBox";
 import { Slime } from "./ExternalClasses/Slime.ts";
@@ -31,6 +40,12 @@ import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
 import { UIScene } from "./UIScene.ts";
 import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
 import { SelectionBox } from "./selectionBox.ts";
+// NEW: for replay driving
+import {
+  initializeLLM,
+  getChatResponse,
+} from "../languageModel/modelConnector";
+import { BaseMessage, HumanMessage } from "@langchain/core/messages";
 
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
@@ -43,11 +58,14 @@ export class EditorScene extends Phaser.Scene {
   // removed: playButton (unused)
   private mapHistory: Phaser.Tilemaps.Tilemap[] = [];
   private currentMapIteration: number = 0;
+  private _suppressToolClear = 0; // >0 means: don’t clear activeBox on toolCalled
 
   private minZoomLevel = 2.25;
   private maxZoomLevel = 10;
   private zoomLevel = 2.25;
   private keyL!: Phaser.Input.Keyboard.Key;
+  private _replayInFlight = false;
+  private _lastReplayAt = 0;
 
   // removed: isEditMode (unused)
 
@@ -153,6 +171,28 @@ export class EditorScene extends Phaser.Scene {
         if (!this.tileSelIndex.has(k)) this.tileSelIndex.set(k, new Set());
         this.tileSelIndex.get(k)!.add(sel);
       }
+    }
+  }
+
+  private async triggerReplay(mode: "fresh" | "same") {
+    // Debounce super-fast double taps
+    const now = performance && performance.now ? performance.now() : Date.now();
+    if (now - this._lastReplayAt < 200) return;
+    this._lastReplayAt = now;
+
+    if (this._replayInFlight) {
+      (this.scene.get("UIScene") as any)?.handleSelectionInfo?.(
+        "Replay already running…",
+      );
+      return;
+    }
+    this._replayInFlight = true;
+    try {
+      await this.runReplayForAllSelections(mode);
+    } catch (e) {
+      console.error("Replay failed:", e);
+    } finally {
+      this._replayInFlight = false;
     }
   }
 
@@ -501,15 +541,22 @@ export class EditorScene extends Phaser.Scene {
         this.activeBox.setActive?.(false);
       }
       this.activeBox = null;
+
       // Also notify chatBox to clear active selection context
       try {
         setActiveSelectionBox(null);
       } catch (e) {
-        // ignore
+        /* ignore */
+      }
+
+      // 👇 Clear the exported rect so downstream logic doesn't use a stale box
+      if (typeof window !== "undefined") {
+        (window as any).__activeSelRect = null;
       }
     });
 
     // When the LLM invokes a tool, finalize the active selection box (if any)
+    // In create(), replace your current 'toolCalled' handler with:
     if (
       typeof window !== "undefined" &&
       typeof window.addEventListener === "function"
@@ -523,14 +570,18 @@ export class EditorScene extends Phaser.Scene {
           if (!this.selectionBoxes.includes(this.activeBox)) {
             this.selectionBoxes.push(this.activeBox);
           }
-          // ensure visuals update
-          this.activeBox.setActive?.(false);
-          this.activeBox = null;
-          // Clear chat context
-          try {
-            setActiveSelectionBox(null);
-          } catch (e) {
-            // ignore
+          // keep visuals sane
+          this.activeBox.setActive?.(true); // keep it active during sequences
+
+          // **ONLY clear when not in a replayed multi-call sequence**
+          if (this._suppressToolClear <= 0) {
+            this.activeBox.setActive?.(false);
+            this.activeBox = null;
+            try {
+              setActiveSelectionBox(null);
+            } catch {}
+            if (typeof window !== "undefined")
+              (window as any).__activeSelRect = null;
           }
         }
       });
@@ -761,6 +812,11 @@ export class EditorScene extends Phaser.Scene {
     y: number,
     tileIndex: number,
   ) {
+    if (!this.insideActiveRect(x, y)) {
+      // Optional debug
+      console.warn(`[clip] Blocked tile at ${x},${y} (outside selection)`);
+      return;
+    }
     tileIndex = Phaser.Math.Clamp(
       tileIndex,
       0,
@@ -799,6 +855,76 @@ export class EditorScene extends Phaser.Scene {
       h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
       return (h >>> 8) / 0x01000000;
     };
+  }
+
+  // --- add to class (near other helpers)
+  private insideActiveRect(tx: number, ty: number): boolean {
+    try {
+      const r = (window as any).__activeSelRect;
+      if (!r) return true; // no selection = no clipping
+      return tx >= r.x0 && tx <= r.x1 && ty >= r.y0 && ty <= r.y1;
+    } catch {
+      return true;
+    }
+  }
+
+  private takeSelectionSnapshot(sel: SelectionBox): SelSnapshot {
+    const { x0, y0, x1, y1 } = sel.getTileRect();
+    const W = x1 - x0 + 1,
+      H = y1 - y0 + 1;
+
+    const ground: number[][] = Array.from({ length: H }, (_, r) =>
+      Array.from(
+        { length: W },
+        (_, c) => this.groundLayer?.getTileAt(x0 + c, y0 + r)?.index ?? -1,
+      ),
+    );
+    const collectables: number[][] = Array.from({ length: H }, (_, r) =>
+      Array.from(
+        { length: W },
+        (_, c) =>
+          this.collectablesLayer?.getTileAt(x0 + c, y0 + r)?.index ?? -1,
+      ),
+    );
+    const enemies = (this.enemies ?? [])
+      .map((e) => ({ x: e.x, y: e.y }))
+      .filter(({ x, y }) => {
+        const tx = Math.floor(x / this.TILE_SIZE);
+        const ty = Math.floor(y / this.TILE_SIZE);
+        return tx >= x0 && tx <= x1 && ty >= y0 && ty <= y1;
+      });
+
+    return { rect: { x0, y0, x1, y1 }, ground, collectables, enemies };
+  }
+
+  private restoreSelectionSnapshot(s: SelSnapshot) {
+    const { x0, y0 } = s.rect;
+    for (let r = 0; r < s.ground.length; r++) {
+      for (let c = 0; c < s.ground[r].length; c++) {
+        this.placeTile(this.groundLayer, x0 + c, y0 + r, s.ground[r][c]);
+        if (this.collectablesLayer) {
+          this.collectablesLayer.putTileAt(
+            s.collectables[r][c],
+            x0 + c,
+            y0 + r,
+          );
+        }
+      }
+    }
+    // restore enemies (simple respawn)
+    for (const e of s.enemies) {
+      try {
+        const slime = new UltraSlime(
+          this,
+          e.x,
+          e.y,
+          this.map,
+          this.groundLayer,
+        );
+        this.add.existing(slime);
+        this.enemies.push(slime);
+      } catch {}
+    }
   }
 
   // Inside EditorScene
@@ -1027,6 +1153,11 @@ export class EditorScene extends Phaser.Scene {
         const { gx, gy } = platforms[i];
         const px = gx * this.TILE_SIZE + this.TILE_SIZE / 2;
         const py = gy * this.TILE_SIZE - 4; // slightly above
+        if (this.insideActiveRect(gx, gy)) {
+          const e = new UltraSlime(this, px, py, this.map, this.groundLayer);
+          this.add.existing(e);
+          this.enemies.push(e);
+        }
         try {
           const e = new UltraSlime(this, px, py, this.map, this.groundLayer); // or Slime
           this.add.existing(e);
@@ -1063,6 +1194,15 @@ export class EditorScene extends Phaser.Scene {
     });
   }
 
+  private clearGroundInSelection(sel: SelectionBox) {
+    const { x0, y0, x1, y1 } = sel.getTileRect();
+    for (let ty = y0; ty <= y1; ty++) {
+      for (let tx = x0; tx <= x1; tx++) {
+        this.placeTile(this.groundLayer, tx, ty, -1);
+      }
+    }
+  }
+
   private removeCollectablesInSelection(sel: SelectionBox): void {
     const { x0, y0, x1, y1 } = sel.getTileRect();
     for (let ty = y0; ty <= y1; ty++) {
@@ -1072,6 +1212,159 @@ export class EditorScene extends Phaser.Scene {
           this.collectablesLayer.putTileAt(-1, tx, ty);
         }
       }
+    }
+  }
+
+  // NEW: wipe selection area before re-running prompts
+  private clearSelectionArea(sel: SelectionBox) {
+    this.clearGroundInSelection(sel);
+    this.removeCollectablesInSelection(sel);
+    this.removeEnemiesInSelection(sel);
+  }
+
+  // NEW: Re-run the *user prompts* that originally drove this selection.
+  // mode: "fresh" => new rng seed, "same" => stable-ish seed
+  private async replaySelectionPromptsWithLLM(
+    sel: SelectionBox,
+    mode: "fresh" | "same" = "fresh",
+  ) {
+    this._suppressToolClear++;
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    // snapshot first so we can revert on failure
+    const snap = this.takeSelectionSnapshot(sel);
+
+    let successes = 0;
+    try {
+      try {
+        this.selectBox(sel);
+      } catch {}
+      try {
+        setActiveSelectionBox(sel);
+      } catch {}
+      (this.scene.get("UIScene") as any)?.handleSelectionInfo?.(
+        `Replaying ${sel.id}…`,
+      );
+
+      // build ephemeral history
+      const tempHistory: BaseMessage[] = [];
+      await initializeLLM(tempHistory);
+
+      const rngSeed =
+        mode === "fresh" ? `${sel.id}:${Date.now()}` : `${sel.id}:same_seed`;
+      tempHistory.push(
+        new HumanMessage(
+          `REGENERATION REQUEST:
+- Re-run the user's previous instructions for THIS selection only.
+- Keep the requested counts and types the same as originally asked.
+- You may vary placements for freshness; do not add extra content beyond the original requests.
+- If any tool accepts a rng_seed (or similar), pass rng_seed='${rngSeed}'.`,
+        ),
+      );
+
+      // extract prior human prompts
+      const prior =
+        sel.getChatHistory?.() ?? sel.localContext?.chatHistory ?? [];
+      const humanPrompts: string[] = [];
+      for (const m of prior) {
+        try {
+          if (
+            m &&
+            typeof (m as any)._getType === "function" &&
+            (m as any)._getType() === "human"
+          ) {
+            const c =
+              typeof (m as any).content === "string"
+                ? (m as any).content
+                : Array.isArray((m as any).content)
+                  ? (m as any).content
+                      .map((p: any) =>
+                        typeof p?.text === "string" ? p.text : "",
+                      )
+                      .join("\n")
+                  : typeof (m as any).content?.text === "string"
+                    ? (m as any).content.text
+                    : JSON.stringify((m as any).content);
+            if (!c.trim().startsWith("[WORLD CONTEXT]")) humanPrompts.push(c);
+          }
+        } catch {}
+      }
+
+      if (humanPrompts.length === 0) {
+        this.snapshotSelection(sel);
+        this.recomputeAggFactsUpwards(sel.id);
+        (this.scene.get("UIScene") as any)?.handleSelectionInfo?.(
+          `No prior user prompts to replay for ${sel.id}.`,
+        );
+        return;
+      }
+
+      // clear AFTER snapshot, BEFORE first successful call
+      this.clearSelectionArea(sel);
+
+      for (const msg of humanPrompts) {
+        tempHistory.push(new HumanMessage(msg));
+        try {
+          await getChatResponse(tempHistory);
+          successes++;
+          try {
+            setActiveSelectionBox(sel);
+          } catch {}
+        } catch (e: any) {
+          const emsg = String(e?.message ?? e);
+          if (emsg.includes("429") || emsg.toLowerCase().includes("quota")) {
+            console.warn("429/quota during replay; retrying once…");
+            await sleep(1000);
+            try {
+              await getChatResponse(tempHistory);
+              successes++;
+              try {
+                setActiveSelectionBox(sel);
+              } catch {}
+            } catch (e2) {
+              console.error("Replay step failed twice:", e2);
+            }
+          } else {
+            console.error("Replay step failed:", e);
+          }
+        }
+      }
+
+      if (successes === 0) {
+        // restore what we cleared so it doesn't feel like the first press was eaten
+        this.restoreSelectionSnapshot(snap);
+        (this.scene.get("UIScene") as any)?.handleSelectionInfo?.(
+          `Replay failed (no tool calls ran). Check API quota / console.`,
+        );
+        return;
+      }
+
+      // refresh facts/UI
+      this.snapshotSelection(sel);
+      this.recomputeAggFactsUpwards(sel.id);
+      const summary = this.describeFacts(sel.ownFacts);
+      (this.scene.get("UIScene") as any)?.handleSelectionInfo?.(
+        `Replayed ${sel.id} prompts (${mode === "fresh" ? "fresh" : "same"} seed). ${summary}`,
+      );
+      this.worldFacts?.refresh?.();
+    } finally {
+      this._suppressToolClear--;
+      try {
+        this.selectBox(sel);
+      } catch {}
+    }
+  }
+
+  // NEW: run replay over all finalized selections (inner -> outer)
+  private async runReplayForAllSelections(mode: "fresh" | "same") {
+    const selections = this.selectionBoxes.slice().sort((a, b) => {
+      const ra = a.getTileRect(),
+        rb = b.getTileRect();
+      return ra.w * ra.h - rb.w * rb.h;
+    });
+
+    for (const sel of selections) {
+      await this.replaySelectionPromptsWithLLM(sel, mode);
     }
   }
 
@@ -1171,12 +1464,15 @@ export class EditorScene extends Phaser.Scene {
     // In create(): already have this.keyL = addKey(L)
 
     // In update():
+    // NEW: L => replay prior prompts via LLM; Shift+L => same-seed-ish
     if (Phaser.Input.Keyboard.JustDown(this.keyL)) {
-      // Example: regenerate all boxes using each box’s *ownFacts*
-      this.regenerateAllSelectionsLeftToRight({
-        useAggFacts: false, // set true if you want outer boxes to preserve totals incl. children
-        varySeedEachPress: true, // new layouts every press
-        // platformTileIndex: 17,   // set if you want a canonical platform tile
+      const now = this.time.now;
+      if (this._replayInFlight || now - this._lastReplayAt < 250) return; // throttle 250ms
+      this._lastReplayAt = now;
+      const mode: "fresh" | "same" = this.keyShift?.isDown ? "same" : "fresh";
+      this._replayInFlight = true;
+      void this.runReplayForAllSelections(mode).finally(() => {
+        this._replayInFlight = false;
       });
     }
 
@@ -1862,6 +2158,10 @@ export class EditorScene extends Phaser.Scene {
     this.activeBox = box;
     box.setActive?.(true);
     setActiveSelectionBox(box);
+
+    if (typeof window !== "undefined") {
+      (window as any).__activeSelRect = box.getTileRect(); // {x0,y0,x1,y1,w,h}
+    }
 
     // Re-scan facts for the newly active box and push a fresh description to UI
     this.snapshotSelection(box); // <- scan tiles/enemies now

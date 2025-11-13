@@ -10,7 +10,7 @@ const modelName: string | undefined = import.meta.env.VITE_LLM_MODEL_NAME;
 if (!apiKey) throw new Error("Missing VITE_LLM_API_KEY in .env file!");
 if (!modelName) throw new Error("Missing VITE_LLM_MODEL_NAME in .env file!");
 
-const llmTemp = 0;
+const llmTemp = 0.7;
 
 const sysPrompt =
   "You are 'Pewter', an expert tile-based map designer by day and an incredible video game player by night. " +

@@ -790,7 +790,7 @@ export class EditorScene extends Phaser.Scene {
 
     // Begin the selection
     this.isSelecting = true;
- 
+
     // Checking Overlapping
     const candidate = new Phaser.Geom.Rectangle(x, y, 1, 1);
     let overlap = false;
@@ -800,7 +800,7 @@ export class EditorScene extends Phaser.Scene {
       if (box.getZLevel() === this.currentZLevel) {
         // only check boxes on same level
         const bound = box.getBounds(); // MUST be tile-space rectangle
-        if (Phaser.Geom.Intersects.RectangleToRectangle(candidate, bound)) {
+        if (SelectionBox.rectanglesOverlap(candidate, bound)) {
           console.log("Cannot create box here — overlap detected");
           overlap = true;
           break;
@@ -812,7 +812,7 @@ export class EditorScene extends Phaser.Scene {
       // If the click lands inside an existing finalized box, select it instead
       for (const box of this.selectionBoxes) {
         const bound = box.getBounds();
-        if (Phaser.Geom.Intersects.RectangleToRectangle(candidate, bound)) {
+        if (SelectionBox.rectanglesOverlap(candidate, bound)) {
           // Select this box
           console.log("Clicked existing selection — activating it.");
           this.selectBox(box);
@@ -866,10 +866,7 @@ export class EditorScene extends Phaser.Scene {
         // only check boxes on same level
         if (
           box !== this.activeBox &&
-          Phaser.Geom.Intersects.RectangleToRectangle(
-            possibleBounds,
-            box.getBounds(),
-          )
+          SelectionBox.rectanglesOverlap(possibleBounds, box.getBounds())
         ) {
           console.log("Overlap has been detected!!");
           overlap = true;
@@ -943,7 +940,6 @@ export class EditorScene extends Phaser.Scene {
     if (uiScene && typeof uiScene.handleSelectionInfo === "function") {
       uiScene.handleSelectionInfo(msg);
     }
-    
   }
 
   // Copy selection of tiles function
@@ -1264,7 +1260,7 @@ export class EditorScene extends Phaser.Scene {
       if (box.getZLevel() === zLevel) {
         // only check boxes on same level
         const bound = box.getBounds(); // MUST be tile-space rectangle
-        if (Phaser.Geom.Intersects.RectangleToRectangle(checkedRect, bound)) {
+        if (SelectionBox.rectanglesOverlap(checkedRect, bound)) {
           return true;
         }
       }
@@ -1310,6 +1306,4 @@ export class EditorScene extends Phaser.Scene {
     // Cycle through the colors endlessly
     return Z_LEVEL_COLORS[(zLevel - 1) % Z_LEVEL_COLORS.length];
   }
-
-
 }

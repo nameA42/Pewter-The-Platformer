@@ -1,5 +1,6 @@
 import { tool } from "@langchain/core/tools";
 import type { EditorScene } from "../../phaser/editorScene.ts";
+import { invokeTool } from "../modelConnector";
 import { z } from "zod";
 
 export class ClearTile {
@@ -67,6 +68,55 @@ export class ClearTile {
         }
 
         console.log(layer);
+        // After clearing, invoke relativeGeneration so the chatbot has an
+        // up-to-date view of the scene. Try to set the active selection box
+        // to a box that intersects the cleared area so relativeGeneration
+        // reports the relevant tiles.
+        const _savedActiveBox = scene.activeBox;
+        try {
+          try {
+            const boxes = (scene as any).selectionBoxes || [];
+            const clearedX1 = xMin;
+            const clearedY1 = yMin;
+            const clearedX2 = xMax - 1;
+            const clearedY2 = yMax - 1;
+            let matched: any = null;
+            for (const b of boxes) {
+              if (!b || typeof b.getBounds !== "function") continue;
+              try {
+                const bb = b.getBounds();
+                const bx1 = bb.x;
+                const by1 = bb.y;
+                const bx2 = bb.x + bb.width - 1;
+                const by2 = bb.y + bb.height - 1;
+                const overlap = !(
+                  clearedX2 < bx1 ||
+                  clearedX1 > bx2 ||
+                  clearedY2 < by1 ||
+                  clearedY1 > by2
+                );
+                if (overlap) {
+                  matched = b;
+                  break;
+                }
+              } catch (e) {
+                // ignore per-box errors
+              }
+            }
+            if (matched) scene.activeBox = matched;
+          } catch (e) {
+            // ignore selection box scanning errors
+          }
+
+          try {
+            await invokeTool("relativeGeneration", {});
+          } catch (e) {
+            // ignore tool errors
+          }
+        } finally {
+          scene.activeBox = _savedActiveBox;
+        }
+
         return `✅ Cleared tiles from (${xMin}, ${yMin}) up to (${xMax}, ${yMax}) on layer '${layerName}'.`;
       } catch (e) {
         console.error("removeTileAt failed:", e);

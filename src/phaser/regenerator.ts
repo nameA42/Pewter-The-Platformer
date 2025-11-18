@@ -20,6 +20,9 @@ export async function regenerateSelection(
   if (visited.has(box)) return;
   visited.add(box);
 
+  // Save current activeBox so we can restore it after any temporary changes
+  const _savedActiveBox = scene.activeBox;
+
   // Try to save map history if available
   try {
     scene.bindMapHistory?.();
@@ -144,24 +147,29 @@ export async function regenerateSelection(
         : "";
     const hiddenContext = baseHidden + suffix;
 
-    // Get last human message for this box
+    // Build a combined human chat log for this box (chronological)
     let lastUserMessageT = "";
     try {
       const chatHistory = targetBox.getChatHistory
         ? targetBox.getChatHistory()
         : [];
-      for (let i = chatHistory.length - 1; i >= 0; i--) {
+      const humanMessages: string[] = [];
+      for (let i = 0; i < chatHistory.length; i++) {
         const msg: any = chatHistory[i];
         if (msg && typeof msg._getType === "function") {
           const t = String(msg._getType()).toLowerCase();
           if (t === "human" || t === "user") {
-            lastUserMessageT =
+            const content =
               typeof msg.content === "string"
                 ? msg.content
                 : JSON.stringify(msg.content);
-            break;
+            humanMessages.push(content);
           }
         }
+      }
+      if (humanMessages.length) {
+        // join messages with newlines to preserve separation and order
+        lastUserMessageT = humanMessages.join("\n");
       }
     } catch (e) {
       lastUserMessageT = "";
@@ -254,6 +262,18 @@ export async function regenerateSelection(
           // ignore per-box failures
         }
       }
+
+      // After finishing propagation, invoke relativeGeneration with the
+      // originally requested box as active so the chatbot sees the updated
+      // tiles for that selection before continuing the conversation.
+      try {
+        scene.activeBox = box;
+        await invokeTool("relativeGeneration", {});
+      } catch (e) {
+        // ignore tool errors
+      } finally {
+        scene.activeBox = _savedActiveBox;
+      }
     } catch (e) {
       // orchestration failed
     }
@@ -262,6 +282,16 @@ export async function regenerateSelection(
 
   try {
     await singleRegen(box, extraHiddenContext);
+
+    // After single-box regeneration, update chatbot with current scene
+    try {
+      scene.activeBox = box;
+      await invokeTool("relativeGeneration", {});
+    } catch (e) {
+      // ignore
+    } finally {
+      scene.activeBox = _savedActiveBox;
+    }
   } catch (e) {}
 }
 

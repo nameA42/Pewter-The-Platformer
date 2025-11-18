@@ -4,11 +4,14 @@ import {
   getDisplayChatHistory,
 } from "../languageModel/chatBox";
 import { EditorScene } from "./editorScene.ts";
+import "./chatbox.css";
 
 export class UIScene extends Phaser.Scene {
   constructor() {
     super({ key: "UIScene" });
   }
+
+  public dom!: Phaser.GameObjects.DOMElement;
 
   //Variables
 
@@ -20,12 +23,7 @@ export class UIScene extends Phaser.Scene {
     this.registry.set("uiPointerOver", v);
 
   //UI
-  private panel!: Phaser.GameObjects.Container;
-  private buttons: Phaser.GameObjects.Text[] = [];
   private playButton!: Phaser.GameObjects.Container;
-
-  //Inputs
-  private keyR!: Phaser.Input.Keyboard.Key;
 
   //Chat LLM
   private chatBox!: Phaser.GameObjects.DOMElement;
@@ -46,11 +44,11 @@ export class UIScene extends Phaser.Scene {
     this.blocks = ["block1", "block2", "block3"]; //Add more blocks to see capabilities
 
     //Input
-    const keys = [
-      Phaser.Input.Keyboard.KeyCodes.ONE,
-      Phaser.Input.Keyboard.KeyCodes.TWO,
-      Phaser.Input.Keyboard.KeyCodes.THREE,
-    ];
+    // const keys = [
+    //   Phaser.Input.Keyboard.KeyCodes.ONE,
+    //   Phaser.Input.Keyboard.KeyCodes.TWO,
+    //   Phaser.Input.Keyboard.KeyCodes.THREE,
+    // ];
 
     //Event Input
     // keys.forEach((code, index) => {
@@ -69,7 +67,7 @@ export class UIScene extends Phaser.Scene {
     const screenWidth = this.cameras.main.width;
     const centerX = screenWidth / 2;
     const startY = this.cameras.main.height - buttonHeight - 64; // lifted off bottom
-    this.buttons = [];
+    // this.buttons = [];
 
     this.blocks.forEach((block, i) => {
       // Position relative to center button
@@ -101,32 +99,31 @@ export class UIScene extends Phaser.Scene {
 
     // Create hidden chatbox
     this.chatBox = this.add.dom(1100, 350).createFromHTML(`
-      <div id="chatbox" style="
-        width: 300px;
-        height: 650px;
-        background: rgba(0, 0, 0, 0.85);
-        color: white;
-        font-family: sans-serif;
-        font-size: 15px;
-        padding: 20px;
-        border-radius: 8px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        box-shadow: 0 0 8px rgba(0,0,0,0.6);
-      ">
-        <div id="chat-log" style="flex-grow: 1; overflow-y: auto; font-size: 15px; line-height: 1.5;"></div>
-        <input id="chat-input" type="text" placeholder="Type a command..." style="
-          margin-top: 16px;
-          padding: 14px;
-          font-size: 15px;
-          border: none;
-          border-radius: 4px;
-        " />
+      <div id="chatbox" class="pt-chatbox">
+        <div id="tabs" class="pt-tabs">
+          <button id="tab-chat" class="pt-tab active">Chat</button>
+          <button id="tab-blocks" class="pt-tab">Blocks</button>
+        </div>
+        <div id="tab-contents" class="pt-tab-contents">
+          <div id="chat-content" class="pt-chat-content">
+            <div id="chat-log" class="pt-chat-log"></div>
+            <input id="chat-input" class="pt-chat-input" type="text" placeholder="Type a command..." autocomplete="off" />
+          </div>
+          <div id="blocks-content" class="pt-blocks-content">
+            <div id="blocks-list" class="pt-blocks-list"></div>
+          </div>
+        </div>
       </div>
     `);
     this.chatBox.setVisible(true);
+    // Make the convenience dom reference point to the created DOM element
+    this.dom = this.chatBox;
     let isChatVisible = true;
+
+    // Initialize tabs, blocks list and input handlers
+    this.setupTabs();
+    this.populateBlocks(this.blocks);
+    this.setupInput();
 
     // Toggle chatbox (and notify other scenes to toggle overview/minimap)
     if (this.input && this.input.keyboard) {
@@ -270,6 +267,90 @@ export class UIScene extends Phaser.Scene {
       }
     });
   }
+
+  //Stuff to set up the selection box:
+
+  public populateBlocks(blocks: string[]) {
+    try {
+      const blocksList = this.dom.getChildByID(
+        "blocks-list",
+      ) as HTMLDivElement | null;
+      if (!blocksList) {
+        console.log("Unable to populate block list!");
+        return;
+      }
+      blocksList.innerHTML = "";
+      for (const block of blocks) {
+        const b = document.createElement("button");
+        // Use the block name for the label and emit selection so other scenes can react
+        b.textContent = block;
+        b.addEventListener("click", () => this.emitSelect(block));
+        blocksList.appendChild(b);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  private setupTabs() {
+    try {
+      const tabChat = this.dom.getChildByID(
+        "tab-chat",
+      ) as HTMLButtonElement | null;
+      const tabBlocks = this.dom.getChildByID(
+        "tab-blocks",
+      ) as HTMLButtonElement | null;
+      const chatContent = this.dom.getChildByID(
+        "chat-content",
+      ) as HTMLDivElement | null;
+      const blocksContent = this.dom.getChildByID(
+        "blocks-content",
+      ) as HTMLDivElement | null;
+      const log = this.dom.getChildByID("chat-log") as HTMLDivElement | null;
+      if (!tabChat || !tabBlocks || !chatContent || !blocksContent || !log)
+        return;
+
+      const switchToChat = () => {
+        tabChat.classList.add("active");
+        tabBlocks.classList.remove("active");
+        chatContent.style.display = "flex";
+        blocksContent.style.display = "none";
+        this.updateLog();
+      };
+
+      const switchToBlocks = () => {
+        tabBlocks.classList.add("active");
+        tabChat.classList.remove("active");
+        chatContent.style.display = "none";
+        blocksContent.style.display = "flex";
+      };
+
+      tabChat.addEventListener("click", switchToChat);
+      tabBlocks.addEventListener("click", switchToBlocks);
+
+      // default to chat
+      switchToChat();
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  private setupInput() {
+    return;
+  }
+
+  // Helper to refresh the chat log DOM from the language model history
+  private updateLog(): void {
+    try {
+      const log = this.dom?.getChildByID("chat-log") as HTMLDivElement | null;
+      if (!log) return;
+      log.innerHTML = getDisplayChatHistory();
+      log.scrollTop = log.scrollHeight;
+    } catch (e) {
+      // ignore
+    }
+  }
+
   // Receives selection info from EditorScene and displays it in the chatbox
   public handleSelectionInfo(msg: string) {
     this.latestSelectionContext = msg;

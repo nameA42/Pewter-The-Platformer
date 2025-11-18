@@ -223,14 +223,21 @@ export async function getChatResponse(
             tool_call_id: String(toolCall.id ?? ""),
           }),
         );
-              // Notify UI/editor that a tool was called so selection boxes can finalize
-              try {
-                if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-                  window.dispatchEvent(new CustomEvent('toolCalled', { detail: { name: toolCall.name, args: toolCall.args, result } }));
-                }
-              } catch (e) {
-                // ignore
-              }
+        // Notify UI/editor that a tool was called so selection boxes can finalize
+        try {
+          if (
+            typeof window !== "undefined" &&
+            typeof window.dispatchEvent === "function"
+          ) {
+            window.dispatchEvent(
+              new CustomEvent("toolCalled", {
+                detail: { name: toolCall.name, args: toolCall.args, result },
+              }),
+            );
+          }
+        } catch (e) {
+          // ignore
+        }
       } catch (toolError) {
         const errorMsg = `Error: Tool '${toolCall.name}' failed with args: ${JSON.stringify(toolCall.args)}.\nDetails: ${toolError}`;
         console.error(errorMsg);
@@ -250,7 +257,8 @@ export async function getChatResponse(
     if ((response.tool_calls?.length ?? 0) > 0) {
       response = await llmWithTools.invoke(chatMessageHistory);
       console.log("Raw LLM response after tool calls:", response);
-
+      // Push the final response to history (this is the actual answer after tool calls)
+      chatMessageHistory.push(response);
       if (typeof response.content === "string") {
         output.text.push(response.content);
       } else if (Array.isArray(response.content)) {

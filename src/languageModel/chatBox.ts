@@ -45,9 +45,6 @@ export function setActiveSelectionBox(
   }
 
   currentChatHistory = box.localContext.chatHistory;
-  // Keep the original SelectionBox object reference if present so
-  // we can finalize it when tools are invoked.
-  // (no local object stored here; editor listens for tool events)
   // Ensure system message is always first
   const sysPrompt =
     "You are 'Pewter, an expert tile-based map designer by day, but an incredible video game player by night. " +
@@ -63,8 +60,6 @@ export function setActiveSelectionBox(
     !isSystemMessage(currentChatHistory[0]) ||
     currentChatHistory[0].content !== sysPrompt
   ) {
-    // Import SystemMessage from langchain
-    // (import already present at top)
     currentChatHistory.unshift(new SystemMessage(sysPrompt));
     console.log(
       "System prompt injected into chat history for active selection box.",
@@ -81,8 +76,6 @@ export function setActiveSelectionBox(
 
 // Track bot typing state to prevent overlapping responses
 let botResponding = false;
-
-// Initialize system prompt on load
 
 /**
  * Add a new chat message to the conversation history.
@@ -137,10 +130,10 @@ export async function sendUserPrompt(message: string): Promise<string> {
     const replyText = Array.isArray(reply.text)
       ? reply.text.join("\n")
       : String(reply.text);
-    const aiMessage = new AIMessage(replyText);
-    historyRef.push(aiMessage);
 
-    // Let UI know new content is available for the active selection
+    // IMPORTANT: do NOT push another AIMessage here.
+    // getChatResponse already pushed the AI response(s) into historyRef.
+    // We just notify the UI.
     if (
       typeof window !== "undefined" &&
       typeof window.dispatchEvent === "function"
@@ -152,7 +145,7 @@ export async function sendUserPrompt(message: string): Promise<string> {
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     const fallback = new AIMessage("Error: " + errorMessage);
-    historyRef.push(fallback);
+    currentChatHistory.push(fallback);
     if (
       typeof window !== "undefined" &&
       typeof window.dispatchEvent === "function"
@@ -195,6 +188,9 @@ export async function sendUserPromptWithContext(
     const replyText = Array.isArray(reply.text)
       ? reply.text.join("\n")
       : String(reply.text);
+
+    // Here we *do* need to push an AI message, because the responses
+    // were added to tempHistory (a copy), not to historyRef.
     const aiMessage = new AIMessage(replyText);
     historyRef.push(aiMessage);
 
@@ -260,6 +256,7 @@ export async function sendUserPromptHidden(
  */
 export async function sendSystemMessage(message: string): Promise<string> {
   const historyRef = currentChatHistory;
+  // Keep as HumanMessage so Gemini has content in `contents`
   const systemMessage = new HumanMessage(message);
   historyRef.push(systemMessage);
 
@@ -270,9 +267,9 @@ export async function sendSystemMessage(message: string): Promise<string> {
     const replyText = Array.isArray(reply.text)
       ? reply.text.join("\n")
       : String(reply.text);
-    const aiMessage = new AIMessage(replyText);
-    historyRef.push(aiMessage);
 
+    // IMPORTANT: do NOT push another AIMessage here.
+    // getChatResponse already added the AI responses into historyRef.
     if (
       typeof window !== "undefined" &&
       typeof window.dispatchEvent === "function"

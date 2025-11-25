@@ -4,7 +4,7 @@ import Phaser from "phaser";
 type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
   isFalling?: boolean;
 };
-import { regenerateSelection as regenerateSelectionModule } from "./regenerator";
+import * as regenerateModule from "./regenerator";
 import { sendUserPrompt } from "../languageModel/chatBox";
 import { setActiveSelectionBox } from "../languageModel/chatBox";
 import { Slime } from "./ExternalClasses/Slime.ts";
@@ -197,6 +197,16 @@ export class EditorScene extends Phaser.Scene {
     );
     this.cameras.main.centerOn(0, 0);
     this.cameras.main.setZoom(this.zoomLevel);
+
+    // Enable regenerator debug logging for runtime debugging
+    try {
+      // Use the exported setter to enable debug logging in the regenerator module.
+      // Toggle debugMode on and off here as needed
+      regenerateModule.setDebugMode(true);
+      console.log("Regenerator debugMode enabled");
+    } catch (e) {
+      console.warn("Could not enable regenerator debugMode", e);
+    }
 
     this.createMinimap();
     this.cameras.main.centerOn(0, 0);
@@ -1365,7 +1375,7 @@ export class EditorScene extends Phaser.Scene {
     visited: Set<SelectionBox> = new Set(),
   ): Promise<void> {
     try {
-      await regenerateSelectionModule(
+      await regenerateModule.regenerateSelection(
         this,
         box,
         propagateLower,

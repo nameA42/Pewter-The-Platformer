@@ -9,67 +9,6 @@ import { SelectionBox } from "./selectionBox";
  * and a SelectionBox to operate on. This is intentionally a lightweight
  * module to avoid circular imports; scene is typed as any.
  */
-
-// Internal debug flag (not exported as a writable binding).
-let _debugMode = false;
-
-// Setter/getter to toggle debug at runtime (safe to call from other modules).
-export function setDebugMode(v: boolean) {
-  _debugMode = !!v;
-}
-export function getDebugMode() {
-  return _debugMode;
-}
-
-function logDebug(...args: any[]) {
-  if (_debugMode) {
-    console.log(...args);
-  }
-}
-
-// --- add helper to clean model replies before parsing
-function extractJsonFromReply(reply: string): string {
-  if (!reply) return reply;
-  // If reply contains a fenced block like ```json\n...\n```, return inner content
-  const fenceMatch = reply.match(/```(?:json)?\n([\s\S]*?)```/i);
-  if (fenceMatch && fenceMatch[1]) return fenceMatch[1].trim();
-  // Otherwise, try to find the first JSON-like substring (starting with [ or {)
-  const start = reply.indexOf('{') >= 0 ? reply.indexOf('{') : reply.indexOf('[');
-  if (start >= 0) {
-    // attempt to extract from start to last matching bracket
-    const lastBrace = Math.max(reply.lastIndexOf('}'), reply.lastIndexOf(']'));
-    if (lastBrace > start) return reply.substring(start, lastBrace + 1).trim();
-  }
-  // fallback: remove stray backticks and return trimmed string
-  return reply.replace(/`+/g, "").trim();
-}
-
-// NEW helper: parse cleaned reply into either a numeric tile matrix or an op-list
-function parseTileResponse(reply: string): {
-  tileMatrix?: number[][];
-  ops?: any[];
-  cleaned?: string;
-} {
-  const cleaned = extractJsonFromReply(String(reply) || "");
-  logDebug("[regenerator] cleaned model reply (truncated):", cleaned.slice(0, 500));
-  try {
-    const parsed = JSON.parse(cleaned);
-    // Case A: 2D numeric matrix
-    if (Array.isArray(parsed) && Array.isArray(parsed[0]) && typeof parsed[0][0] === "number") {
-      return { tileMatrix: parsed as number[][], cleaned };
-    }
-    // Case B: op-list (array of objects)
-    if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === "object") {
-      return { ops: parsed as any[], cleaned };
-    }
-    logDebug("[regenerator] parsed response shape unexpected:", parsed);
-    return { cleaned };
-  } catch (e) {
-    console.warn("[regenerator] JSON.parse failed for model reply", e);
-    return { cleaned };
-  }
-}
-
 export async function regenerateSelection(
   scene: any,
   box: SelectionBox,
@@ -77,37 +16,20 @@ export async function regenerateSelection(
   extraHiddenContext: string = "",
   visited: Set<SelectionBox> = new Set(),
 ): Promise<void> {
-  logDebug("[regenerator] called", {
-    boxBounds: box?.getBounds ? box.getBounds() : null,
-    propagateLower,
-  });
-
   if (!box) throw new Error("No box provided");
-  if (visited.has(box)) {
-    logDebug("[regenerator] box already visited, skipping.");
-    return;
-  }
+  if (visited.has(box)) return;
   visited.add(box);
 
   // Save current activeBox so we can restore it after any temporary changes
   const _savedActiveBox = scene.activeBox;
-  logDebug("[regenerator] saved activeBox");
 
   // Try to save map history if available
   try {
     scene.bindMapHistory?.();
-    logDebug("[regenerator] bindMapHistory invoked");
-  } catch (e) {
-    console.warn("[regenerator] bindMapHistory failed", e);
-  }
+  } catch (e) {}
 
   // Helper to regenerate a single box
   const singleRegen = async (targetBox: SelectionBox, ctxSuffix: string) => {
-    logDebug("[regenerator] singleRegen start", {
-      targetBounds: targetBox?.getBounds ? targetBox.getBounds() : null,
-      ctxSuffix,
-    });
-
     const start = targetBox.getStart();
     const end = targetBox.getEnd();
     const sX = Math.min(start.x, end.x);
@@ -135,10 +57,7 @@ export async function regenerateSelection(
           }
         }
       }
-    } catch (e) {
-      console.warn("[regenerator] error parsing HIGHER_BOUNDS", e);
-    }
-    logDebug("[regenerator] higherRects count:", higherRects.length);
+    } catch (e) {}
 
     const isInsideAnyHigher = (tx: number, ty: number) => {
       for (const r of higherRects) {
@@ -154,7 +73,6 @@ export async function regenerateSelection(
     // Clear area, preserve tiles inside higher boxes
     if (higherRects.length === 0) {
       try {
-        logDebug("[regenerator] attempting to clear via clearTiles tool", { sX, sY, eX, eY });
         // Clear both Ground and Collectables layers via the tool
         await invokeTool("clearTiles", {
           xMin: sX,
@@ -163,7 +81,7 @@ export async function regenerateSelection(
           yMax: eY + 1,
           layerName: "Ground_Layer",
         });
-        logDebug("[regenerator] Cleared Ground_Layer via tool");
+        console.log("Cleared Ground_Layer via tool");
         await invokeTool("clearTiles", {
           xMin: sX,
           xMax: eX + 1,
@@ -171,15 +89,14 @@ export async function regenerateSelection(
           yMax: eY + 1,
           layerName: "Collectables_Layer",
         });
-        logDebug("[regenerator] Cleared Collectables_Layer via tool");
+        console.log("Cleared Collectables_Layer via tool");
       } catch (toolErr) {
-        console.warn("[regenerator] clearTiles tool failed, falling back to manual clear", toolErr);
         // fallback manual clear: clear both layers
         for (let y = sY; y <= eY; y++) {
           for (let x = sX; x <= eX; x++) {
             if (x < 0 || y < 0 || x >= scene.map.width || y >= scene.map.height)
               continue;
-          try {
+            try {
               if (scene.groundLayer)
                 scene.placeTile(scene.groundLayer, x, y, -1);
             } catch (e) {}
@@ -189,10 +106,8 @@ export async function regenerateSelection(
             } catch (e) {}
           }
         }
-        logDebug("[regenerator] manual clear complete");
       }
     } else {
-      logDebug("[regenerator] manual clear with respect to higherRects");
       // manual per-tile clear outside higher boxes - clear both layers where allowed
       for (let y = sY; y <= eY; y++) {
         for (let x = sX; x <= eX; x++) {
@@ -208,7 +123,6 @@ export async function regenerateSelection(
           } catch (e) {}
         }
       }
-      logDebug("[regenerator] manual clear (respecting higherRects) complete");
     }
 
     // Invoke relative regeneration to capture current tile state
@@ -216,17 +130,12 @@ export async function regenerateSelection(
     let relativeGenContext = "";
     try {
       scene.activeBox = targetBox;
-      logDebug("[regenerator] invoking relativeGeneration tool to capture pre-regeneration state");
-      const relGenResult = await invokeTool("relativeGeneration", {
-        instructions: "Summarize current tiles in the active selection (JSON).",
-        includeTilePositions: true, 
-      });
-      logDebug("[regenerator] relativeGeneration tool returned:", typeof relGenResult === "string" ? relGenResult.slice(0, 300) : relGenResult);
+      const relGenResult = await invokeTool("relativeGeneration", {});
       if (relGenResult) {
         relativeGenContext = `RELATIVE_TILES:${relGenResult}`;
       }
     } catch (e) {
-      console.warn("[regenerator] relativeGeneration tool failed", e);
+      // ignore if tool fails
     }
 
     // Build hidden context (only bounds + layer; no cross-box chat/theme/tiles)
@@ -237,7 +146,6 @@ export async function regenerateSelection(
         ? `;${ctxSuffix}`
         : "";
     const hiddenContext = baseHidden + suffix;
-    logDebug("[regenerator] hiddenContext built:", hiddenContext.slice(0, 500));
 
     // Build a combined human chat log for this box (chronological)
     let lastUserMessageT = "";
@@ -263,10 +171,8 @@ export async function regenerateSelection(
         // join messages with newlines to preserve separation and order
         lastUserMessageT = humanMessages.join("\n");
       }
-      logDebug("[regenerator] collected humanMessages count:", humanMessages.length);
     } catch (e) {
       lastUserMessageT = "";
-      console.warn("[regenerator] error collecting chat history", e);
     }
 
     // Call model using hidden prompt so no messages are added to UI
@@ -275,33 +181,22 @@ export async function regenerateSelection(
       const userPrompt =
         lastUserMessageT ||
         `Regenerate tiles for selection (${sX},${sY})-(${eX},${eY})`;
-      logDebug("[regenerator] sending hidden prompt to model:", userPrompt.slice(0, 200));
       const replyText = await sendUserPromptHidden(userPrompt, hiddenContext);
-      logDebug("[regenerator] model reply (truncated):", typeof replyText === "string" ? replyText.slice(0, 500) : replyText);
       try {
-        const { tileMatrix: parsedMatrix, ops } = parseTileResponse(String(replyText));
-        if (parsedMatrix) {
-          tileMatrix = parsedMatrix;
-          logDebug("[regenerator] parsed tileMatrix size:", tileMatrix.length, "x", tileMatrix[0]?.length || 0);
-        } else if (ops) {
-          // parsed as op-list — surface a debug message and attach ops to hiddenContext for future handling
-          logDebug("[regenerator] parsed op-list (length):", ops.length);
-          // Optionally: store ops for later processing by caller (not applying here)
-          // e.g. relativeGenContextOps = ops;
-        } else {
-          console.warn("[regenerator] parsed response is not a 2D array or an op-list");
+        const parsed = JSON.parse(replyText);
+        if (Array.isArray(parsed) && Array.isArray(parsed[0])) {
+          tileMatrix = parsed as number[][];
         }
       } catch (e) {
-        console.warn("[regenerator] JSON.parse failed for model reply", e);
+        // ignore parse errors
       }
     } catch (e) {
-      console.warn("[regenerator] model call failed", e);
+      // model call failed
     }
 
     if (tileMatrix) {
       const height = tileMatrix.length;
       const width = tileMatrix[0]?.length || 0;
-      let placedCount = 0;
       for (let ry = 0; ry < height; ry++) {
         for (let rx = 0; rx < width; rx++) {
           const tileIdx = tileMatrix[ry][rx];
@@ -318,28 +213,18 @@ export async function regenerateSelection(
           scene.placeTile(layer, worldX, worldY, tileIdx);
           try {
             targetBox.addPlacedTile(tileIdx, worldX, worldY, layer.layer.name);
-          } catch (e) {
-            // ignore
-          }
-          placedCount++;
+          } catch (e) {}
         }
       }
-      logDebug("[regenerator] placed tiles count:", placedCount); 
-    } else {
-      logDebug("[regenerator] no tileMatrix produced; skipping placement"); 
     }
 
     try {
       targetBox.copyTiles();
-      logDebug("[regenerator] targetBox.copyTiles() invoked");
-    } catch (e) {
-      console.warn("[regenerator] targetBox.copyTiles() failed", e);
-    }
+    } catch (e) {}
 
     const brect = targetBox.getBounds
       ? targetBox.getBounds()
       : { x: sX, y: sY, width: eX - sX + 1, height: eY - sY + 1 };
-    logDebug("[regenerator] singleRegen complete", brect);
     return { x: brect.x, y: brect.y, width: brect.width, height: brect.height };
   };
 
@@ -359,28 +244,22 @@ export async function regenerateSelection(
       }
       if (!intersecting.includes(box)) intersecting.push(box);
 
-      logDebug("[regenerator] intersecting boxes count:", intersecting.length);
-
       // Sort by Z level ascending so regeneration runs from lower -> higher
       intersecting.sort(
         (a, b) =>
           (a.getZLevel ? a.getZLevel() : 0) - (b.getZLevel ? b.getZLevel() : 0),
       );
 
-      logDebug("[regenerator] regeneration order (z levels):", intersecting.map(b => b.getZLevel ? b.getZLevel() : 0));
-      
       const regeneratedBounds: any[] = [];
       for (const b of intersecting) {
-        logDebug("[regenerator] regenerating box", { bounds: b.getBounds ? b.getBounds() : null, z: b.getZLevel ? b.getZLevel() : 0 });
         const higherContext = regeneratedBounds.length
           ? `HIGHER_BOUNDS:${JSON.stringify(regeneratedBounds)}`
           : "";
         try {
           const info = await singleRegen(b, higherContext);
           regeneratedBounds.push(info);
-          logDebug("[regenerator] regeneratedBounds pushed", info);
         } catch (e) {
-          console.warn("[regenerator] singleRegen failed for a box", e);
+          // ignore per-box failures
         }
       }
 
@@ -389,48 +268,31 @@ export async function regenerateSelection(
       // tiles for that selection before continuing the conversation.
       try {
         scene.activeBox = box;
-        logDebug("[regenerator] invoking relativeGeneration after propagation");
-        await invokeTool("relativeGeneration", {
-          instructions: "Summarize current tiles in the active selection (JSON).",
-          includeTilePositions: true,
-        });
-        logDebug("[regenerator] relativeGeneration invoked after propagation");
+        await invokeTool("relativeGeneration", {});
       } catch (e) {
-        console.warn("[regenerator] relativeGeneration after propagation failed", e);
+        // ignore tool errors
       } finally {
         scene.activeBox = _savedActiveBox;
-        logDebug("[regenerator] restored activeBox after propagation");
       }
     } catch (e) {
-      console.warn("[regenerator] propagation orchestration failed", e);
+      // orchestration failed
     }
     return;
   }
 
   try {
-    logDebug("[regenerator] running singleRegen for requested box");
     await singleRegen(box, extraHiddenContext);
 
     // After single-box regeneration, update chatbot with current scene
     try {
       scene.activeBox = box;
-      logDebug("[regenerator] invoking relativeGeneration after singleRegen");
-      await invokeTool("relativeGeneration", {
-        instructions: "Summarize current tiles in the active selection (JSON).",
-        includeTilePositions: true,
-      });
-      logDebug("[regenerator] relativeGeneration invoked after singleReGen");
+      await invokeTool("relativeGeneration", {});
     } catch (e) {
-      console.warn("[regenerator] relativeGeneration after singleReGen failed", e);
+      // ignore
     } finally {
       scene.activeBox = _savedActiveBox;
-      logDebug("[regenerator] restored activeBox after singleReGen");
     }
-  } catch (e) {
-    console.warn("[regenerator] singleReGen overall failed", e);
-  }
-
-  logDebug("[regenerator] complete for requested box");
+  } catch (e) {}
 }
 
 export default regenerateSelection;

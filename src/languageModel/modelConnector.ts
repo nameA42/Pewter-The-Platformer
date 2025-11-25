@@ -98,73 +98,9 @@ export async function initializeLLM(
   chatMessageHistory.push(new SystemMessage(sysPrompt));
 }
 
+// OLD implementation kept as a comment for reference
 // export async function getChatResponse(chatMessageHistory: BaseMessage[]): Promise<string> {
-//   if(!llmWithTools){
-//       throw new Error("LLM has not been initialized with tools. Did you forget to call initializeTools()?");
-//   }
-
-//   try {
-//     let response = await llmWithTools.invoke(chatMessageHistory);
-
-//     console.log("Raw LLM resoponse: ", response);
-
-//     chatMessageHistory.push(response); // This is required for tools to work
-
-//     // Iterate through all tool calls
-//     const calls = response.tool_calls ?? [];
-//     for (const toolCall of calls) {
-//       const selectedTool = toolsByName[toolCall.name];
-//       if(!selectedTool){
-//         const msg = `Error: Unknown tool "${toolCall.name}".`;
-//         console.error(msg);
-//         chatMessageHistory.push(new ToolMessage({
-//           content: msg,
-//           tool_call_id: String(toolCall.id || "")
-//         }));
-//         continue;
-//       }
-//       try {
-//         const result = await selectedTool.invoke(toolCall.args);
-//         console.log(`Tool called ${toolCall.name} with result: ${result}`);
-
-//         chatMessageHistory.push(new ToolMessage({
-//           name: toolCall.name,
-//           content: result,
-//           tool_call_id: String(toolCall.id || "")
-//         }));
-
-//       } catch (toolError) {
-//         console.error(`Tool ${toolCall.name} failed:`, toolError);
-//         // Add error message to chat history
-//         const errorMessage =
-//         `Error: Tool '${toolCall.name}' failed with args: ${JSON.stringify(toolCall.args)}.\n` +
-//         `Details: ${toolError}. Please try again with different parameters.`;
-
-//         chatMessageHistory.push(new ToolMessage({
-//           name: toolCall.name,
-//           content: errorMessage,
-//           tool_call_id: String(toolCall.id || "")
-//         }));
-//       }
-//     }
-
-//     // If a tool is called then ask the LLM to comment on it
-//     if (calls.length > 0) {
-//       response = await llmWithTools.invoke(chatMessageHistory);
-//       console.log("Raw LLM response after tool calls:", response);
-//     }
-
-//     let resultContent = response.content;
-//     if (typeof resultContent !== "string") {
-//       console.log("Non-string AI response detected:", resultContent);
-//       resultContent = JSON.stringify(resultContent);
-//     }
-//     return resultContent;
-//   }
-//   catch (error) {
-//     console.error("Error in LLM call: ", error);
-//     return "Error communicating with model :(";
-//   }
+//   ...
 // }
 
 export async function getChatResponse(
@@ -194,26 +130,36 @@ export async function getChatResponse(
     errors: [] as string[],
   };
 
-  try {
-    // Step 1: Initial LLM call
-    console.log("Invoking LLM with message history:", chatMessageHistory);
-    let response = await llmWithTools.invoke(chatMessageHistory);
-    console.log("Raw LLM response:", response);
-    chatMessageHistory.push(response);
-
-    // Step 2: Extract any text content
+  // Small helper so we only have one place that pulls text from a response
+  const extractTextFromResponse = (response: any) => {
     if (typeof response.content === "string") {
-      output.text.push(response.content);
+      const trimmed = response.content.trim();
+      if (trimmed.length > 0) {
+        output.text.push(trimmed);
+      }
     } else if (Array.isArray(response.content)) {
       for (const part of response.content) {
         if (part.type === "text" && typeof part.text === "string") {
-          output.text.push(part.text);
+          const trimmed = part.text.trim();
+          if (trimmed.length > 0) {
+            output.text.push(trimmed);
+          }
         }
       }
     }
+  };
 
-    // Step 3: Handle tool calls
-    for await (const toolCall of response.tool_calls ?? []) {
+  try {
+    // Step 1: Initial LLM call
+    console.log("Invoking LLM with message history:", chatMessageHistory);
+    const firstResponse = await llmWithTools.invoke(chatMessageHistory);
+    console.log("Raw LLM response:", firstResponse);
+    chatMessageHistory.push(firstResponse);
+
+    const hadTools = (firstResponse.tool_calls?.length ?? 0) > 0;
+
+    // Step 2: Handle tool calls (if any)
+    for await (const toolCall of firstResponse.tool_calls ?? []) {
       const tool = toolsByName[toolCall.name];
       if (!tool) {
         const errorMsg = `Error: Unknown tool "${toolCall.name}".`;
@@ -246,6 +192,7 @@ export async function getChatResponse(
             tool_call_id: String(toolCall.id ?? ""),
           }),
         );
+
         // Notify UI/editor that a tool was called so selection boxes can finalize
         try {
           if (
@@ -259,7 +206,7 @@ export async function getChatResponse(
             );
           }
         } catch (e) {
-          // ignore
+          // ignore UI errors
         }
       } catch (toolError) {
         const errorMsg = `Error: Tool '${toolCall.name}' failed with args: ${JSON.stringify(toolCall.args)}.\nDetails: ${toolError}`;
@@ -276,20 +223,16 @@ export async function getChatResponse(
       }
     }
 
-    // Step 4: Re-invoke LLM if tools were used
-    if ((response.tool_calls?.length ?? 0) > 0) {
-      response = await llmWithTools.invoke(chatMessageHistory);
-      console.log("Raw LLM response after tool calls:", response);
-
-      if (typeof response.content === "string") {
-        output.text.push(response.content);
-      } else if (Array.isArray(response.content)) {
-        for (const part of response.content) {
-          if (part.type === "text" && typeof part.text === "string") {
-            output.text.push(part.text);
-          }
-        }
-      }
+    // Step 3: Decide which response's text to expose
+    if (hadTools) {
+      // Re-invoke LLM after tools and only expose THIS text
+      const secondResponse = await llmWithTools.invoke(chatMessageHistory);
+      console.log("Raw LLM response after tool calls:", secondResponse);
+      chatMessageHistory.push(secondResponse);
+      extractTextFromResponse(secondResponse);
+    } else {
+      // No tools were used; expose the first response text
+      extractTextFromResponse(firstResponse);
     }
 
     return output;

@@ -90,6 +90,7 @@ export class UIScene extends Phaser.Scene {
         <div id="tabs" class="pt-tabs">
           <button id="tab-chat" class="pt-tab active">Chat</button>
           <button id="tab-blocks" class="pt-tab">Blocks</button>
+          <button id="tab-controls" class="pt-tab">Controls</button>
         </div>
         <div id="tab-contents" class="pt-tab-contents">
           <div id="chat-content" class="pt-chat-content">
@@ -98,6 +99,54 @@ export class UIScene extends Phaser.Scene {
           </div>
           <div id="blocks-content" class="pt-blocks-content">
             <div id="blocks-list" class="pt-blocks-list"></div>
+          </div>
+          <div id="controls-content" class="pt-controls-content">
+            <h3>Basic Controls</h3>
+            <div class="control-item">
+              <span class="control-key">Left Click</span>
+              <span class="control-desc">Place tile (drag to continuously place)</span>
+            </div>
+            <div class="control-item">
+              <span class="control-key">Right Click</span>
+              <span class="control-desc">Make a selection box (drag)</span>
+            </div>
+            <div class="control-item">
+              <span class="control-key">WASD</span>
+              <span class="control-desc">Move camera & character</span>
+            </div>
+            <div class="control-item">
+              <span class="control-key">C</span>
+              <span class="control-desc">Toggle chatbox</span>
+            </div>
+            <h3 style="margin-top: 16px;">Selection Controls</h3>
+            <div class="control-item">
+              <span class="control-key">Ctrl + C</span>
+              <span class="control-desc">Copy selection</span>
+            </div>
+            <div class="control-item">
+              <span class="control-key">Ctrl + X</span>
+              <span class="control-desc">Cut selection</span>
+            </div>
+            <div class="control-item">
+              <span class="control-key">Ctrl + V</span>
+              <span class="control-desc">Paste selection</span>
+            </div>
+            <div class="control-item">
+              <span class="control-key">Ctrl + U</span>
+              <span class="control-desc">Undo</span>
+            </div>
+            <div class="control-item">
+              <span class="control-key">Ctrl + R</span>
+              <span class="control-desc">Redo</span>
+            </div>
+            <div class="control-item">
+              <span class="control-key">Z</span>
+              <span class="control-desc">Cycle Z-Level</span>
+            </div>
+            <div class="control-item">
+              <span class="control-key">N</span>
+              <span class="control-desc">Make new selection box</span>
+            </div>
           </div>
         </div>
       </div>
@@ -353,33 +402,61 @@ export class UIScene extends Phaser.Scene {
       const tabBlocks = this.dom.getChildByID(
         "tab-blocks",
       ) as HTMLButtonElement | null;
+      const tabControls = this.dom.getChildByID(
+        "tab-controls",
+      ) as HTMLButtonElement | null;
       const chatContent = this.dom.getChildByID(
         "chat-content",
       ) as HTMLDivElement | null;
       const blocksContent = this.dom.getChildByID(
         "blocks-content",
       ) as HTMLDivElement | null;
+      const controlsContent = this.dom.getChildByID(
+        "controls-content",
+      ) as HTMLDivElement | null;
       const log = this.dom.getChildByID("chat-log") as HTMLDivElement | null;
-      if (!tabChat || !tabBlocks || !chatContent || !blocksContent || !log)
+      if (
+        !tabChat ||
+        !tabBlocks ||
+        !tabControls ||
+        !chatContent ||
+        !blocksContent ||
+        !controlsContent ||
+        !log
+      )
         return;
 
       const switchToChat = () => {
         tabChat.classList.add("active");
         tabBlocks.classList.remove("active");
+        tabControls.classList.remove("active");
         chatContent.style.display = "flex";
         blocksContent.style.display = "none";
+        controlsContent.style.display = "none";
         this.updateLog();
       };
 
       const switchToBlocks = () => {
         tabBlocks.classList.add("active");
         tabChat.classList.remove("active");
+        tabControls.classList.remove("active");
         chatContent.style.display = "none";
         blocksContent.style.display = "flex";
+        controlsContent.style.display = "none";
+      };
+
+      const switchToControls = () => {
+        tabControls.classList.add("active");
+        tabChat.classList.remove("active");
+        tabBlocks.classList.remove("active");
+        chatContent.style.display = "none";
+        blocksContent.style.display = "none";
+        controlsContent.style.display = "flex";
       };
 
       tabChat.addEventListener("click", switchToChat);
       tabBlocks.addEventListener("click", switchToBlocks);
+      tabControls.addEventListener("click", switchToControls);
 
       // default to chat
       switchToChat();

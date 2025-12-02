@@ -3,6 +3,7 @@ import {
   BaseMessage,
   ToolMessage,
   SystemMessage,
+  AIMessageChunk,
 } from "@langchain/core/messages";
 
 const apiKey: string | undefined = import.meta.env.VITE_LLM_API_KEY;
@@ -10,7 +11,7 @@ const modelName: string | undefined = import.meta.env.VITE_LLM_MODEL_NAME;
 if (!apiKey) throw new Error("Missing VITE_LLM_API_KEY in .env file!");
 if (!modelName) throw new Error("Missing VITE_LLM_MODEL_NAME in .env file!");
 
-const llmTemp = 0;
+const llmTemp = 0.7;
 
 const sysPrompt =
   "You are 'Pewter', an expert tile-based map designer by day and an incredible video game player by night. " +
@@ -195,13 +196,13 @@ export async function getChatResponse(
   };
 
   try {
-    // Step 1: Initial LLM call
+    // Initial LLM call
     console.log("Invoking LLM with message history:", chatMessageHistory);
     let response = await llmWithTools.invoke(chatMessageHistory);
     console.log("Raw LLM response:", response);
     chatMessageHistory.push(response);
 
-    // Step 2: Extract any text content
+    // Extract any text content
     if (typeof response.content === "string") {
       output.text.push(response.content);
     } else if (Array.isArray(response.content)) {
@@ -213,34 +214,28 @@ export async function getChatResponse(
     }
 
     // Step 3: Handle tool calls
-    for await (const toolCall of response.tool_calls ?? []) {
-      const tool = toolsByName[toolCall.name];
-      if (!tool) {
-        const errorMsg = `Error: Unknown tool "${toolCall.name}".`;
-        console.error(errorMsg);
-        output.errors.push(errorMsg);
-        chatMessageHistory.push(
-          new ToolMessage({
-            name: toolCall.name,
-            content: errorMsg,
-            tool_call_id: String(toolCall.id ?? ""),
-          }),
-        );
-        continue;
-      }
+    async function handleToolCall() {
+      for await (const toolCall of response.tool_calls ?? []) {
+        const tool = toolsByName[toolCall.name];
+        if (!tool) {
+          const errorMsg = `Error: Unknown tool "${toolCall.name}".`;
+          console.error(errorMsg);
+          output.errors.push(errorMsg);
+          chatMessageHistory.push(
+            new ToolMessage({
+              name: toolCall.name,
+              content: errorMsg,
+              tool_call_id: String(toolCall.id ?? ""),
+            }),
+          );
+          continue;
+        }
 
-      try {
-        const result = await tool.invoke(toolCall.args);
-        console.log(`Tool called ${toolCall.name} with result:`, result);
+        try {
+          const result = await tool.invoke(toolCall.args);
+          console.log(`Tool called ${toolCall.name} with result:`, result);
 
-        output.toolCalls.push({
-          name: toolCall.name,
-          args: toolCall.args,
-          result: result,
-        });
-
-        chatMessageHistory.push(
-          new ToolMessage({
+          output.toolCalls.push({
             name: toolCall.name,
             content: result,
             tool_call_id: String(toolCall.id ?? ""),
@@ -265,27 +260,64 @@ export async function getChatResponse(
         const errorMsg = `Error: Tool '${toolCall.name}' failed with args: ${JSON.stringify(toolCall.args)}.\nDetails: ${toolError}`;
         console.error(errorMsg);
         output.errors.push(errorMsg);
+            args: toolCall.args,
+            result: result,
+          });
 
-        chatMessageHistory.push(
-          new ToolMessage({
-            name: toolCall.name,
-            content: errorMsg,
-            tool_call_id: String(toolCall.id ?? ""),
-          }),
-        );
+          chatMessageHistory.push(
+            new ToolMessage({
+              name: toolCall.name,
+              content: result,
+              tool_call_id: String(toolCall.id ?? ""),
+            }),
+          );
+          // Notify UI/editor that a tool was called so selection boxes can finalize
+          try {
+            if (
+              typeof window !== "undefined" &&
+              typeof window.dispatchEvent === "function"
+            ) {
+              window.dispatchEvent(
+                new CustomEvent("toolCalled", {
+                  detail: { name: toolCall.name, args: toolCall.args, result },
+                }),
+              );
+            }
+          } catch (e) {
+            // ignore
+          }
+        } catch (toolError) {
+          const errorMsg = `Error: Tool '${toolCall.name}' failed with args: ${JSON.stringify(toolCall.args)}.\nDetails: ${toolError}`;
+          console.error(errorMsg);
+          output.errors.push(errorMsg);
+
+          chatMessageHistory.push(
+            new ToolMessage({
+              name: toolCall.name,
+              content: errorMsg,
+              tool_call_id: String(toolCall.id ?? ""),
+            }),
+          );
+        }
       }
     }
+
+    handleToolCall();
 
     // Step 4: Re-invoke LLM if tools were used
     if ((response.tool_calls?.length ?? 0) > 0) {
       response = await llmWithTools.invoke(chatMessageHistory);
       console.log("Raw LLM response after tool calls:", response);
-
       if (typeof response.content === "string") {
         output.text.push(response.content);
       } else if (Array.isArray(response.content)) {
+        handleToolCall();
         for (const part of response.content) {
-          if (part.type === "text" && typeof part.text === "string") {
+          if (
+            part.type &&
+            part.type === "text" &&
+            typeof part.text === "string"
+          ) {
             output.text.push(part.text);
           }
         }

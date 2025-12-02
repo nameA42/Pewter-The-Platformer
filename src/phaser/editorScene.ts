@@ -322,12 +322,13 @@ export class EditorScene extends Phaser.Scene {
       const blockToTileMap: { [key: string]: number } = {
         "Block 1": 1,
         Coin: 2,
-        "Block 3": 3,
-        "Block 4": 4,
+        Fruit: 3,
+        "Grass-Half Block": 4,
         "Dirt Block": 5,
+        "Question Block": 6,
         "Block 6": 6,
-        "Slime Enemy": 7,
-        "Ultra Slime": 8,
+        "Slime Enemy": 8,
+        "Ultra Slime": 7,
         Eraser: -1,
       };
 

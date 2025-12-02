@@ -4,6 +4,7 @@ import Phaser from "phaser";
 type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
   isFalling?: boolean;
 };
+import { regenerateSelection as regenerateSelectionModule } from "./regenerator";
 import { sendUserPrompt } from "../languageModel/chatBox";
 import { setActiveSelectionBox } from "../languageModel/chatBox";
 import { Slime } from "./ExternalClasses/Slime.ts";
@@ -294,6 +295,33 @@ export class EditorScene extends Phaser.Scene {
         this.selectBox(this.activeBox);
       } else {
         console.log("ui:selectCurrentBox fired but no active box exists");
+      }
+    });
+
+    // Listen for UI regenerate requests
+    this.game.events.on("ui:regenerateSelection", async () => {
+      console.log("ui:regenerateSelection received");
+      if (!this.activeBox) {
+        console.log("No active selection to regenerate");
+        this.game.events.emit("regenerate:finished", {
+          success: false,
+          reason: "no-active-box",
+        });
+        return;
+      }
+
+      // Emit started so UI can show feedback
+      this.game.events.emit("regenerate:started");
+
+      try {
+        await this.regenerateSelection(this.activeBox);
+        this.game.events.emit("regenerate:finished", { success: true });
+      } catch (err) {
+        console.error("Regeneration failed:", err);
+        this.game.events.emit("regenerate:finished", {
+          success: false,
+          error: err,
+        });
       }
     });
 
@@ -811,6 +839,14 @@ export class EditorScene extends Phaser.Scene {
         this.worldFacts,
         this,
       );
+    }
+
+    //Temp code - Jason
+    if (Phaser.Input.Keyboard.JustDown(this.keyB)) {
+      //Call selectionBox.ts checkTilesInBox
+      if (this.activeBox) {
+        this.activeBox.checkTilesInBox();
+      }
     }
   }
 
@@ -1435,5 +1471,25 @@ export class EditorScene extends Phaser.Scene {
     }
 
     return dependencyMap;
+  }
+
+  // Thin wrapper that delegates regeneration to the extracted module.
+  async regenerateSelection(
+    box: SelectionBox,
+    propagateLower: boolean = true,
+    extraHiddenContext: string = "",
+    visited: Set<SelectionBox> = new Set(),
+  ): Promise<void> {
+    try {
+      await regenerateSelectionModule(
+        this,
+        box,
+        propagateLower,
+        extraHiddenContext,
+        visited,
+      );
+    } catch (e) {
+      console.warn("Regeneration (module) failed:", e);
+    }
   }
 }

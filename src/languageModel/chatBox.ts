@@ -225,6 +225,39 @@ export async function sendUserPromptWithContext(
 }
 
 /**
+ * Send a user prompt to the LLM but do NOT modify the visible chat history.
+ * This is intended for background/regeneration calls where we want the model
+ * to see the selection's history + an optional hidden context, but we do not
+ * want to add the user or AI messages to the UI-visible chat feed.
+ */
+export async function sendUserPromptHidden(
+  userMessageText: string,
+  hiddenContext?: string,
+): Promise<string> {
+  // Keep the visible history untouched; build a temporary history for the model
+  const tempHistory: BaseMessage[] = currentChatHistory.slice();
+  tempHistory.push(new HumanMessage(userMessageText));
+  if (hiddenContext && hiddenContext.trim().length > 0) {
+    tempHistory.push(new HumanMessage(`[WORLD CONTEXT]: ${hiddenContext}`));
+  }
+
+  setBotResponding(true);
+  try {
+    const reply = await getChatResponse(tempHistory);
+    const replyText = Array.isArray(reply.text)
+      ? reply.text.join("\n")
+      : String(reply.text);
+    // Do NOT push AIMessage into currentChatHistory and DO NOT dispatch UI events.
+    return replyText;
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    return "Error: " + errorMessage;
+  } finally {
+    setBotResponding(false);
+  }
+}
+
+/**
  * Send a system-level message to the LLM (e.g., instructions or context).
  */
 export async function sendSystemMessage(message: string): Promise<string> {

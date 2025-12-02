@@ -60,6 +60,29 @@ export function registerTool(tool: any) {
   console.log("Tool Registered: ", tool.name);
 }
 
+// Programmatic invocation helper for registered tools
+export async function invokeTool(name: string, args: Record<string, any>) {
+  const tool = toolsByName[name];
+  if (!tool) {
+    throw new Error(`Tool '${name}' is not registered.`);
+  }
+  // Some tool wrappers expose 'invoke' or 'toolCall' with invoke
+  if (typeof tool.invoke === "function") {
+    return await tool.invoke(args);
+  }
+  if (
+    typeof tool.toolCall === "function" &&
+    typeof tool.toolCall.invoke === "function"
+  ) {
+    return await tool.toolCall.invoke(args);
+  }
+  // if tool is itself an object returned by @langchain/tool, try calling it
+  if (typeof tool === "function") {
+    return await tool(args);
+  }
+  throw new Error(`Tool '${name}' cannot be invoked programmatically.`);
+}
+
 export function initializeTools() {
   if (llmWithTools) {
     console.error("Attempting to init tools when model is already bound!");

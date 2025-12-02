@@ -12,6 +12,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   public dom!: Phaser.GameObjects.DOMElement;
+  public panel!: Phaser.GameObjects.Container;
 
   //Variables
 
@@ -34,6 +35,10 @@ export class UIScene extends Phaser.Scene {
 
   //UI
   private playButton!: Phaser.GameObjects.Container;
+  private regenerateButton!: Phaser.GameObjects.Container;
+
+  //Inputs
+  private keyR!: Phaser.Input.Keyboard.Key;
 
   //Chat LLM
   private chatBox!: Phaser.GameObjects.DOMElement;
@@ -238,6 +243,62 @@ export class UIScene extends Phaser.Scene {
       },
     );
     selectBoxBtn.setDepth(1001);
+
+    // Regenerate selection button - emits a request the EditorScene will handle
+    this.regenerateButton = this.createButton(
+      this,
+      340, // x position (to the right of Deselect)
+      this.cameras.main.height - 50,
+      "Regenerate",
+      () => {
+        this.game.events.emit("ui:regenerateSelection");
+      },
+      {
+        fill: 0x3a3a3a,
+        hoverFill: 0x5a5a5a,
+        downFill: 0x2a2a2a,
+        textColor: "#ffffff",
+        fontSize: 14,
+        paddingX: 10,
+        paddingY: 6,
+        fixedWidth: 140,
+      },
+    );
+    this.regenerateButton.setDepth(1001);
+
+    // Listen for regeneration lifecycle events so the button can show feedback
+    this.game.events.on("regenerate:started", () => {
+      try {
+        const bg = this.regenerateButton
+          .list[0] as Phaser.GameObjects.Rectangle;
+        const txt = this.regenerateButton.list[1] as Phaser.GameObjects.Text;
+        // Visual feedback: disable interaction and change text
+        try {
+          bg.disableInteractive();
+        } catch (e) {}
+        try {
+          txt.setText("Regenerating...");
+        } catch (e) {}
+      } catch (e) {
+        // ignore
+      }
+    });
+
+    this.game.events.on("regenerate:finished", (_payload?: any) => {
+      try {
+        const bg = this.regenerateButton
+          .list[0] as Phaser.GameObjects.Rectangle;
+        const txt = this.regenerateButton.list[1] as Phaser.GameObjects.Text;
+        try {
+          bg.setInteractive({ useHandCursor: true });
+        } catch (e) {}
+        try {
+          txt.setText("Regenerate");
+        } catch (e) {}
+      } catch (e) {
+        // ignore
+      }
+    });
 
     this.input.keyboard!.on("keydown-H", () => {
       const editorScene = this.scene.get("editorScene") as EditorScene;

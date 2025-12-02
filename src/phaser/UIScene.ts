@@ -36,6 +36,7 @@ export class UIScene extends Phaser.Scene {
   //UI
   private playButton!: Phaser.GameObjects.Container;
   private regenerateButton!: Phaser.GameObjects.Container;
+  private deselectBoxBtn!: Phaser.GameObjects.Container;
 
   //Inputs
   private keyR!: Phaser.Input.Keyboard.Key;
@@ -116,7 +117,7 @@ export class UIScene extends Phaser.Scene {
             </div>
             <div class="control-item">
               <span class="control-key">C</span>
-              <span class="control-desc">Toggle chatbox</span>
+              <span class="control-desc">Toggle UI</span>
             </div>
             <h3 style="margin-top: 16px;">Selection Controls</h3>
             <div class="control-item">
@@ -161,12 +162,15 @@ export class UIScene extends Phaser.Scene {
     this.populateBlocks(this.blocks);
     this.setupInput();
 
-    // Toggle chatbox (and notify other scenes to toggle overview/minimap)
+    // Toggle UI (and notify other scenes to toggle overview/minimap)
     if (this.input && this.input.keyboard) {
       this.input.keyboard.on("keydown-C", (e: KeyboardEvent) => {
         if ((e as KeyboardEvent).ctrlKey) return; // ignore Ctrl+C
         isChatVisible = !isChatVisible;
         this.chatBox.setVisible(isChatVisible);
+        this.playButton.setVisible(isChatVisible);
+        this.deselectBoxBtn.setVisible(isChatVisible);
+        this.regenerateButton.setVisible(isChatVisible);
         try {
           this.game.events.emit("ui:toggleMinimap", isChatVisible);
         } catch (err) {
@@ -188,6 +192,9 @@ export class UIScene extends Phaser.Scene {
         if (e.key.toLowerCase() === "c" && !e.ctrlKey) {
           isChatVisible = !isChatVisible;
           this.chatBox.setVisible(isChatVisible);
+          this.playButton.setVisible(isChatVisible);
+          this.deselectBoxBtn.setVisible(isChatVisible);
+          this.regenerateButton.setVisible(isChatVisible);
           try {
             this.game.events.emit("ui:toggleMinimap", isChatVisible);
           } catch (err) {}
@@ -271,7 +278,7 @@ export class UIScene extends Phaser.Scene {
     this.createPlayButton();
 
     // Add a small helper button to select the current temporary selection box
-    const selectBoxBtn = this.createButton(
+    this.deselectBoxBtn = this.createButton(
       this,
       220, // x position
       this.cameras.main.height - 50,
@@ -291,7 +298,7 @@ export class UIScene extends Phaser.Scene {
         fixedWidth: 120,
       },
     );
-    selectBoxBtn.setDepth(1001);
+    this.deselectBoxBtn.setDepth(1001);
 
     // Regenerate selection button - emits a request the EditorScene will handle
     this.regenerateButton = this.createButton(

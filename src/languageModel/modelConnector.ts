@@ -195,13 +195,13 @@ export async function getChatResponse(
   };
 
   try {
-    // Step 1: Initial LLM call
+    // Initial LLM call
     console.log("Invoking LLM with message history:", chatMessageHistory);
     let response = await llmWithTools.invoke(chatMessageHistory);
     console.log("Raw LLM response:", response);
     chatMessageHistory.push(response);
 
-    // Step 2: Extract any text content
+    // Extract any text content
     if (typeof response.content === "string") {
       output.text.push(response.content);
     } else if (Array.isArray(response.content)) {
@@ -212,7 +212,7 @@ export async function getChatResponse(
       }
     }
 
-    // Step 3: Handle tool calls
+    // Handle tool calls
     for await (const toolCall of response.tool_calls ?? []) {
       const tool = toolsByName[toolCall.name];
       if (!tool) {
@@ -276,7 +276,7 @@ export async function getChatResponse(
       }
     }
 
-    // Step 4: Re-invoke LLM if tools were used
+    // Re-invoke LLM if tools were used
     if ((response.tool_calls?.length ?? 0) > 0) {
       response = await llmWithTools.invoke(chatMessageHistory);
       console.log("Raw LLM response after tool calls:", response);

@@ -1,0 +1,103 @@
+.pt-chatbox {
+  width: 320px;
+  height: 680px;
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  font-family: sans-serif;
+  font-size: 15px;
+  padding: 12px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
+  box-sizing: border-box;
+}
+
+.pt-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.pt-tab {
+  flex: 1;
+  padding: 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #ddd;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.pt-tab.active {
+  background: #222;
+  color: #fff;
+}
+
+.pt-tab-contents {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.pt-chat-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.pt-chat-log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  font-size: 15px;
+  line-height: 1.5;
+  padding: 12px 6px 6px 6px;
+  box-sizing: border-box;
+}
+
+.pt-chat-input {
+  margin-top: 12px;
+  padding: 12px;
+  font-size: 15px;
+  border: none;
+  border-radius: 4px;
+  width: calc(100% - 24px);
+  box-sizing: border-box;
+}
+
+.pt-blocks-content {
+  flex: 1;
+  display: none;
+  flex-direction: column;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.pt-blocks-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.pt-blocks-list button {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: none;
+  background: #333;
+  color: #fff;
+  cursor: pointer;
+}
+
+.pt-blocks-list button:hover {
+  background: #444;
+}

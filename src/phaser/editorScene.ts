@@ -105,6 +105,16 @@ export class EditorScene extends Phaser.Scene {
     super({ key: "editorScene" });
   }
 
+  // Collaborative Context Merging - Expose active box for chat system
+  private setupGlobalActiveBoxAccess(): void {
+    // Expose active selection box to the chat system
+    if (typeof window !== "undefined") {
+      (window as any).getActiveSelectionBox = () => {
+        return this.activeBox;
+      };
+    }
+  }
+
   preload() {
     this.load.setPath("phaserAssets/");
     //this.load.image("tilemap_tiles", "tilemap_packed.png");
@@ -159,8 +169,10 @@ export class EditorScene extends Phaser.Scene {
   }
 
   create() {
-    this.map = this.make.tilemap({ key: "defaultMap" });
+    // Setup global access for collaborative context
+    // this.setupGlobalActiveBoxAccess(); // Temporarily commented out to fix loading issue
 
+    this.map = this.make.tilemap({ key: "defaultMap" });
     this.worldFacts = new WorldFacts(this);
 
     console.log("Map loaded:", this.map);
@@ -248,6 +260,28 @@ export class EditorScene extends Phaser.Scene {
     //UI Scene setup
     this.scene.launch("UIScene");
     this.scene.bringToTop("UIScene");
+
+    // Listen for UI toggles (chatbox C key) to also toggle the overview/minimap
+    try {
+      this.game.events.on("ui:toggleMinimap", (_isChatVisible?: boolean) => {
+        if (this.minimap) {
+          this.removeMinimap();
+        } else {
+          this.createMinimap();
+        }
+      });
+
+      // Remove listener on shutdown to avoid duplicates
+      this.events.on("shutdown", () => {
+        try {
+          this.game.events.off("ui:toggleMinimap");
+        } catch (e) {
+          // ignore
+        }
+      });
+    } catch (e) {
+      // ignore if game.events not available
+    }
 
     // Listen for a UI request to select the current temporary selection box
     this.game.events.on("ui:selectCurrentBox", () => {
@@ -720,6 +754,22 @@ export class EditorScene extends Phaser.Scene {
     }
     this.activeBox?.updateTabPosition?.();
 
+    // Collaborative Context Merging - Update neighbor detection for all boxes
+    for (const box of this.selectionBoxes) {
+      if (box.updateNeighbors) {
+        box.updateNeighbors(this.selectionBoxes);
+      }
+      if (box.updateIntersections) {
+        box.updateIntersections(this.selectionBoxes);
+      }
+    }
+    if (this.activeBox && this.activeBox.updateNeighbors) {
+      this.activeBox.updateNeighbors(this.selectionBoxes);
+      if (this.activeBox.updateIntersections) {
+        this.activeBox.updateIntersections(this.selectionBoxes);
+      }
+    }
+
     if (Phaser.Input.Keyboard.JustDown(this.keyC) && this.keyCtrl.isDown) {
       this.copySelection();
       console.log("Copied selection");
@@ -1155,34 +1205,21 @@ export class EditorScene extends Phaser.Scene {
   // Create the editor button - Shawn K
   createEditorButton() {
     // some help text
-    this.add.rectangle(30, 310, 500, 20, 0x1a1a1a);
-    this.add.text(20, 300, "Press Q to quit play mode.");
+    const msgBg = this.add.rectangle(30, 310, 500, 20, 0x1a1a1a);
+    const msgTxt = this.add.text(20, 300, "Press Q to quit play mode.");
 
-    /* Someone help me! I can't get this button to draw.
-    var UIScene = this.scene.get("UIScene");
-    
-    this.editorButton = UIScene.createButton(
-      this,
-      100, // 100 pixels from left of screen
-      this.cameras.main.height - 50, // 100 pixels from bottom of screen
-      'Edit',
-      () => {
-        this.startEditor();
-      },
-      {
-        fill: 0x1a1a1a,        // Dark background
-        hoverFill: 0x127803,   // Green hover
-        downFill: 0x0f5f02,    // Darker green
-        textColor: '#ffffff',   // White text
-        fontSize: 24,
-        paddingX: 15,
-        paddingY: 10
-      }
-    );
-
-    // Set high depth so it appears above other UI elements
-    this.editorButton.setDepth(1001);
-    */
+    this.time.delayedCall(3000, () => {
+      this.tweens.add({
+        targets: [msgBg, msgTxt],
+        alpha: 0,
+        duration: 1500,
+        ease: "Sine.easeInOut",
+        onCompletete: () => {
+          msgBg.destroy();
+          msgTxt.destroy();
+        },
+      });
+    });
   }
 
   private startEditor() {

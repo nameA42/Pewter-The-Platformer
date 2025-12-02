@@ -178,7 +178,7 @@ export class GameScene extends Phaser.Scene {
     console.log('Player visible:', this.player.visible);
     console.log('Map height:', this.map.heightInPixels);
     console.log('Camera bounds:', this.cameras.main.getBounds());
-
+    
     this.cameras.main
       .setBounds(0, 0, this.map.widthInPixels, this.map.heightInPixels)
       .startFollow(this.player, true, 0.25, 0.25)

@@ -12,6 +12,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   public dom!: Phaser.GameObjects.DOMElement;
+  public panel!: Phaser.GameObjects.Container;
 
   //Variables
 

@@ -17,7 +17,17 @@ export class UIScene extends Phaser.Scene {
 
   //Data
   private currentBlock: string = "";
-  private blocks: string[] = ["block1", "block2", "block3"];
+  private blocks: string[] = [
+    "Block 1",
+    "Coin",
+    "Block 3",
+    "Block 4",
+    "Dirt Block",
+    "Block 6",
+    "Slime Enemy",
+    "Ultra Slime",
+    "Eraser",
+  ];
   //Registry (Global variables)
   private setPointerOverUI = (v: boolean) =>
     this.registry.set("uiPointerOver", v);
@@ -41,7 +51,16 @@ export class UIScene extends Phaser.Scene {
     this.panel.setDepth(1000);
 
     //Variables
-    this.blocks = ["block1", "block2", "block3"]; //Add more blocks to see capabilities
+    this.blocks = [
+      "Coin",
+      "Fruit",
+      "Grass-Half Block",
+      "Dirt Block",
+      "Question Block",
+      "Slime Enemy",
+      "Ultra Slime",
+      "Eraser",
+    ]; //Add more blocks to see capabilities
 
     //Input
     // const keys = [
@@ -247,7 +266,17 @@ export class UIScene extends Phaser.Scene {
         const b = document.createElement("button");
         // Use the block name for the label and emit selection so other scenes can react
         b.textContent = block;
-        b.addEventListener("click", () => this.emitSelect(block));
+        b.addEventListener("click", () => {
+          // Remove 'selected' class from all buttons
+          Array.from(blocksList.children).forEach((btn) => {
+            btn.classList.remove("selected");
+          });
+          // Add 'selected' class to the clicked button
+          b.classList.add("selected");
+          // Update current block and emit event
+          this.currentBlock = block;
+          this.emitSelect(block);
+        });
         blocksList.appendChild(b);
       }
     } catch (e) {

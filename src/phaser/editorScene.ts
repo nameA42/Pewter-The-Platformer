@@ -315,6 +315,31 @@ export class EditorScene extends Phaser.Scene {
       }
     });
 
+    // Listen for block selection from UI
+    this.game.events.on("ui:selectBlock", (blockName: string) => {
+      console.log("Block selected:", blockName);
+      // Map block names to tile indices
+      const blockToTileMap: { [key: string]: number } = {
+        "Block 1": 1,
+        Coin: 2,
+        "Block 3": 3,
+        "Block 4": 4,
+        "Dirt Block": 5,
+        "Block 6": 6,
+        "Slime Enemy": 7,
+        "Ultra Slime": 8,
+        Eraser: -1,
+      };
+
+      const tileIndex = blockToTileMap[blockName];
+      if (tileIndex !== undefined) {
+        this.selectedTileIndex = tileIndex;
+        console.log(`Selected tile index: ${this.selectedTileIndex}`);
+      } else {
+        console.warn(`Unknown block: ${blockName}`);
+      }
+    });
+
     // When the LLM invokes a tool, finalize the active selection box (if any)
     if (
       typeof window !== "undefined" &&

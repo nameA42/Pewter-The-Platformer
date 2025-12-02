@@ -272,49 +272,36 @@ export class WorldFacts {
 
   constructor(scene: EditorScene) {
     this.scene = scene;
-    this.refresh();
+    this.refresh(); // populate facts for the entire scene
   }
 
   refresh() {
-    this.structureFacts = [];
-    this.collectableFacts = [];
-    this.enemyFacts = [];
-    this.extractFromScene(this.scene);
+    this.structureFacts = this.extractStructures(this.scene);
+    this.collectableFacts = this.extractCollectables(this.scene);
+    this.enemyFacts = this.extractEnemies(this.scene);
   }
 
-  private extractFromScene(scene: EditorScene) {
-    // 1. Structures
-    this.structureFacts = this.extractStructures(scene);
-
-    // 2. Collectables
-    const collectablesLayer =
-      scene.map.getLayer("Collectables_Layer")?.tilemapLayer;
-    if (collectablesLayer) {
-      const xs: number[] = [];
-      const ys: number[] = [];
-      const types: number[] = [];
-
-      for (let x = 0; x < collectablesLayer.width; x++) {
-        for (let y = 0; y < collectablesLayer.height; y++) {
-          const tile = collectablesLayer.getTileAt(x, y);
-          if (tile) {
-            xs.push(x);
-            ys.push(y);
-            types.push(tile.index);
-          }
-        }
-      }
-      if (xs.length > 0) {
-        this.collectableFacts.push(new CollectableFact(xs, ys, types));
-      }
-    }
-
-    // 3. Enemies
-    for (const e of scene.enemies ?? []) {
-      this.enemyFacts.push(new EnemyFact(e.x, e.y, e.type));
+  setFact(category: FactCategory, x?: number, y?: number, type?: string): void {
+    switch (category) {
+      case "Structure":
+        // Recompute structure facts directly from the scene
+        this.structureFacts = this.extractStructures(this.scene);
+        break;
+      case "Enemy":
+        if (x === undefined || y === undefined) return;
+        // Remove any existing enemy at (x, y)
+        this.enemyFacts = this.enemyFacts.filter(
+          (f) => !(f.x === x && f.y === y),
+        );
+        this.enemyFacts.push(new EnemyFact(x, y, type ?? "unknown"));
+        break;
+      case "Collectable":
+        // Always recompute collectables from layer (keeps it consistent)
+        this.extractCollectables(this.scene);
     }
   }
 
+  // --- Extract all structures in the scene ---
   private extractStructures(scene: EditorScene): StructureFact[] {
     const structures: StructureFact[] = [];
     const groundLayer = scene.map.getLayer("Ground_Layer")?.tilemapLayer;
@@ -323,45 +310,41 @@ export class WorldFacts {
     const width = groundLayer.width;
     const height = groundLayer.height;
 
-    const hasTile = (x: number, y: number) =>
-      x >= 0 &&
-      x < width &&
-      y >= 0 &&
-      y < height &&
-      !!groundLayer.getTileAt(x, y);
+    const hasTile = (x: number, y: number) => !!groundLayer.getTileAt(x, y);
 
-    // --- topmost tile per column (min y) or -1
-    const columnTop: number[] = new Array(width).fill(-1);
+    // --- topmost and bottommost tile per column
+    const columnTop: Record<number, number> = {};
+    const columnBottom: Record<number, number> = {};
+
     for (let x = 0; x < width; x++) {
-      let t = -1;
+      let topY = -1;
+      let bottomY = -1;
+
       for (let y = 0; y < height; y++) {
         if (hasTile(x, y)) {
-          t = y;
+          topY = y;
           break;
         }
       }
-      columnTop[x] = t;
-    }
 
-    // --- bottommost tile per column (max y) or -1
-    const columnBottoms: number[] = new Array(width).fill(-1);
-    for (let x = 0; x < width; x++) {
-      let b = -1;
       for (let y = height - 1; y >= 0; y--) {
         if (hasTile(x, y)) {
-          b = y;
+          bottomY = y;
           break;
         }
       }
-      columnBottoms[x] = b;
+
+      columnTop[x] = topY;
+      columnBottom[x] = bottomY;
     }
 
-    // --- base ground Y = mode of columnBottoms (ignore -1)
+    // --- Determine base ground level (mode of bottoms)
     const freq = new Map<number, number>();
-    for (const b of columnBottoms) {
-      if (b === -1) continue;
-      freq.set(b, (freq.get(b) ?? 0) + 1);
+    for (let x = 0; x < width; x++) {
+      const b = columnBottom[x];
+      if (b !== -1) freq.set(b, (freq.get(b) ?? 0) + 1);
     }
+
     let baseGroundY: number | null = null;
     let maxCount = 0;
     for (const [y, count] of freq.entries()) {
@@ -371,51 +354,48 @@ export class WorldFacts {
       }
     }
 
-    // --- 1) Build flats/platforms by scanning topmost (break when top changes)
+    // --- Identify flat/platform segments
     let runStart: number | null = null;
     let runTop: number | null = null;
 
-    function flushTopRun(endX: number) {
-      if (runStart === null) return;
+    const flushRun = (endX: number) => {
+      if (runStart === null || runTop === null) return;
       const x0 = runStart;
       const x1 = endX;
-
-      // if the run has no tiles at all (top = -1) -> skip here (pitfalls are handled below)
-      if (runTop === -1 || runTop === null) {
+      if (runTop === -1) {
         runStart = null;
         runTop = null;
         return;
       }
 
-      // Determine if any column in run is unsupported OR missing base ground
-      let isPlatform = false;
       const heights: number[] = [];
+      let isPlatform = false;
+
       for (let x = x0; x <= x1; x++) {
         const topY = columnTop[x];
         heights.push(topY);
+
         const belowY = topY + 1;
-        const supported =
-          topY !== -1 && (belowY >= height || hasTile(x, belowY));
+        const supported = topY !== -1 && hasTile(x, belowY);
         const baseMissing =
           baseGroundY !== null
-            ? columnBottoms[x] !== baseGroundY
-            : columnBottoms[x] === -1;
+            ? columnBottom[x] !== baseGroundY
+            : columnBottom[x] === -1;
+
         if (!supported || baseMissing) {
           isPlatform = true;
         }
       }
 
       if (isPlatform) {
-        // platform: provide per-column heights (cleaner output)
         structures.push(new StructureFact(x0, x1, "Platform", heights));
       } else {
-        // flat: report single height
         structures.push(new StructureFact(x0, x1, "Flat", runTop));
       }
 
       runStart = null;
       runTop = null;
-    }
+    };
 
     for (let x = 0; x < width; x++) {
       const top = columnTop[x];
@@ -424,113 +404,125 @@ export class WorldFacts {
         runTop = top;
         continue;
       }
-      if (top === runTop) {
-        // continue
-        continue;
+      if (top !== runTop) {
+        flushRun(x - 1);
+        runStart = x;
+        runTop = top;
       }
-      // changed
-      flushTopRun(x - 1);
-      runStart = x;
-      runTop = top;
     }
-    // final flush
-    flushTopRun(width - 1);
+    flushRun(width - 1);
 
-    // --- 2) Pitfalls: contiguous ranges where base ground is missing
-    // If we have a determined baseGroundY, consider columnBottoms[x] !== baseGroundY as pit.
-    // Otherwise, treat columns with no bottom (=== -1) as pit.
+    // --- Identify pitfalls
     let pitStart: number | null = null;
     const baseExists = baseGroundY !== null;
     for (let x = 0; x < width; x++) {
       const isPit = baseExists
-        ? columnBottoms[x] !== baseGroundY
-        : columnBottoms[x] === -1;
+        ? columnBottom[x] !== baseGroundY
+        : columnBottom[x] === -1;
+
       if (isPit) {
         if (pitStart === null) pitStart = x;
       } else {
         if (pitStart !== null) {
-          structures.push(new StructureFact(pitStart, x - 1, "Pitfall", -1));
+          structures.push(new StructureFact(pitStart, x - 1, "Pitfall"));
           pitStart = null;
         }
       }
     }
-    if (pitStart !== null)
-      structures.push(new StructureFact(pitStart, width - 1, "Pitfall", -1));
+    if (pitStart !== null) {
+      structures.push(new StructureFact(pitStart, width - 1, "Pitfall"));
+    }
 
-    // Sort for deterministic output (optional)
-    structures.sort((a: any, b: any) => a.xStart - b.xStart);
-
-    return structures.slice(0, -1);
+    structures.sort((a, b) => a.xStart - b.xStart);
+    return structures;
   }
 
-  setFact(category: FactCategory, x?: number, y?: number, type?: string): void {
-    switch (category) {
-      case "Structure": {
-        // Recompute structure facts directly from the scene
-        this.structureFacts = this.extractStructures(this.scene);
-        break;
-      }
+  private extractCollectables(scene: EditorScene): CollectableFact[] {
+    const collectablesLayer =
+      scene.map.getLayer("Collectables_Layer")?.tilemapLayer;
+    if (!collectablesLayer) return [];
 
-      case "Enemy": {
-        if (x === undefined || y === undefined) return;
+    const xs: number[] = [];
+    const ys: number[] = [];
+    const types: number[] = [];
 
-        // Remove any existing enemy at (x, y)
-        this.enemyFacts = this.enemyFacts.filter(
-          (f) => !(f.x === x && f.y === y),
-        );
-
-        this.enemyFacts.push(new EnemyFact(x, y, type ?? "unknown"));
-        break;
-      }
-
-      case "Collectable": {
-        // Always recompute collectables from layer (keeps it consistent)
-        this.collectableFacts = [];
-
-        const collectablesLayer =
-          this.scene.map.getLayer("Collectables_Layer")?.tilemapLayer;
-
-        if (collectablesLayer) {
-          const xs: number[] = [];
-          const ys: number[] = [];
-          const types: number[] = [];
-
-          for (let cx = 0; cx < collectablesLayer.width; cx++) {
-            for (let cy = 0; cy < collectablesLayer.height; cy++) {
-              const tile = collectablesLayer.getTileAt(cx, cy);
-              if (tile) {
-                xs.push(cx);
-                ys.push(cy);
-                types.push(tile.index);
-              }
-            }
-          }
-
-          if (xs.length > 0) {
-            this.collectableFacts.push(new CollectableFact(xs, ys, types));
-          }
+    for (let x = 0; x < collectablesLayer.width; x++) {
+      for (let y = 0; y < collectablesLayer.height; y++) {
+        const tile = collectablesLayer.getTileAt(x, y);
+        if (tile) {
+          xs.push(x);
+          ys.push(y);
+          types.push(tile.index);
         }
-        break;
       }
     }
+
+    return xs.length > 0 ? [new CollectableFact(xs, ys, types)] : [];
   }
 
-  getFact(category: FactCategory): Fact[] {
+  private extractEnemies(scene: EditorScene): EnemyFact[] {
+    if (!scene.enemies) return [];
+    return scene.enemies.map((e) => new EnemyFact(e.x, e.y, e.type));
+  }
+
+  // --- Filtered getFact ---
+  getFact(
+    category: FactCategory,
+    xMin?: number,
+    xMax?: number,
+    yMin?: number,
+    yMax?: number,
+  ): Fact[] {
+    let facts: Fact[] = [];
     switch (category) {
       case "Structure":
-        return this.structureFacts;
+        facts = this.structureFacts.filter((f) => {
+          const sf = f as StructureFact;
+          return (!xMin || sf.xEnd >= xMin) && (!xMax || sf.xStart <= xMax);
+        });
+        break;
       case "Collectable":
-        return this.collectableFacts;
+        facts = this.collectableFacts
+          .map((c) => {
+            const cf = c as CollectableFact;
+            const xs: number[] = [];
+            const ys: number[] = [];
+            const types: number[] = [];
+            for (let i = 0; i < cf.xs.length; i++) {
+              const x = cf.xs[i];
+              const y = cf.ys[i];
+              if (
+                (!xMin || x >= xMin) &&
+                (!xMax || x <= xMax) &&
+                (!yMin || y >= yMin) &&
+                (!yMax || y <= yMax)
+              ) {
+                xs.push(x);
+                ys.push(y);
+                types.push(cf.types[i]);
+              }
+            }
+            if (xs.length > 0) return new CollectableFact(xs, ys, types);
+            return null;
+          })
+          .filter((c) => c !== null) as CollectableFact[];
+        break;
       case "Enemy":
-        return this.enemyFacts;
-      default:
-        return [];
+        facts = this.enemyFacts.filter((e) => {
+          return (
+            (!xMin || e.x >= xMin) &&
+            (!xMax || e.x <= xMax) &&
+            (!yMin || e.y >= yMin) &&
+            (!yMax || e.y <= yMax)
+          );
+        });
+        break;
     }
+    return facts;
   }
 
   toString(): string {
     const parts: string[] = [];
-
     if (this.structureFacts.length > 0) {
       parts.push(this.structureFacts.map((s) => s.toString()).join(" "));
     }
@@ -540,7 +532,6 @@ export class WorldFacts {
     if (this.enemyFacts.length > 0) {
       parts.push(this.enemyFacts.map((e) => e.toString()).join(" "));
     }
-
     return parts.join(" ");
   }
 }

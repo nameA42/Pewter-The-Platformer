@@ -1,6 +1,7 @@
 import { tool } from "@langchain/core/tools";
 import type { EditorScene } from "../../phaser/editorScene.ts";
 import { z } from "zod";
+import { SelectionBox } from "../../phaser/selectionBox.ts";
 
 export class ClearTile {
   sceneGetter: () => EditorScene;
@@ -54,9 +55,50 @@ export class ClearTile {
       }
 
       try {
+        const selectionBoxes = scene.selectionBoxes;
+
+        type Coord = [number, number];
+        type Selection = [Coord, Coord];
+
+        let affectedSelections: Selection[] = [];
+
+        for (let i = 0; i < selectionBoxes.length; i++) {
+          const sel = selectionBoxes[i];
+          if (sel.getActive() == true) {
+            continue;
+          }
+
+          const sx = sel.getStart().x;
+          const sy = sel.getStart().y;
+          const ex = sel.getEnd().x;
+          const ey = sel.getEnd().y;
+
+          const overlaps = ex >= xMin && sx <= xMax && ey >= yMin && sy <= yMax;
+
+          if (overlaps) {
+            affectedSelections.push([
+              [Math.max(sx, xMin), Math.max(sy, yMin)],
+              [Math.min(ex, xMax), Math.min(ey, yMax)],
+            ]);
+          }
+        }
+
         for (let x = xMin; x < xMax; x++) {
           for (let y = yMin; y < yMax; y++) {
-            map.removeTileAt(x, y, false, false, layer);
+            let insideSelection = false;
+
+            for (const sel of affectedSelections) {
+              const [[sx, sy], [ex, ey]] = sel;
+
+              if (x >= sx && x <= ex && y >= sy && y <= ey) {
+                insideSelection = true;
+                break;
+              }
+            }
+
+            if (!insideSelection) {
+              layer.removeTileAt(x, y);
+            }
           }
         }
 

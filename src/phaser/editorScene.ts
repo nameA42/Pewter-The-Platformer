@@ -50,6 +50,7 @@ export class EditorScene extends Phaser.Scene {
   private isJumpPressed = false;
 
   private selectedTileIndex = -1; // index of the tile to place
+  private selectedBlockName = ""; // name of the selected block
 
   private isPlacing: boolean = false; // Place tile flag
 
@@ -363,7 +364,10 @@ export class EditorScene extends Phaser.Scene {
       const tileIndex = blockToTileMap[blockName];
       if (tileIndex !== undefined) {
         this.selectedTileIndex = tileIndex;
-        console.log(`Selected tile index: ${this.selectedTileIndex}`);
+        this.selectedBlockName = blockName;
+        console.log(
+          `Selected tile index: ${this.selectedTileIndex}, block: ${blockName}`,
+        );
       } else {
         console.warn(`Unknown block: ${blockName}`);
       }
@@ -449,7 +453,13 @@ export class EditorScene extends Phaser.Scene {
         const tileY = Math.floor(worldPoint.y / (16 * this.SCALE));
 
         // Place the currently selected brush tile
-        this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
+        // Use collectables layer for coins and fruits
+        const targetLayer =
+          this.selectedBlockName === "Coin" ||
+          this.selectedBlockName === "Fruit"
+            ? this.collectablesLayer
+            : this.groundLayer;
+        this.placeTile(targetLayer, tileX, tileY, this.selectedTileIndex);
       } else if (pointer.rightButtonDown()) {
         // Setup selection box
         console.log(`Starting selection`);
@@ -775,7 +785,12 @@ export class EditorScene extends Phaser.Scene {
       const pointer = this.input.activePointer;
       const tileX = Math.floor(pointer.worldX / this.TILE_SIZE);
       const tileY = Math.floor(pointer.worldY / this.TILE_SIZE);
-      this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
+      // Use collectables layer for coins and fruits
+      const targetLayer =
+        this.selectedBlockName === "Coin" || this.selectedBlockName === "Fruit"
+          ? this.collectablesLayer
+          : this.groundLayer;
+      this.placeTile(targetLayer, tileX, tileY, this.selectedTileIndex);
     }
 
     // Update selection box tab positions so tabs follow boxes in real-time

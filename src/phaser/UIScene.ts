@@ -116,7 +116,7 @@ export class UIScene extends Phaser.Scene {
               <span class="control-desc">Move camera & character</span>
             </div>
             <div class="control-item">
-              <span class="control-key">C</span>
+              <span class="control-key">U</span>
               <span class="control-desc">Toggle UI</span>
             </div>
             <h3 style="margin-top: 16px;">Selection Controls</h3>
@@ -164,8 +164,8 @@ export class UIScene extends Phaser.Scene {
 
     // Toggle UI (and notify other scenes to toggle overview/minimap)
     if (this.input && this.input.keyboard) {
-      this.input.keyboard.on("keydown-C", (e: KeyboardEvent) => {
-        if ((e as KeyboardEvent).ctrlKey) return; // ignore Ctrl+C
+      this.input.keyboard.on("keydown-U", (e: KeyboardEvent) => {
+        if ((e as KeyboardEvent).ctrlKey) return; // ignore Ctrl+U
         isChatVisible = !isChatVisible;
         this.chatBox.setVisible(isChatVisible);
         this.playButton.setVisible(isChatVisible);
@@ -181,7 +181,7 @@ export class UIScene extends Phaser.Scene {
       this.events.on("shutdown", () => {
         try {
           // Guard against `this.input` or `this.input.keyboard` being null
-          this.input.keyboard?.off?.("keydown-C");
+          this.input.keyboard?.off?.("keydown-U");
         } catch (err) {
           // ignore
         }
@@ -189,7 +189,7 @@ export class UIScene extends Phaser.Scene {
     } else {
       // Fallback for non-Phaser environments
       window.addEventListener("keydown", (e: KeyboardEvent) => {
-        if (e.key.toLowerCase() === "c" && !e.ctrlKey) {
+        if (e.key.toLowerCase() === "u" && !e.ctrlKey) {
           isChatVisible = !isChatVisible;
           this.chatBox.setVisible(isChatVisible);
           this.playButton.setVisible(isChatVisible);

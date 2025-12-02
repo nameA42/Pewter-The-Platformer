@@ -1376,4 +1376,8 @@ export class SelectionBox {
 
     return false;
   }
+
+  public getActive(): boolean {
+    return this.isActive;
+  }
 }

@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 
-// Collaborative Context Merging - Basic interfaces and ownership structure
+// STEP 1: Collaborative Context Merging - Basic interfaces and ownership structure
 // Interface for collaborative context data
 interface BoxContextData {
   value: any;
@@ -39,6 +39,11 @@ export class SelectionBox {
     y: number;
     layerName: string;
   }[] = [];
+  public placedEnemies: {
+    enemyType: string;
+    x: number;
+    y: number;
+  }[] = [];
   private tabContainer: Phaser.GameObjects.Container | null = null;
   private onSelect?: (box: SelectionBox) => void;
   private tabBg: Phaser.GameObjects.Rectangle | null = null;
@@ -46,7 +51,7 @@ export class SelectionBox {
   private isActive: boolean = false;
   private isFinalized: boolean = false;
 
-  // Collaborative Context Merging - Neighbor tracking
+  // STEP 3: Collaborative Context Merging - Neighbor tracking
   private neighbors: Set<SelectionBox> = new Set();
   // Intersections with boxes on different z-levels
   private intersections: Set<SelectionBox> = new Set();
@@ -56,12 +61,20 @@ export class SelectionBox {
   // Drag helpers
   private _dragInitialStart?: Phaser.Math.Vector2;
   private _dragInitialEnd?: Phaser.Math.Vector2;
-  private _dragInitialContainerX?: number;
-  private _dragInitialContainerY?: number;
   private _dragPointerTileX?: number;
   private _dragPointerTileY?: number;
-  private _dragPointerOffsetX?: number;
-  private _dragPointerOffsetY?: number;
+  // Snapshot of placedTiles at the start of a drag so we can keep them in sync
+  private _dragOriginalPlacedTiles?: {
+    tileIndex: number;
+    x: number;
+    y: number;
+    layerName: string;
+  }[];
+  private _dragOriginalPlacedEnemies?: {
+    enemyType: string;
+    x: number;
+    y: number;
+  }[];
   private _dragStartHandler?: (pointer: Phaser.Input.Pointer, obj: any) => void;
   private _dragHandler?: (
     pointer: Phaser.Input.Pointer,
@@ -90,7 +103,7 @@ export class SelectionBox {
     this.graphics.setDepth(100);
     this.redraw();
 
-    // Initialize localContext with proper structure
+    // Initialize localContext with its own chatHistory
     this.localContext = {
       id: `box_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       data: new Map(),
@@ -102,7 +115,7 @@ export class SelectionBox {
     this.createTab();
   }
 
-  // Collaborative Context Merging - Basic data management methods
+  // STEP 2: Collaborative Context Merging - Basic data management methods
 
   /**
    * Set data in this box's context with ownership tracking
@@ -153,7 +166,7 @@ export class SelectionBox {
     return shareableData;
   }
 
-  // Collaborative Context Merging - Neighbor detection and management
+  // STEP 3: Collaborative Context Merging - Neighbor detection and management
 
   /**
    * Check if this box is touching another box (adjacent or overlapping)
@@ -291,7 +304,7 @@ export class SelectionBox {
     return Array.from(this.neighbors);
   }
 
-  // Collaborative Context Merging - Data sharing and merging methods
+  // STEP 4: Collaborative Context Merging - Data sharing and merging methods
 
   /**
    * Receive shared data from a neighbor - implements collaborative merging
@@ -608,6 +621,28 @@ export class SelectionBox {
             }
           }
           if (!intersects) {
+            // compute integer delta relative to initial start
+            const deltaX = Math.floor(
+              candidateStart.x - (this._dragInitialStart?.x ?? 0),
+            );
+            const deltaY = Math.floor(
+              candidateStart.y - (this._dragInitialStart?.y ?? 0),
+            );
+            // update placedTiles positions relative to the original snapshot
+            try {
+              if (
+                this._dragOriginalPlacedTiles &&
+                this._dragOriginalPlacedTiles.length > 0
+              ) {
+                this.placedTiles = this._dragOriginalPlacedTiles.map((p) => ({
+                  tileIndex: p.tileIndex,
+                  x: p.x + deltaX,
+                  y: p.y + deltaY,
+                  layerName: p.layerName,
+                }));
+              }
+            } catch (e) {}
+
             this.start = candidateStart;
             this.end = candidateEnd;
             this.redraw();
@@ -629,6 +664,127 @@ export class SelectionBox {
           if (this._pointerUpHandler)
             this.scene.input.off("pointerup", this._pointerUpHandler);
         } catch (e) {}
+        // If we had a snapshot of placed tiles, commit a move of those tiles on the map
+        try {
+          const orig = this._dragOriginalPlacedTiles;
+          if (orig && orig.length > 0) {
+            const rg = (this.scene as any).regenerator as any;
+            // compute delta from initial drag start if needed
+            const deltaX = Math.floor(
+              this.start.x - (this._dragInitialStart?.x ?? 0),
+            );
+            const deltaY = Math.floor(
+              this.start.y - (this._dragInitialStart?.y ?? 0),
+            );
+
+            const movements: Array<any> = [];
+            if (this.placedTiles && this.placedTiles.length === orig.length) {
+              for (let i = 0; i < orig.length; i++) {
+                const o = orig[i];
+                const n = this.placedTiles[i];
+                if (!n) continue;
+                // only add movement if different
+                if (o.x === n.x && o.y === n.y) continue;
+                movements.push({
+                  type: "tile",
+                  layerName: o.layerName,
+                  from: { x: o.x, y: o.y },
+                  to: { x: n.x, y: n.y },
+                  index: o.tileIndex,
+                });
+              }
+            } else {
+              // fallback: apply delta to each original
+              for (const o of orig) {
+                const toX = o.x + deltaX;
+                const toY = o.y + deltaY;
+                if (o.x === toX && o.y === toY) continue;
+                movements.push({
+                  type: "tile",
+                  layerName: o.layerName,
+                  from: { x: o.x, y: o.y },
+                  to: { x: toX, y: toY },
+                  index: o.tileIndex,
+                });
+              }
+            }
+
+            if (
+              movements.length > 0 &&
+              rg &&
+              typeof rg.moveObjects === "function"
+            ) {
+              try {
+                rg.moveObjects(movements);
+              } catch (e) {
+                // ignore move errors but log for debugging
+                // eslint-disable-next-line no-console
+                console.error("SelectionBox: moveObjects failed", e);
+              }
+            }
+          }
+        } catch (e) {
+          // swallow
+        }
+        // Also handle any placed enemies that were moved with the box
+        try {
+          const origE = this._dragOriginalPlacedEnemies;
+          if (origE && origE.length > 0) {
+            const rg = (this.scene as any).regenerator as any;
+            const deltaX = Math.floor(
+              this.start.x - (this._dragInitialStart?.x ?? 0),
+            );
+            const deltaY = Math.floor(
+              this.start.y - (this._dragInitialStart?.y ?? 0),
+            );
+            const eMoves: Array<any> = [];
+            if (
+              this.placedEnemies &&
+              this.placedEnemies.length === origE.length
+            ) {
+              for (let i = 0; i < origE.length; i++) {
+                const o = origE[i];
+                const n = this.placedEnemies[i];
+                if (!n) continue;
+                if (o.x === n.x && o.y === n.y) continue;
+                eMoves.push({
+                  type: "enemy",
+                  from: { x: o.x, y: o.y },
+                  to: { x: n.x, y: n.y },
+                });
+              }
+            } else {
+              for (const o of origE) {
+                const toX = o.x + deltaX;
+                const toY = o.y + deltaY;
+                if (o.x === toX && o.y === toY) continue;
+                eMoves.push({
+                  type: "enemy",
+                  from: { x: o.x, y: o.y },
+                  to: { x: toX, y: toY },
+                });
+              }
+            }
+            if (
+              eMoves.length > 0 &&
+              rg &&
+              typeof rg.moveObjects === "function"
+            ) {
+              try {
+                rg.moveObjects(eMoves);
+              } catch (er) {
+                // eslint-disable-next-line no-console
+                console.error("SelectionBox: moveObjects (enemies) failed", er);
+              }
+            }
+          }
+        } catch (e) {
+          // swallow
+        }
+        // clear drag snapshot
+        try {
+          this._dragOriginalPlacedTiles = undefined;
+        } catch (e) {}
       };
 
       // Start drag on pointerdown on the tab if finalized
@@ -649,6 +805,23 @@ export class SelectionBox {
           // prepare drag
           this._dragInitialStart = this.start.clone();
           this._dragInitialEnd = this.end.clone();
+          // snapshot placed tiles so we can update their coordinates while dragging
+          try {
+            this._dragOriginalPlacedTiles = this.placedTiles.map((p) => ({
+              tileIndex: p.tileIndex,
+              x: p.x,
+              y: p.y,
+              layerName: p.layerName,
+            }));
+            this._dragOriginalPlacedEnemies = this.placedEnemies.map((e) => ({
+              enemyType: e.enemyType,
+              x: e.x,
+              y: e.y,
+            }));
+          } catch (err) {
+            this._dragOriginalPlacedTiles = undefined;
+            this._dragOriginalPlacedEnemies = undefined;
+          }
           const cam =
             this.scene.cameras && this.scene.cameras.main
               ? this.scene.cameras.main
@@ -821,55 +994,6 @@ export class SelectionBox {
   }
 
   // Collaborative Context Merging - Helper methods for easy usage
-
-  /**
-   * Share a piece of data with all current neighbors
-   * @param key - The data key
-   * @param value - The data value
-   * @param canShare - Whether neighbors can further share this data (default: true)
-   */
-  public shareData(key: string, value: any, canShare: boolean = true): void {
-    this.setContextData(key, value, canShare);
-    this.broadcastToNeighbors();
-  }
-
-  /**
-   * Get data, checking neighbors if we don't have it locally
-   * @param key - The data key to look for
-   * @returns The data value or null if not found
-   */
-  public findData(key: string): any {
-    // Check our own data first
-    const localData = this.getContextData(key);
-    if (localData !== null) {
-      return localData;
-    }
-
-    // Request from neighbors if we don't have it
-    const neighborData = this.requestDataFromNeighbors(key);
-    return neighborData ? neighborData.value : null;
-  }
-
-  /**
-   * Check if any box in our network (us or neighbors) has specific data
-   * @param key - The data key to check for
-   * @returns true if any connected box has this data
-   */
-  public networkHasData(key: string): boolean {
-    // Check ourselves first
-    if (this.localContext.data.has(key)) {
-      return true;
-    }
-
-    // Check neighbors
-    for (const neighbor of this.neighbors) {
-      if (neighbor.localContext.data.has(key)) {
-        return true;
-      }
-    }
-
-    return false;
-  }
 
   /**
    * Get a summary of all data available in our network
@@ -1189,6 +1313,16 @@ export class SelectionBox {
     console.log("Added placed tile:", { tileIndex, x, y, layerName });
   }
 
+  // Register an enemy placed within this selection box (tile coords)
+  public addPlacedEnemy(enemyType: string, x: number, y: number) {
+    this.placedEnemies.push({ enemyType, x, y });
+    console.log("Added placed enemy:", { enemyType, x, y });
+  }
+
+  public getPlacedEnemies() {
+    return this.placedEnemies;
+  }
+
   public getPlacedTiles() {
     return this.placedTiles;
   }
@@ -1198,5 +1332,52 @@ export class SelectionBox {
     this.placedTiles.forEach((tile, index) => {
       console.log(`${index + 1}: ${JSON.stringify(tile)}`);
     });
+  }
+
+  public shareData(key: string, value: any, canShare: boolean = true): void {
+    this.setContextData(key, value, canShare);
+    this.broadcastToNeighbors();
+  }
+
+  /**
+   * Get data, checking neighbors if we don't have it locally
+   * @param key - The data key to look for
+   * @returns The data value or null if not found
+   */
+  public findData(key: string): any {
+    // Check our own data first
+    const localData = this.getContextData(key);
+    if (localData !== null) {
+      return localData;
+    }
+
+    // Request from neighbors if we don't have it
+    const neighborData = this.requestDataFromNeighbors(key);
+    return neighborData ? neighborData.value : null;
+  }
+
+  /**
+   * Check if any box in our network (us or neighbors) has specific data
+   * @param key - The data key to check for
+   * @returns true if any connected box has this data
+   */
+  public networkHasData(key: string): boolean {
+    // Check ourselves first
+    if (this.localContext.data.has(key)) {
+      return true;
+    }
+
+    // Check neighbors
+    for (const neighbor of this.neighbors) {
+      if (neighbor.localContext.data.has(key)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  public getActive(): boolean {
+    return this.isActive;
   }
 }

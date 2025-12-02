@@ -2,6 +2,7 @@ import { SelectionBox } from "../selectionBox.ts";
 import { WorldFacts } from "./worldFacts.ts";
 import { BaseMessage, SystemMessage } from "@langchain/core/messages";
 import { getChatResponse } from "../../languageModel/modelConnector.ts";
+import type { EditorScene } from "../editorScene.ts";
 
 class SelectionInfo {
   worldFacts: WorldFacts;
@@ -39,15 +40,27 @@ class SelectionInfo {
   }
 }
 
+export interface MapSnapshot {
+  timestamp: number;
+  worldFacts: { structures: any[]; collectables: any[]; enemies: any[] };
+  tileData: {
+    layer: string;
+    tiles: { x: number; y: number; index: number }[];
+  }[];
+  bounds: { x: number; y: number; width: number; height: number };
+}
+
 export class RegenerationRequest {
   private selection: SelectionBox;
   private priority: number;
   private info: SelectionInfo;
+  private contextCollaboration: string;
 
   constructor(
     selection: SelectionBox,
     priority: number,
     worldFacts: WorldFacts,
+    contextCollaboration: string,
   ) {
     this.selection = selection;
     this.priority = priority;
@@ -61,6 +74,7 @@ export class RegenerationRequest {
       selection.getEnd().x,
       selection.getEnd().y,
     );
+    this.contextCollaboration = contextCollaboration;
   }
 
   getSelection(): SelectionBox {
@@ -75,6 +89,10 @@ export class RegenerationRequest {
     return this.info;
   }
 
+  getContextCollaboration(): string {
+    return this.contextCollaboration;
+  }
+
   setSelection(selection: SelectionBox): void {
     this.selection = selection;
   }
@@ -85,6 +103,10 @@ export class RegenerationRequest {
 
   setInfo(info: SelectionInfo): void {
     this.info = info;
+  }
+
+  setContextCollaboration(contextCollaboration: string): void {
+    this.contextCollaboration = contextCollaboration;
   }
 }
 
@@ -142,11 +164,83 @@ function computePriority(
   return Z_WEIGHT * normZ + DEP_WEIGHT * (1 - dep); // Lower = higher priority
 }
 
+function captureSnapshot(
+  scene: EditorScene,
+  bounds?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  },
+): MapSnapshot {
+  const mapBounds = bounds || {
+    x: 0,
+    y: 0,
+    width: scene.map.width,
+    height: scene.map.height,
+  };
+
+  console.log(`Capturing snapshot for bounds:`, mapBounds);
+
+  // Capture WorldFacts
+  const structures = scene.worldFacts.getFact("Structure");
+  const collectables = scene.worldFacts.getFact("Collectable");
+  const enemies = scene.worldFacts.getFact("Enemy");
+
+  // Capture raw tile data from layers
+  const tileData: {
+    layer: string;
+    tiles: { x: number; y: number; index: number }[];
+  }[] = [];
+
+  // Capture Ground Layer
+  const groundLayer = scene.map.getLayer("Ground_Layer")?.tilemapLayer;
+  if (groundLayer) {
+    const tiles: { x: number; y: number; index: number }[] = [];
+    for (let x = mapBounds.x; x < mapBounds.x + mapBounds.width; x++) {
+      for (let y = mapBounds.y; y < mapBounds.y + mapBounds.height; y++) {
+        const tile = groundLayer.getTileAt(x, y);
+        if (tile && tile.index !== -1) {
+          tiles.push({ x, y, index: tile.index });
+        }
+      }
+    }
+    tileData.push({ layer: "Ground_Layer", tiles });
+  }
+
+  // Capture Collectables Layer
+  const collectablesLayer =
+    scene.map.getLayer("Collectables_Layer")?.tilemapLayer;
+  if (collectablesLayer) {
+    const tiles: { x: number; y: number; index: number }[] = [];
+    for (let x = mapBounds.x; x < mapBounds.x + mapBounds.width; x++) {
+      for (let y = mapBounds.y; y < mapBounds.y + mapBounds.height; y++) {
+        const tile = collectablesLayer.getTileAt(x, y);
+        if (tile && tile.index !== -1) {
+          tiles.push({ x, y, index: tile.index });
+        }
+      }
+    }
+    tileData.push({ layer: "Collectables_Layer", tiles });
+  }
+
+  return {
+    timestamp: Date.now(),
+    worldFacts: { structures, collectables, enemies },
+    tileData,
+    bounds: mapBounds,
+  };
+}
+
 /* ---------------- Prompt Construction ---------------- */
 
-function createGuidePrompt(info: SelectionInfo): string {
+function createGuidePrompt(
+  info: SelectionInfo,
+  snapshot: MapSnapshot,
+  contextCollaboration: string,
+  neighbors: number[][],
+): string {
   const {
-    worldFacts,
     placedTiles,
     convoHistory,
     selectionStartX,
@@ -162,16 +256,58 @@ function createGuidePrompt(info: SelectionInfo): string {
     }
   }
 
+  // Structures summary
+  let structureSummary = "";
+  if (snapshot.worldFacts.structures.length > 0) {
+    structureSummary += `Structures in this area:\n`;
+    snapshot.worldFacts.structures.forEach((fact) => {
+      structureSummary += `- ${fact.toString()}\n`;
+    });
+    structureSummary += `\n`;
+  }
+
+  let collectablesSummary = "";
+  if (snapshot.worldFacts.structures.length > 0) {
+    collectablesSummary += `Collectables in this area:\n`;
+    snapshot.worldFacts.collectables.forEach((fact) => {
+      collectablesSummary += `- ${fact.toString()}\n`;
+    });
+    collectablesSummary += `\n`;
+  }
+
+  let enemiesSummary = "";
+  if (snapshot.worldFacts.structures.length > 0) {
+    enemiesSummary += `Enemies in this area:\n`;
+    snapshot.worldFacts.enemies.forEach((fact) => {
+      enemiesSummary += `- ${fact.toString()}\n`;
+    });
+    enemiesSummary += `\n`;
+  }
+
+  let neighborsInfo = "";
+  for (let i = 0; i < neighbors.length; i++) {
+    let neighbor = neighbors[i];
+    neighborsInfo += i + "th neighbor: \n";
+    neighborsInfo += "  Start: (" + neighbor[0] + ", " + neighbor[1] + ")\n";
+    neighborsInfo += "  End: (" + neighbor[2] + ", " + neighbor[3] + ")\n";
+  }
+
   return `
 You are an intelligent world builder regenerating a visual layer in a Phaser scene.
 
 Your job requires you to use multiple different tools at once so use each tool multiple times and use all the tools if necessary to process each request/prompt.
 
 ### Local Context
-World facts: 
-${worldFacts.getFact("Structure", selectionStartX, selectionEndX, selectionStartY, selectionEndY)}
-${worldFacts.getFact("Enemy", selectionStartX, selectionEndX, selectionStartY, selectionEndY)}
-${worldFacts.getFact("Collectable", selectionStartX, selectionEndX, selectionStartY, selectionEndY)}
+World facts:  
+${structureSummary}
+${enemiesSummary}
+${collectablesSummary}
+
+### Context from Neighbors
+${contextCollaboration}
+
+### Location of Neighbors
+${neighborsInfo}
 
 Placed tiles: ${JSON.stringify(placedTiles, null, 2)}
 
@@ -191,7 +327,7 @@ You are only allowed to touch the Ground_Layer and the Collectables_Layer.
 Before processing any requests, always clear tiles. 
 
 Here are some steps with an example: 
- • Clear selection fully (only clear the selection please. Do not clear outside the selection)
+ • Clear selection fully (only clear the selection please. Do not clear outside the selection). 
  • For each prompt, do the actions mentioned in the prompt
     • Ex: Human Prompt - Place a platform of length _ and height _ at _ and _ coordinates.
         • For that prompt, place the platform using any or one of the tools provided (placeSingleTile, placeGridofTiles, placeEnemy, clearTile) with that length and with that height at those coordinates. 
@@ -211,78 +347,253 @@ Ex:
   • Tool Call - placeEnemy with a default Slime information and a random location on the top of the platform.
   • Tool Call - placeGridofTiles with right-side focused coordinates for a platform of any length and any height as it was not specified. 
 
+NEVER PLACE OBJECTS WITHIN ANOTHER SELECTION. THIS IS A RULE YOU SHOULD NEVER BREAK. 
+
 Use this information to guide your regeneration. Simply do the regeneration by doing each prompt.
   `;
+}
+
+/* ---------------- Dependency Graph Construction ---------------- */
+
+export interface DependencyGraph {
+  deps: Map<SelectionBox, Set<SelectionBox>>;
+  revDeps: Map<SelectionBox, Set<SelectionBox>>;
+}
+
+function buildDependencyMap(allSelections: SelectionBox[]): DependencyGraph {
+  const deps = new Map<SelectionBox, Set<SelectionBox>>();
+  const revDeps = new Map<SelectionBox, Set<SelectionBox>>();
+
+  // Initialize empty sets
+  for (const sel of allSelections) {
+    deps.set(sel, new Set());
+    revDeps.set(sel, new Set());
+  }
+
+  // Basic dependency rule:
+  // A depends on B if they overlap/touch and A.z >= B.z
+  for (const a of allSelections) {
+    for (const b of allSelections) {
+      if (a === b) continue;
+
+      const aStart = a.getStart();
+      const aEnd = a.getEnd();
+      const bStart = b.getStart();
+      const bEnd = b.getEnd();
+
+      const overlap =
+        aStart.x <= bEnd.x &&
+        aEnd.x >= bStart.x &&
+        aStart.y <= bEnd.y &&
+        aEnd.y >= bStart.y;
+
+      if (overlap && a.getZLevel() >= b.getZLevel()) {
+        deps.get(a)!.add(b);
+        revDeps.get(b)!.add(a);
+      }
+    }
+  }
+
+  return { deps, revDeps };
+}
+
+function topologicalSort<T>(deps: Map<T, Set<T>>): T[] {
+  const visited = new Set<T>();
+  const temp = new Set<T>();
+  const result: T[] = [];
+
+  function visit(node: T) {
+    if (temp.has(node)) {
+      console.warn("[DependencyMap] Cycle detected involving", node);
+      return;
+    }
+    if (visited.has(node)) return;
+    temp.add(node);
+
+    for (const dep of deps.get(node) || []) {
+      visit(dep);
+    }
+
+    temp.delete(node);
+    visited.add(node);
+    result.push(node);
+  }
+
+  for (const node of deps.keys()) {
+    visit(node);
+  }
+
+  return result.reverse(); // topological order
 }
 
 /* ---------------- Main Regeneration Function ---------------- */
 
 export async function regenerate(
   allSelections: SelectionBox[],
-  dependencies: Map<SelectionBox, number>,
+  _dependencies: Map<SelectionBox, number>, // old param, not needed anymore
   worldFacts: WorldFacts,
+  scene: EditorScene,
 ) {
+  // Step 0: Build dependency map
+  const { deps } = buildDependencyMap(allSelections);
+  const topoOrder = topologicalSort(deps);
+  console.log(
+    "[DependencyMap] Topological order:",
+    topoOrder.map((sel) => sel.getZLevel()),
+  );
+
   const queue = new RegenerationQueue();
   let zMin = Infinity;
   let zMax = -Infinity;
 
-  // Step 1: Compute z range & enqueue regeneration requests
-  for (const selection of allSelections) {
+  // Step 1: Compute z range and enqueue following topo order
+  for (const selection of topoOrder) {
     const z = selection.getZLevel();
     zMin = Math.min(zMin, z);
     zMax = Math.max(zMax, z);
 
-    const priority = computePriority(selection, zMin, zMax, dependencies);
-    const request = new RegenerationRequest(selection, priority, worldFacts);
-    console.log(selection.getStart(), selection.getEnd());
+    // Use dependency count as “depth”
+    const depCount = deps.get(selection)?.size ?? 0;
+    const fakeDepMap = new Map<SelectionBox, number>([[selection, depCount]]);
+    const priority = computePriority(selection, zMin, zMax, fakeDepMap);
+
+    const contextCollaboration = selection.getCollaborativeContextForChat();
+
+    const request = new RegenerationRequest(
+      selection,
+      priority,
+      worldFacts,
+      contextCollaboration,
+    );
     queue.push(request);
   }
 
-  // Step 2: Process the priority queue
+  // Step 2: Process the queue (unchanged from your code)
   while (!queue.isEmpty()) {
     const req = queue.pop();
     if (!req) continue;
-
     const selection = req.getSelection();
+    selection.setActive(true);
     const info = req.getInfo();
+    const bounds = {
+      x: info.selectionStartX,
+      y: info.selectionStartY,
+      width: info.selectionEndX - info.selectionStartX,
+      height: info.selectionEndY - info.selectionStartY,
+    };
 
-    // Step 2a: Create the guide prompt for the selection
-    const guidePrompt = createGuidePrompt(info);
+    const contextCollaboration = req.getContextCollaboration();
+
+    const snapshot = captureSnapshot(scene, bounds);
+    let neighbors = [];
+    for (let i = 0; i < selection.getNeighbors().length; i++) {
+      let neighbor = selection.getNeighbors()[i];
+      neighbors.push([
+        neighbor.getStart().x,
+        neighbor.getStart().y,
+        neighbor.getEnd().x,
+        neighbor.getEnd().y,
+      ]);
+    }
+    const guidePrompt = createGuidePrompt(
+      info,
+      snapshot,
+      contextCollaboration,
+      neighbors,
+    );
+
     console.log(guidePrompt);
 
-    // Step 2b: Prepare chat history for LangChain
     const chatMessageHistory: BaseMessage[] = [];
-
-    // Inject your system prompt properly
-    //await initializeLLM(chatMessageHistory); // assumes this pushes a SystemMessage
-
-    // Add conversation history
     chatMessageHistory.push(
       new SystemMessage({ content: String(guidePrompt) }),
     );
     for (let i = 1; i < selection.getChatHistory().length; i++) {
-      if (selection.getChatHistory()[i].getType() == "human") {
+      if (selection.getChatHistory()[i].getType() === "human") {
         chatMessageHistory.push(selection.getChatHistory()[i]);
       }
     }
 
-    // Debug output to verify structure
-    console.log(
-      "chatMessageHistory before LLM call:",
-      chatMessageHistory.map((msg) => ({
-        role: msg._getType?.() ?? msg.constructor.name,
-        content: msg.content,
-      })),
-    );
-
-    // Step 2c: Call LLM with tools
     const llmResult = await getChatResponse(chatMessageHistory);
-
     console.log(`[Regeneration] Completed selection`);
     console.log("[LLM Output Text]:", llmResult.text.join("\n"));
     console.log("[Tool Calls]:", llmResult.toolCalls);
-    console.log("[Errors]:", llmResult.errors);
+    selection.setActive(false);
   }
 
   console.log("[Regeneration] Scene regeneration complete.");
 }
+
+// export async function regenerate(
+//   allSelections: SelectionBox[],
+//   dependencies: Map<SelectionBox, number>,
+//   worldFacts: WorldFacts,
+//   scene: EditorScene,
+// ) {
+//   const queue = new RegenerationQueue();
+//   let zMin = Infinity;
+//   let zMax = -Infinity;
+
+//   // Step 1: Compute z range & enqueue regeneration requests
+//   for (const selection of allSelections) {
+//     const z = selection.getZLevel();
+//     zMin = Math.min(zMin, z);
+//     zMax = Math.max(zMax, z);
+
+//     const priority = computePriority(selection, zMin, zMax, dependencies);
+//     const request = new RegenerationRequest(selection, priority, worldFacts);
+//     console.log(selection.getStart(), selection.getEnd());
+//     queue.push(request);
+//   }
+
+//   // Step 2: Process the priority queue
+//   while (!queue.isEmpty()) {
+//     const req = queue.pop();
+//     if (!req) continue;
+
+//     const selection = req.getSelection();
+//     const info = req.getInfo();
+//     let bounds = {x: info.selectionStartX, y: info.selectionStartY, width: (info.selectionEndX - info.selectionStartX), height: (info.selectionEndY - info.selectionStartY) }
+
+//     const snapshot = captureSnapshot(scene, bounds)
+
+//     // Step 2a: Create the guide prompt for the selection
+//     const guidePrompt = createGuidePrompt(info, snapshot);
+//     console.log(guidePrompt);
+
+//     // Step 2b: Prepare chat history for LangChain
+//     const chatMessageHistory: BaseMessage[] = [];
+
+//     // Inject your system prompt properly
+//     //await initializeLLM(chatMessageHistory); // assumes this pushes a SystemMessage
+
+//     // Add conversation history
+//     chatMessageHistory.push(
+//       new SystemMessage({ content: String(guidePrompt) }),
+//     );
+//     for (let i = 1; i < selection.getChatHistory().length; i++) {
+//       if (selection.getChatHistory()[i].getType() == "human") {
+//         chatMessageHistory.push(selection.getChatHistory()[i]);
+//       }
+//     }
+
+//     // Debug output to verify structure
+//     console.log(
+//       "chatMessageHistory before LLM call:",
+//       chatMessageHistory.map((msg) => ({
+//         role: msg._getType?.() ?? msg.constructor.name,
+//         content: msg.content,
+//       })),
+//     );
+
+//     // Step 2c: Call LLM with tools
+//     const llmResult = await getChatResponse(chatMessageHistory);
+
+//     console.log(`[Regeneration] Completed selection`);
+//     console.log("[LLM Output Text]:", llmResult.text.join("\n"));
+//     console.log("[Tool Calls]:", llmResult.toolCalls);
+//     console.log("[Errors]:", llmResult.errors);
+//   }
+
+//   console.log("[Regeneration] Scene regeneration complete.");
+// }

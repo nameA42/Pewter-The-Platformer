@@ -68,7 +68,7 @@ export class EditorScene extends Phaser.Scene {
     endY: number;
   } | null = null;
   public activeBox: SelectionBox | null = null;
-  private selectionBoxes: SelectionBox[] = [];
+  selectionBoxes: SelectionBox[] = [];
 
   // keyboard controls
   private keyA!: Phaser.Input.Keyboard.Key;
@@ -731,6 +731,7 @@ export class EditorScene extends Phaser.Scene {
         this.selectionBoxes,
         this.computeDependencyMap(this.selectionBoxes),
         this.worldFacts,
+        this,
       );
     }
   }

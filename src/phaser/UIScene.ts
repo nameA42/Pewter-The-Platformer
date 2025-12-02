@@ -58,43 +58,6 @@ export class UIScene extends Phaser.Scene {
     //   });
     // });
 
-    // Buttons - compact, centered on middle button, text 'block#', lifted off bottom
-    const buttonWidth = 110;
-    const buttonHeight = 38;
-    const gap = 16;
-    const numButtons = this.blocks.length;
-    const centerIndex = Math.floor(numButtons / 2);
-    const screenWidth = this.cameras.main.width;
-    const centerX = screenWidth / 2;
-    const startY = this.cameras.main.height - buttonHeight - 64; // lifted off bottom
-    // this.buttons = [];
-
-    this.blocks.forEach((block, i) => {
-      // Position relative to center button
-      const offset = (i - centerIndex) * (buttonWidth + gap);
-      const btn = this.createButton(
-        this,
-        centerX + offset,
-        startY,
-        `block${i + 1}`,
-        () => this.emitSelect(block),
-        {
-          fixedWidth: buttonWidth,
-          minHeight: buttonHeight,
-          fontSize: 20,
-          paddingX: 8,
-          paddingY: 6,
-          fill: 0xffffff,
-          hoverFill: 0xe0e0e0,
-          downFill: 0xcccccc,
-          strokeWidth: 2,
-          stroke: 0x222222,
-          textColor: "#222222",
-        },
-      );
-      this.panel.add(btn);
-    });
-
     //Working Code - Manvir
 
     // Create hidden chatbox

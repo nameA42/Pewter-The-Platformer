@@ -18,7 +18,17 @@ export class UIScene extends Phaser.Scene {
 
   //Data
   private currentBlock: string = "";
-  private blocks: string[] = ["block1", "block2", "block3"];
+  private blocks: string[] = [
+    "Block 1",
+    "Coin",
+    "Block 3",
+    "Block 4",
+    "Dirt Block",
+    "Block 6",
+    "Slime Enemy",
+    "Ultra Slime",
+    "Eraser",
+  ];
   //Registry (Global variables)
   private setPointerOverUI = (v: boolean) =>
     this.registry.set("uiPointerOver", v);
@@ -46,7 +56,16 @@ export class UIScene extends Phaser.Scene {
     this.panel.setDepth(1000);
 
     //Variables
-    this.blocks = ["block1", "block2", "block3"]; //Add more blocks to see capabilities
+    this.blocks = [
+      "Coin",
+      "Fruit",
+      "Grass-Half Block",
+      "Dirt Block",
+      "Question Block",
+      "Slime Enemy",
+      "Ultra Slime",
+      "Eraser",
+    ]; //Add more blocks to see capabilities
 
     //Input
     // const keys = [
@@ -62,43 +81,6 @@ export class UIScene extends Phaser.Scene {
     //     this.changeBlock(this.blocks[index]);
     //   });
     // });
-
-    // Buttons - compact, centered on middle button, text 'block#', lifted off bottom
-    const buttonWidth = 110;
-    const buttonHeight = 38;
-    const gap = 16;
-    const numButtons = this.blocks.length;
-    const centerIndex = Math.floor(numButtons / 2);
-    const screenWidth = this.cameras.main.width;
-    const centerX = screenWidth / 2;
-    const startY = this.cameras.main.height - buttonHeight - 64; // lifted off bottom
-    // this.buttons = [];
-
-    this.blocks.forEach((block, i) => {
-      // Position relative to center button
-      const offset = (i - centerIndex) * (buttonWidth + gap);
-      const btn = this.createButton(
-        this,
-        centerX + offset,
-        startY,
-        `block${i + 1}`,
-        () => this.emitSelect(block),
-        {
-          fixedWidth: buttonWidth,
-          minHeight: buttonHeight,
-          fontSize: 20,
-          paddingX: 8,
-          paddingY: 6,
-          fill: 0xffffff,
-          hoverFill: 0xe0e0e0,
-          downFill: 0xcccccc,
-          strokeWidth: 2,
-          stroke: 0x222222,
-          textColor: "#222222",
-        },
-      );
-      this.panel.add(btn);
-    });
 
     //Working Code - Manvir
 
@@ -345,7 +327,17 @@ export class UIScene extends Phaser.Scene {
         const b = document.createElement("button");
         // Use the block name for the label and emit selection so other scenes can react
         b.textContent = block;
-        b.addEventListener("click", () => this.emitSelect(block));
+        b.addEventListener("click", () => {
+          // Remove 'selected' class from all buttons
+          Array.from(blocksList.children).forEach((btn) => {
+            btn.classList.remove("selected");
+          });
+          // Add 'selected' class to the clicked button
+          b.classList.add("selected");
+          // Update current block and emit event
+          this.currentBlock = block;
+          this.emitSelect(block);
+        });
         blocksList.appendChild(b);
       }
     } catch (e) {

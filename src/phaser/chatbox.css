@@ -90,14 +90,28 @@
 }
 
 .pt-blocks-list button {
-  padding: 8px 10px;
+  padding: 10px 16px;
   border-radius: 6px;
-  border: none;
+  border: 2px solid transparent;
   background: #333;
   color: #fff;
   cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
 }
 
 .pt-blocks-list button:hover {
   background: #444;
+  border-color: #555;
+  transform: translateY(-1px);
+}
+
+.pt-blocks-list button:active {
+  background: #2a2a2a;
+  transform: translateY(0);
+}
+
+.pt-blocks-list button.selected {
+  background: #2b6bff;
+  border-color: #4080ff;
 }

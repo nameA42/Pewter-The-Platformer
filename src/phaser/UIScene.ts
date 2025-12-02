@@ -303,7 +303,7 @@ export class UIScene extends Phaser.Scene {
     // Regenerate selection button - emits a request the EditorScene will handle
     this.regenerateButton = this.createButton(
       this,
-      340, // x position (to the right of Deselect)
+      380, // x position (to the right of Deselect)
       this.cameras.main.height - 50,
       "Regenerate",
       () => {

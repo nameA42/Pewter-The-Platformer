@@ -279,7 +279,7 @@ export async function getChatResponse(
       }
     }
 
-    handleToolCall();
+    await handleToolCall();
 
     // Step 4: Re-invoke LLM if tools were used
     if ((response.tool_calls?.length ?? 0) > 0) {
@@ -288,7 +288,7 @@ export async function getChatResponse(
       if (typeof response.content === "string") {
         output.text.push(response.content);
       } else if (Array.isArray(response.content)) {
-        handleToolCall();
+        await handleToolCall();
         for (const part of response.content) {
           if (
             part.type &&

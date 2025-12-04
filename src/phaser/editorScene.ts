@@ -483,12 +483,18 @@ export class EditorScene extends Phaser.Scene {
 
         // Place the currently selected brush tile
         // Use collectables layer for coins and fruits
-        const targetLayer =
-          this.selectedBlockName === "Coin" ||
-          this.selectedBlockName === "Fruit"
-            ? this.collectablesLayer
-            : this.groundLayer;
-        this.placeTile(targetLayer, tileX, tileY, this.selectedTileIndex);
+        if (this.selectedBlockName === "Eraser") {
+          // Eraser should clear from both layers
+          this.placeTile(this.groundLayer, tileX, tileY, -1);
+          this.placeTile(this.collectablesLayer, tileX, tileY, -1);
+        } else {
+          const targetLayer =
+            this.selectedBlockName === "Coin" ||
+            this.selectedBlockName === "Fruit"
+              ? this.collectablesLayer
+              : this.groundLayer;
+          this.placeTile(targetLayer, tileX, tileY, this.selectedTileIndex);
+        }
       } else if (pointer.rightButtonDown()) {
         // Setup selection box
         console.log(`Starting selection`);
@@ -815,11 +821,18 @@ export class EditorScene extends Phaser.Scene {
       const tileX = Math.floor(pointer.worldX / this.TILE_SIZE);
       const tileY = Math.floor(pointer.worldY / this.TILE_SIZE);
       // Use collectables layer for coins and fruits
-      const targetLayer =
-        this.selectedBlockName === "Coin" || this.selectedBlockName === "Fruit"
-          ? this.collectablesLayer
-          : this.groundLayer;
-      this.placeTile(targetLayer, tileX, tileY, this.selectedTileIndex);
+      if (this.selectedBlockName === "Eraser") {
+        // Eraser should clear from both layers
+        this.placeTile(this.groundLayer, tileX, tileY, -1);
+        this.placeTile(this.collectablesLayer, tileX, tileY, -1);
+      } else {
+        const targetLayer =
+          this.selectedBlockName === "Coin" ||
+          this.selectedBlockName === "Fruit"
+            ? this.collectablesLayer
+            : this.groundLayer;
+        this.placeTile(targetLayer, tileX, tileY, this.selectedTileIndex);
+      }
     }
 
     // Update selection box tab positions so tabs follow boxes in real-time

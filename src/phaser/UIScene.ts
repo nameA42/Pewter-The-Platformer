@@ -134,16 +134,12 @@ export class UIScene extends Phaser.Scene {
               <span class="control-desc">Paste selection</span>
             </div>
             <div class="control-item">
-              <span class="control-key">Ctrl + U</span>
-              <span class="control-desc">Undo</span>
+              <span class="control-key">O</span>
+              <span class="control-desc">Decrease Z-Level</span>
             </div>
             <div class="control-item">
-              <span class="control-key">Ctrl + R</span>
-              <span class="control-desc">Redo</span>
-            </div>
-            <div class="control-item">
-              <span class="control-key">Z</span>
-              <span class="control-desc">Cycle Z-Level</span>
+              <span class="control-key">P</span>
+              <span class="control-desc">Increase Z-Level</span>
             </div>
             <div class="control-item">
               <span class="control-key">N</span>

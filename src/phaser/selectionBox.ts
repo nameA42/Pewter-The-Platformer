@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { Z_LEVEL_COLORS } from "./colors";
 
 // STEP 1: Collaborative Context Merging - Basic interfaces and ownership structure
 // Interface for collaborative context data
@@ -940,16 +941,12 @@ export class SelectionBox {
   }
 
   private getColorForZLevel(zLevel: number): number {
-    switch (zLevel) {
-      case 1:
-        return 0xff5555; // red
-      case 2:
-        return 0x55ff55; // green
-      case 3:
-        return 0x5555ff; // blue
-      default:
-        return 0xffffff; // white (This is not gonna happen)
-    }
+  // Clamp Z-Level
+    if (zLevel < 1) return Z_LEVEL_COLORS[0];
+    if (zLevel > Z_LEVEL_COLORS.length)
+      return Z_LEVEL_COLORS[Z_LEVEL_COLORS.length - 1];
+
+    return Z_LEVEL_COLORS[zLevel - 1];
   }
 
   // Checking the possible bounds without finalizing the update
@@ -991,6 +988,48 @@ export class SelectionBox {
   public getLayer(): Phaser.Tilemaps.TilemapLayer {
     return this.layer;
   }
+
+   // Check if this box overlaps with another box in tile-space
+  // Returns true only if they share actual tiles (not just edges)
+  overlapsWith(otherBox: SelectionBox): boolean {
+    const thisBounds = this.getBounds();
+    const otherBounds = otherBox.getBounds();
+
+    // Get the actual tile ranges (inclusive end coordinates)
+    const thisEndX = thisBounds.x + thisBounds.width - 1;
+    const thisEndY = thisBounds.y + thisBounds.height - 1;
+    const otherEndX = otherBounds.x + otherBounds.width - 1;
+    const otherEndY = otherBounds.y + otherBounds.height - 1;
+
+    // Check if X ranges overlap (share at least one tile in X)
+    const xOverlap = thisBounds.x <= otherEndX && otherBounds.x <= thisEndX;
+    // Check if Y ranges overlap (share at least one tile in Y)
+    const yOverlap = thisBounds.y <= otherEndY && otherBounds.y <= thisEndY;
+
+    // They overlap only if both X and Y ranges overlap
+    return xOverlap && yOverlap;
+  }
+
+  // Static helper to check if two rectangles overlap in tile-space
+  static rectanglesOverlap(
+    rect1: Phaser.Geom.Rectangle,
+    rect2: Phaser.Geom.Rectangle,
+  ): boolean {
+    // Get the actual tile ranges (inclusive end coordinates)
+    const rect1EndX = rect1.x + rect1.width - 1;
+    const rect1EndY = rect1.y + rect1.height - 1;
+    const rect2EndX = rect2.x + rect2.width - 1;
+    const rect2EndY = rect2.y + rect2.height - 1;
+
+    // Check if X ranges overlap (share at least one tile in X)
+    const xOverlap = rect1.x <= rect2EndX && rect2.x <= rect1EndX;
+    // Check if Y ranges overlap (share at least one tile in Y)
+    const yOverlap = rect1.y <= rect2EndY && rect2.y <= rect1EndY;
+
+    // They overlap only if both X and Y ranges overlap
+    return xOverlap && yOverlap;
+  }
+
 
   destroy() {
     this.graphics.destroy();

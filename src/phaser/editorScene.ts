@@ -1127,7 +1127,7 @@ export class EditorScene extends Phaser.Scene {
     } else {
       msg =
         `User has selected a rectangular region that is this size: ${selectionWidth}x${selectionHeight}. Here are the global coordinates for the selection box: [${sX}, ${sY}] to [${eX}, ${eY}].` +
-        `There are no notable points of interest in this selection` +
+        //`There are no notable points of interest in this selection` +
         `Be sure to re-explain what is in the selection box. If there are objects in the selection, specify the characteristics of the object. ` +
         `If no objects are inside the selection, then do not mention anything else.`;
       console.log(msg);

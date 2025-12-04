@@ -37,6 +37,7 @@ export class UIScene extends Phaser.Scene {
   private playButton!: Phaser.GameObjects.Container;
   private regenerateButton!: Phaser.GameObjects.Container;
   private deselectBoxBtn!: Phaser.GameObjects.Container;
+  private regenAlgoToggle!: Phaser.GameObjects.Container;
 
   //Inputs
   private keyR!: Phaser.Input.Keyboard.Key;
@@ -171,6 +172,7 @@ export class UIScene extends Phaser.Scene {
         this.playButton.setVisible(isChatVisible);
         this.deselectBoxBtn.setVisible(isChatVisible);
         this.regenerateButton.setVisible(isChatVisible);
+        this.regenAlgoToggle.setVisible(isChatVisible);
         try {
           this.game.events.emit("ui:toggleMinimap", isChatVisible);
         } catch (err) {
@@ -195,6 +197,7 @@ export class UIScene extends Phaser.Scene {
           this.playButton.setVisible(isChatVisible);
           this.deselectBoxBtn.setVisible(isChatVisible);
           this.regenerateButton.setVisible(isChatVisible);
+          this.regenAlgoToggle.setVisible(isChatVisible);
           try {
             this.game.events.emit("ui:toggleMinimap", isChatVisible);
           } catch (err) {}
@@ -321,6 +324,38 @@ export class UIScene extends Phaser.Scene {
       },
     );
     this.regenerateButton.setDepth(1001);
+
+    // Regen algorithm toggle button
+    this.regenAlgoToggle = this.createButton(
+      this,
+      550, // x position (to the right of Regenerate)
+      this.cameras.main.height - 50,
+      "Regen: Linear",
+      () => {
+        this.game.events.emit("ui:toggleRegenAlgorithm");
+      },
+      {
+        fill: 0x1a1a1a,
+        hoverFill: 0x2b6bff,
+        downFill: 0x1f4fcf,
+        textColor: "#ffffff",
+        fontSize: 14,
+        paddingX: 10,
+        paddingY: 6,
+        fixedWidth: 160,
+      },
+    );
+    this.regenAlgoToggle.setDepth(1001);
+
+    // Listen for regen algorithm changes to update button text
+    this.game.events.on("regenAlgorithm:changed", (useEventQueue: boolean) => {
+      try {
+        const txt = this.regenAlgoToggle.list[1] as Phaser.GameObjects.Text;
+        txt.setText(useEventQueue ? "Regen: Event Queue" : "Regen: Linear");
+      } catch (e) {
+        // ignore
+      }
+    });
 
     // Listen for regeneration lifecycle events so the button can show feedback
     this.game.events.on("regenerate:started", () => {

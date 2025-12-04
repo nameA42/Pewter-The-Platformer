@@ -101,6 +101,7 @@ export class EditorScene extends Phaser.Scene {
   private flipKey!: Phaser.Input.Keyboard.Key;
 
   private currentZLevel: number = 1; // 1 = red, 2 = green, 3 = blue
+  private useEventQueueRegen: boolean = false; // Toggle between linear and event queue regen
 
   public worldFacts!: WorldFacts;
 
@@ -299,6 +300,23 @@ export class EditorScene extends Phaser.Scene {
       }
     });
 
+    // Listen for regen algorithm toggle from UI
+    this.game.events.on("ui:toggleRegenAlgorithm", () => {
+      this.useEventQueueRegen = !this.useEventQueueRegen;
+      const algoName = this.useEventQueueRegen ? "Event Queue" : "Linear";
+      console.log(`Regeneration algorithm switched to: ${algoName}`);
+
+      // Swap the clearTile tool implementation
+      try {
+        const { swapClearTileTool } = require("../main");
+        swapClearTileTool(this.useEventQueueRegen);
+      } catch (e) {
+        console.error("Failed to swap clearTile tool:", e);
+      }
+
+      this.game.events.emit("regenAlgorithm:changed", this.useEventQueueRegen);
+    });
+
     // Listen for UI regenerate requests
     this.game.events.on("ui:regenerateSelection", async () => {
       console.log("ui:regenerateSelection received");
@@ -315,7 +333,18 @@ export class EditorScene extends Phaser.Scene {
       this.game.events.emit("regenerate:started");
 
       try {
-        await this.regenerateSelection(this.activeBox);
+        if (this.useEventQueueRegen) {
+          // Use event queue regeneration (all boxes)
+          await regenerate(
+            this.selectionBoxes,
+            this.computeDependencyMap(this.selectionBoxes),
+            this.worldFacts,
+            this,
+          );
+        } else {
+          // Use linear regeneration (single active box)
+          await this.regenerateSelection(this.activeBox);
+        }
         this.game.events.emit("regenerate:finished", { success: true });
       } catch (err) {
         console.error("Regeneration failed:", err);
@@ -848,12 +877,16 @@ export class EditorScene extends Phaser.Scene {
     } else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
       this.finalizeSelectBox();
     } else if (Phaser.Input.Keyboard.JustDown(this.keyQ)) {
-      regenerate(
-        this.selectionBoxes,
-        this.computeDependencyMap(this.selectionBoxes),
-        this.worldFacts,
-        this,
-      );
+      if (this.useEventQueueRegen) {
+        regenerate(
+          this.selectionBoxes,
+          this.computeDependencyMap(this.selectionBoxes),
+          this.worldFacts,
+          this,
+        );
+      } else if (this.activeBox) {
+        this.regenerateSelection(this.activeBox);
+      }
     }
 
     //Temp code - Jason

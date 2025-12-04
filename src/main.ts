@@ -20,6 +20,7 @@ import { PlaceSingleTile } from "./languageModel/tools/placeSingleTile.ts";
 import { PlaceEnemy } from "./languageModel/tools/placeEnemy.ts";
 import { PlaceGridofTiles } from "./languageModel/tools/placeGridofTiles.ts";
 import { ClearTile } from "./languageModel/tools/clearTile.ts";
+import { ClearTile as ClearTileV1 } from "./languageModel/tools/clearTileV1.ts";
 import { WorldFactsTool } from "./languageModel/tools/worldFactsTool.ts";
 import { GetPlacedTiles } from "./languageModel/tools/getPlacedTiles.ts";
 import { RelativeRegeneration } from "./languageModel/tools/relativeGeneration.ts";
@@ -31,15 +32,30 @@ import { RelativeRegeneration } from "./languageModel/tools/relativeGeneration.t
 //   zoom: new ZoomTool(getScene),
 // };
 
+// Create both versions of ClearTile
+const clearTileLinear = new ClearTile(getScene);
+const clearTileEventQueue = new ClearTileV1(getScene);
+let currentClearTile = clearTileLinear; // Default to Linear
+
 const tools = {
   placeSingleTile: new PlaceSingleTile(getScene),
   placeEnemy: new PlaceEnemy(getScene),
   placeGridofTiles: new PlaceGridofTiles(getScene),
-  clearTile: new ClearTile(getScene),
+  clearTile: currentClearTile,
   WorldFactsTool: new WorldFactsTool(getScene),
   getPlacedTiles: new GetPlacedTiles(getScene),
   relativeGeneration: new RelativeRegeneration(getScene),
 };
+
+// Function to swap clearTile tool based on algorithm
+export function swapClearTileTool(useEventQueue: boolean) {
+  currentClearTile = useEventQueue ? clearTileEventQueue : clearTileLinear;
+  // Re-register the tool with the new version
+  registerTool(currentClearTile.toolCall);
+  console.log(
+    `Swapped clearTile tool to: ${useEventQueue ? "Event Queue (V1)" : "Linear"}`,
+  );
+}
 
 // // Register all tools with the LLM
 Object.values(tools).forEach((generator) => {

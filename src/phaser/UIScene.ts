@@ -313,9 +313,9 @@ export class UIScene extends Phaser.Scene {
         this.game.events.emit("ui:regenerateSelection");
       },
       {
-        fill: 0x3a3a3a,
-        hoverFill: 0x5a5a5a,
-        downFill: 0x2a2a2a,
+        fill: 0x1a1a1a,
+        hoverFill: 0x2b6bff,
+        downFill: 0x1f4fcf,
         textColor: "#ffffff",
         fontSize: 14,
         paddingX: 10,

@@ -303,12 +303,12 @@ export class UIScene extends Phaser.Scene {
     );
     this.deselectBoxBtn.setDepth(1001);
 
-    // Regenerate selection button - emits a request the EditorScene will handle
+    // Linear Regen button - emits a request the EditorScene will handle
     this.regenerateButton = this.createButton(
       this,
       380, // x position (to the right of Deselect)
       this.cameras.main.height - 50,
-      "Regenerate",
+      "Linear Regen",
       () => {
         this.game.events.emit("ui:regenerateSelection");
       },
@@ -325,14 +325,14 @@ export class UIScene extends Phaser.Scene {
     );
     this.regenerateButton.setDepth(1001);
 
-    // Regen algorithm toggle button
+    // Event Queue Regen button
     this.regenAlgoToggle = this.createButton(
       this,
-      550, // x position (to the right of Regenerate)
+      550, // x position (to the right of Linear Regen)
       this.cameras.main.height - 50,
-      "Regen: Linear",
+      "Event Queue Regen",
       () => {
-        this.game.events.emit("ui:toggleRegenAlgorithm");
+        this.game.events.emit("ui:eventQueueRegen");
       },
       {
         fill: 0x1a1a1a,
@@ -347,11 +347,33 @@ export class UIScene extends Phaser.Scene {
     );
     this.regenAlgoToggle.setDepth(1001);
 
-    // Listen for regen algorithm changes to update button text
-    this.game.events.on("regenAlgorithm:changed", (useEventQueue: boolean) => {
+    // Listen for event queue regeneration lifecycle events
+    this.game.events.on("eventQueueRegen:started", () => {
       try {
+        const bg = this.regenAlgoToggle.list[0] as Phaser.GameObjects.Rectangle;
         const txt = this.regenAlgoToggle.list[1] as Phaser.GameObjects.Text;
-        txt.setText(useEventQueue ? "Regen: Event Queue" : "Regen: Linear");
+        // Visual feedback: disable interaction and change text
+        try {
+          bg.disableInteractive();
+        } catch (e) {}
+        try {
+          txt.setText("Regenerating...");
+        } catch (e) {}
+      } catch (e) {
+        // ignore
+      }
+    });
+
+    this.game.events.on("eventQueueRegen:finished", (_payload?: any) => {
+      try {
+        const bg = this.regenAlgoToggle.list[0] as Phaser.GameObjects.Rectangle;
+        const txt = this.regenAlgoToggle.list[1] as Phaser.GameObjects.Text;
+        try {
+          bg.setInteractive({ useHandCursor: true });
+        } catch (e) {}
+        try {
+          txt.setText("Event Queue Regen");
+        } catch (e) {}
       } catch (e) {
         // ignore
       }
@@ -384,7 +406,7 @@ export class UIScene extends Phaser.Scene {
           bg.setInteractive({ useHandCursor: true });
         } catch (e) {}
         try {
-          txt.setText("Regenerate");
+          txt.setText("Linear Regen");
         } catch (e) {}
       } catch (e) {
         // ignore

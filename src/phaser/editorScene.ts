@@ -4,7 +4,7 @@ import Phaser from "phaser";
 type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
   isFalling?: boolean;
 };
-import { regenerateSelection as regenerateSelectionModule } from "./regenerator";
+import { regenerateSelection as regenerateSelectionModule } from "./Regenerator";
 import { sendUserPrompt } from "../languageModel/chatBox";
 import { setActiveSelectionBox } from "../languageModel/chatBox";
 import { Slime } from "./ExternalClasses/Slime.ts";
@@ -300,24 +300,27 @@ export class EditorScene extends Phaser.Scene {
       }
     });
 
-    // Listen for regen algorithm toggle from UI
-    this.game.events.on("ui:toggleRegenAlgorithm", () => {
-      this.useEventQueueRegen = !this.useEventQueueRegen;
-      const algoName = this.useEventQueueRegen ? "Event Queue" : "Linear";
-      console.log(`Regeneration algorithm switched to: ${algoName}`);
-
-      // Swap the clearTile tool implementation
-      try {
-        const { swapClearTileTool } = require("../main");
-        swapClearTileTool(this.useEventQueueRegen);
-      } catch (e) {
-        console.error("Failed to swap clearTile tool:", e);
+    // Listen for Event Queue Regen button
+    this.game.events.on("ui:eventQueueRegen", async () => {
+      console.log("ui:eventQueueRegen received");
+      if (this.selectionBoxes.length === 0) {
+        console.log("No selection boxes to regenerate");
+        return;
       }
 
-      this.game.events.emit("regenAlgorithm:changed", this.useEventQueueRegen);
+      try {
+        await regenerate(
+          this.selectionBoxes,
+          this.computeDependencyMap(this.selectionBoxes),
+          this.worldFacts,
+          this,
+        );
+      } catch (err) {
+        console.error("Event queue regeneration failed:", err);
+      }
     });
 
-    // Listen for UI regenerate requests
+    // Listen for UI linear regenerate requests
     this.game.events.on("ui:regenerateSelection", async () => {
       console.log("ui:regenerateSelection received");
       if (!this.activeBox) {
@@ -333,18 +336,8 @@ export class EditorScene extends Phaser.Scene {
       this.game.events.emit("regenerate:started");
 
       try {
-        if (this.useEventQueueRegen) {
-          // Use event queue regeneration (all boxes)
-          await regenerate(
-            this.selectionBoxes,
-            this.computeDependencyMap(this.selectionBoxes),
-            this.worldFacts,
-            this,
-          );
-        } else {
-          // Use linear regeneration (single active box)
-          await this.regenerateSelection(this.activeBox);
-        }
+        // Use linear regeneration (single active box)
+        await this.regenerateSelection(this.activeBox);
         this.game.events.emit("regenerate:finished", { success: true });
       } catch (err) {
         console.error("Regeneration failed:", err);
@@ -889,17 +882,6 @@ export class EditorScene extends Phaser.Scene {
       this.cycleZLevel();
     } else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
       this.finalizeSelectBox();
-    } else if (Phaser.Input.Keyboard.JustDown(this.keyQ)) {
-      if (this.useEventQueueRegen) {
-        regenerate(
-          this.selectionBoxes,
-          this.computeDependencyMap(this.selectionBoxes),
-          this.worldFacts,
-          this,
-        );
-      } else if (this.activeBox) {
-        this.regenerateSelection(this.activeBox);
-      }
     }
 
     //Temp code - Jason

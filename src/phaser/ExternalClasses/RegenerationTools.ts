@@ -326,11 +326,16 @@ You are only allowed to touch the Ground_Layer and the Collectables_Layer.
 
 Before processing any requests, always clear tiles. 
 
+### IMPORTANT: Tool Selection Rules
+- **Enemies (Slime, UltraSlime)**: MUST use the 'placeEnemy' tool. NEVER use placeSingleTile or placeGridofTiles for enemies.
+- **Collectables (Coins - tile index 2, Fruits - tile index 3)**: Use placeSingleTile or placeGridofTiles with layerName='Collectables_Layer'.
+- **Structures (platforms, blocks)**: Use placeSingleTile or placeGridofTiles with layerName='Ground_Layer'.
+
 Here are some steps with an example: 
  • Clear selection fully (only clear the selection please. Do not clear outside the selection). 
  • For each prompt, do the actions mentioned in the prompt
     • Ex: Human Prompt - Place a platform of length _ and height _ at _ and _ coordinates.
-        • For that prompt, place the platform using any or one of the tools provided (placeSingleTile, placeGridofTiles, placeEnemy, clearTile) with that length and with that height at those coordinates. 
+        • For that prompt, place the platform using placeSingleTile or placeGridofTiles with layerName='Ground_Layer' with that length and with that height at those coordinates. 
         • If the coordinates are not specified, assume that it is random. Simply assume. 
 
 Read through each prompt, and complile a list of tool calls that need to be processed in the order they might have been called before regeneration. Based on each prompt, use a similar thought process as provided in the example to decide on a series of tool calls to them be called. 
@@ -342,10 +347,10 @@ Ex:
 
  In this example, you should first create a tool call to place the initial platform of length 5 and height 1 at a random location. Then, place coins on top of that platform using an additional tool call. Next, place an enemy via another tool call. Lastly, create another tool call for the platform to be placed at the right of the platform. 
  So, your list of tool calls should look like this: 
-  • Tool Call - placeGridofTiles with specific platform information and random location.
-  • Tool Call - placeGridofTiles with specific coin locations along the very top of the platform.
-  • Tool Call - placeEnemy with a default Slime information and a random location on the top of the platform.
-  • Tool Call - placeGridofTiles with right-side focused coordinates for a platform of any length and any height as it was not specified. 
+  • Tool Call - placeGridofTiles with tileIndex for platform (e.g., 5 for Dirt Block), layerName='Ground_Layer', and random location.
+  • Tool Call - placeGridofTiles with tileIndex=2 (Coin), layerName='Collectables_Layer', along the very top of the platform.
+  • Tool Call - placeEnemy with enemyType='Slime' and a random location on the top of the platform.
+  • Tool Call - placeGridofTiles with tileIndex for platform, layerName='Ground_Layer', right-side focused coordinates for a platform of any length and any height as it was not specified. 
 
 NEVER PLACE OBJECTS WITHIN ANOTHER SELECTION. THIS IS A RULE YOU SHOULD NEVER BREAK. 
 

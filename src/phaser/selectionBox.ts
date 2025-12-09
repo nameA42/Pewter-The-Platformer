@@ -417,11 +417,11 @@ export class SelectionBox {
     const color = this.getColorForZLevel(this.zLevel);
 
     // Visual margin to include the tab/indicator above the box (in pixels)
-    const tabVisualMargin = 14;
+    //const tabVisualMargin = 14;
 
     // Pixel coordinates for drawing (expand upward by tabVisualMargin)
     const pixelLeft = startX * 16;
-    const pixelTop = startY * 16 - tabVisualMargin;
+    const pixelTop = startY * 16; //- tabVisualMargin;
     const pixelRight = endX * 16 + 16;
     const pixelBottom = endY * 16 + 16;
     const pixelWidth = pixelRight - pixelLeft;
@@ -617,14 +617,14 @@ export class SelectionBox {
           const candRect = new Phaser.Geom.Rectangle(
             candidateStart.x,
             candidateStart.y,
-            candidateEnd.x - candidateStart.x,
-            candidateEnd.y - candidateStart.y,
+            candidateEnd.x - candidateStart.x + 1,
+            candidateEnd.y - candidateStart.y + 1,
           );
           for (const b of boxes) {
             if (b === this) continue;
             if (b.getZLevel && b.getZLevel() === this.zLevel) {
               const br = b.getBounds();
-              if (Phaser.Geom.Intersects.RectangleToRectangle(candRect, br)) {
+              if (SelectionBox.rectanglesOverlap(candRect, br)) {
                 intersects = true;
                 break;
               }
@@ -959,8 +959,8 @@ export class SelectionBox {
     return new Phaser.Geom.Rectangle(
       startX,
       startY,
-      endX - startX,
-      endY - startY,
+      endX - startX + 1,
+      endY - startY + 1,
     );
   }
 
@@ -974,8 +974,8 @@ export class SelectionBox {
     return new Phaser.Geom.Rectangle(
       startX,
       startY,
-      endX - startX,
-      endY - startY,
+      endX - startX + 1,
+      endY - startY + 1,
     );
   }
 

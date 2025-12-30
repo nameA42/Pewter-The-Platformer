@@ -9,6 +9,7 @@ import { sendUserPrompt } from "../languageModel/chatBox";
 import { setActiveSelectionBox } from "../languageModel/chatBox";
 import { Slime } from "./ExternalClasses/Slime.ts";
 import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
+import { DynamicEnemy } from "../enemySystem/runtime/DynamicEnemy.ts";
 import { UIScene } from "./UIScene.ts";
 import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
 import { SelectionBox } from "./selectionBox.ts";
@@ -98,7 +99,11 @@ export class EditorScene extends Phaser.Scene {
 
   // Removed chatBox from EditorScene
 
-  public enemies: (Slime | UltraSlime)[] = [];
+  public enemies: (
+    | Slime
+    | UltraSlime
+    | import("../enemySystem/runtime/DynamicEnemy").DynamicEnemy
+  )[] = [];
 
   private damageKey!: Phaser.Input.Keyboard.Key;
   private flipKey!: Phaser.Input.Keyboard.Key;
@@ -172,7 +177,52 @@ export class EditorScene extends Phaser.Scene {
       keyQ.on("down", () => {
         this.startEditor();
       });
+
+      // Add G key handler to toggle debug overlay
+      const keyG = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.G);
+      keyG.on("down", () => {
+        this.toggleDebugOverlay();
+      });
     }
+  }
+
+  // Toggle debug overlay for all enemies
+  private toggleDebugOverlay() {
+    const newDebugState = !DynamicEnemy.debugMode;
+
+    // Set debug mode for all enemy types
+    DynamicEnemy.debugMode = newDebugState;
+    Slime.debugMode = newDebugState;
+    UltraSlime.debugMode = newDebugState;
+
+    console.log(`Debug overlay: ${newDebugState ? "ON" : "OFF"}`);
+
+    // Show brief notification
+    const notification = this.add.text(
+      this.cameras.main.worldView.centerX,
+      this.cameras.main.worldView.y + 50,
+      `Debug Overlay: ${newDebugState ? "ON (Press G to disable)" : "OFF"}`,
+      {
+        fontSize: "16px",
+        fontFamily: "monospace",
+        color: newDebugState ? "#00ff00" : "#ff6600",
+        backgroundColor: "#000000cc",
+        padding: { x: 10, y: 5 },
+      },
+    );
+    notification.setOrigin(0.5, 0);
+    notification.setScrollFactor(0);
+    notification.setDepth(2000);
+
+    // Fade out notification
+    this.time.delayedCall(2000, () => {
+      this.tweens.add({
+        targets: notification,
+        alpha: 0,
+        duration: 500,
+        onComplete: () => notification.destroy(),
+      });
+    });
   }
 
   create() {
@@ -695,21 +745,21 @@ export class EditorScene extends Phaser.Scene {
   }
 
   update() {
-    if (this.gameActive) {
+    if (this.gameActive && this.player) {
       // Play mode: player movement and camera follow
       // Hide grid and red outline
+      let playerHealth = 100; // Track actual health
 
-      this.enemies.forEach((enemy, index) => {
+      // Iterate backwards to safely remove elements
+      for (let i = this.enemies.length - 1; i >= 0; i--) {
+        const enemy = this.enemies[i];
         if (!enemy || !enemy.active) {
-          enemy.destroy();
-          if (index !== -1) {
-            this.enemies.splice(index, 1); // removes 1 item at that index
-          }
-
-          return;
+          enemy?.destroy();
+          this.enemies.splice(i, 1);
+          continue;
         }
-        enemy.update(this.player, 0, this.gameActive);
-      });
+        playerHealth = enemy.update(this.player, playerHealth, this.gameActive);
+      }
 
       if (this.gridGraphics) this.gridGraphics.clear();
       if (this.highlightBox) this.highlightBox.clear();
@@ -1029,7 +1079,7 @@ export class EditorScene extends Phaser.Scene {
       if (box.getZLevel() === this.currentZLevel) {
         // only check boxes on same level
         const bound = box.getBounds(); // MUST be tile-space rectangle
-         if (SelectionBox.rectanglesOverlap(candidate, bound)) {
+        if (SelectionBox.rectanglesOverlap(candidate, bound)) {
           console.log("Cannot create box here — overlap detected");
           overlap = true;
           break;
@@ -1041,7 +1091,7 @@ export class EditorScene extends Phaser.Scene {
       // If the click lands inside an existing finalized box, select it instead
       for (const box of this.selectionBoxes) {
         const bound = box.getBounds();
-         if (SelectionBox.rectanglesOverlap(candidate, bound)) {
+        if (SelectionBox.rectanglesOverlap(candidate, bound)) {
           // Select this box
           console.log("Clicked existing selection — activating it.");
           this.selectBox(box);
@@ -1288,16 +1338,24 @@ export class EditorScene extends Phaser.Scene {
   // Create the editor button - Shawn K
   createEditorButton() {
     // some help text
-    const msgBg = this.add.rectangle(30, 310, 500, 20, 0x1a1a1a);
-    const msgTxt = this.add.text(20, 300, "Press Q to quit play mode.");
+    const msgBg = this.add.rectangle(30, 310, 550, 30, 0x1a1a1a);
+    const msgTxt = this.add.text(
+      20,
+      300,
+      "Q = Quit  |  G = Toggle Debug Overlay",
+      {
+        fontSize: "14px",
+        color: "#ffffff",
+      },
+    );
 
-    this.time.delayedCall(3000, () => {
+    this.time.delayedCall(4000, () => {
       this.tweens.add({
         targets: [msgBg, msgTxt],
         alpha: 0,
         duration: 1500,
         ease: "Sine.easeInOut",
-        onCompletete: () => {
+        onComplete: () => {
           msgBg.destroy();
           msgTxt.destroy();
         },
@@ -1308,6 +1366,11 @@ export class EditorScene extends Phaser.Scene {
   private startEditor() {
     // Undo play mode and restore editor mode
     this.gameActive = false;
+
+    // Disable debug overlay for all enemy types when exiting play mode
+    DynamicEnemy.debugMode = false;
+    Slime.debugMode = false;
+    UltraSlime.debugMode = false;
 
     this.scene.launch("UIScene");
     this.scene.bringToTop("UIScene");
@@ -1338,6 +1401,22 @@ export class EditorScene extends Phaser.Scene {
       this.player.destroy();
       this.player = undefined as any;
     }
+
+    // Reset enemies to their spawn positions
+    this.enemies.forEach((enemy) => {
+      if (enemy && enemy.active) {
+        // Reset to spawn position (stored in getData)
+        const spawnX = enemy.getData("spawnX");
+        const spawnY = enemy.getData("spawnY");
+        if (spawnX !== undefined && spawnY !== undefined) {
+          enemy.setPosition(spawnX, spawnY);
+        }
+        // Stop all movement
+        if (enemy.body) {
+          enemy.body.setVelocity(0, 0);
+        }
+      }
+    });
 
     // Reset gravity
     this.physics.world.gravity.y = 0;
@@ -1396,7 +1475,7 @@ export class EditorScene extends Phaser.Scene {
     const MAX_Z = Z_LEVEL_COLORS.length;
 
     if (this.currentZLevel < MAX_Z) {
-    this.currentZLevel++;
+      this.currentZLevel++;
     } else {
       console.log("Already at highest Z-Level");
     }

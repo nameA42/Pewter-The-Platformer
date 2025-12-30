@@ -2,7 +2,12 @@ import Phaser from "phaser";
 import { Pathfinding } from "./Pathfinding";
 
 export class Slime extends Phaser.Physics.Arcade.Sprite {
+  // Static flag to enable/disable debug overlay (shared with DynamicEnemy)
+  public static debugMode: boolean = false;
+
+  public type: string = "Slime";
   private health: number = 10;
+  private maxHealth: number = 10;
   private frameCounter: number = 0;
 
   // pellet info
@@ -19,6 +24,9 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
   private speed: number = 20;
 
   private patrolLength: number = 3;
+
+  // Debug overlay
+  private debugText: Phaser.GameObjects.Text | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -59,52 +67,62 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
     playerHealth: number,
     active: boolean,
   ) {
-    console.log("is inactive");
-    if (active) {
-      console.log("is active");
-      this.frameCounter++;
-
-      // shooting logic
-      if (this.frameCounter % this.fireRate === 0) {
-        this.shootPellet();
-      }
-
-      // pellet collisions with player
-      this.pellets = this.pellets.filter((pellet) => {
-        // skip destroyed pellets
-        if (!pellet || !pellet.body) return false;
-
-        if (this.scene.physics.overlap(player, pellet)) {
-          playerHealth--;
-          pellet.destroy();
-          return false;
-        }
-        return true;
-      });
-
-      // --- PATROL LOGIC ---
-      if (this.reachedPoint) {
-        // reached a patrol point → set up next path
-        const start = this.patrolPoints[this.currentPatrolIndex == 1 ? 0 : 1];
-        const target = this.patrolPoints[this.currentPatrolIndex];
-
-        this.pathfinder.findPath(start.x, start.y, target.x, target.y);
-        this.reachedPoint = false;
-
-        // next target in sequence
-        this.currentPatrolIndex++;
-        this.currentPatrolIndex = this.currentPatrolIndex % 2;
-      } else {
-        // continue pathfinding
-        this.reachedPoint = this.pathfinder.pathfind();
-      }
-
-      if (this.currentPatrolIndex == 0) {
-        this.flip(false);
-      } else if (this.currentPatrolIndex == 1) {
-        this.flip(true);
-      }
+    if (!active) {
+      this.hideDebugOverlay();
+      return playerHealth;
     }
+
+    this.frameCounter++;
+
+    // shooting logic
+    if (this.frameCounter % this.fireRate === 0) {
+      this.shootPellet();
+    }
+
+    // pellet collisions with player
+    this.pellets = this.pellets.filter((pellet) => {
+      // skip destroyed pellets
+      if (!pellet || !pellet.body) return false;
+
+      if (this.scene.physics.overlap(player, pellet)) {
+        playerHealth--;
+        pellet.destroy();
+        return false;
+      }
+      return true;
+    });
+
+    // --- PATROL LOGIC ---
+    if (this.reachedPoint) {
+      // reached a patrol point → set up next path
+      const start = this.patrolPoints[this.currentPatrolIndex == 1 ? 0 : 1];
+      const target = this.patrolPoints[this.currentPatrolIndex];
+
+      this.pathfinder.findPath(start.x, start.y, target.x, target.y);
+      this.reachedPoint = false;
+
+      // next target in sequence
+      this.currentPatrolIndex++;
+      this.currentPatrolIndex = this.currentPatrolIndex % 2;
+    } else {
+      // continue pathfinding
+      this.reachedPoint = this.pathfinder.pathfind();
+    }
+
+    if (this.currentPatrolIndex == 0) {
+      this.flip(false);
+    } else if (this.currentPatrolIndex == 1) {
+      this.flip(true);
+    }
+
+    // Update debug overlay if enabled
+    if (Slime.debugMode) {
+      this.updateDebugOverlay(player);
+    } else {
+      this.hideDebugOverlay();
+    }
+
+    return playerHealth;
   }
 
   private shootPellet() {
@@ -135,5 +153,61 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
   flip(flip: boolean) {
     this.isFlipped = flip;
     this.setFlipX(flip);
+  }
+
+  // Debug overlay methods
+  private updateDebugOverlay(player: Phaser.GameObjects.Sprite) {
+    if (!this.debugText) {
+      this.debugText = this.scene.add.text(this.x, this.y - 40, "", {
+        fontSize: "10px",
+        fontFamily: "monospace",
+        color: "#ffffff",
+        backgroundColor: "#000000aa",
+        padding: { x: 4, y: 2 },
+        align: "center",
+      });
+      this.debugText.setOrigin(0.5, 1);
+      this.debugText.setDepth(1001);
+    }
+
+    const distance = Math.floor(
+      Math.sqrt(
+        Math.pow(player.x - this.x, 2) + Math.pow(player.y - this.y, 2),
+      ),
+    );
+    const state = this.reachedPoint ? "PATROL_WAIT" : "PATROL_MOVE";
+    const direction = this.currentPatrolIndex === 0 ? "→" : "←";
+
+    const lines = [
+      `[Slime]`,
+      `State: ${state} ${direction}`,
+      `HP: ${this.health}/${this.maxHealth}`,
+      `Dist: ${distance}px`,
+    ];
+
+    this.debugText.setText(lines.join("\n"));
+    this.debugText.setPosition(this.x, this.y - 20);
+
+    // Update color based on health
+    const healthPercent = this.health / this.maxHealth;
+    if (healthPercent <= 0.25) {
+      this.debugText.setStyle({ backgroundColor: "#aa0000cc" });
+    } else if (healthPercent <= 0.5) {
+      this.debugText.setStyle({ backgroundColor: "#aa6600cc" });
+    } else {
+      this.debugText.setStyle({ backgroundColor: "#000000aa" });
+    }
+  }
+
+  private hideDebugOverlay() {
+    if (this.debugText) {
+      this.debugText.destroy();
+      this.debugText = null;
+    }
+  }
+
+  destroy(fromScene?: boolean) {
+    this.hideDebugOverlay();
+    super.destroy(fromScene);
   }
 }

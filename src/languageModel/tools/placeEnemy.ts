@@ -33,24 +33,34 @@ export class PlaceEnemy {
 
       try {
         if (enemyType === "Slime") {
+          const spawnX = x * scene.map.tileWidth + scene.map.tileWidth / 2;
+          const spawnY = y * scene.map.tileWidth + scene.map.tileWidth / 2;
           const slime = new Slime(
             scene,
-            x * scene.map.tileWidth + scene.map.tileWidth / 2,
-            y * scene.map.tileWidth + scene.map.tileWidth / 2,
+            spawnX,
+            spawnY,
             scene.map,
             scene.groundLayer,
           );
+          // Store spawn position for reset when exiting play mode
+          slime.setData("spawnX", spawnX);
+          slime.setData("spawnY", spawnY);
           enemies.push(slime);
           scene.worldFacts.setFact("Enemy", x, y, "Slime");
           return `✅ Placed Slime at (${x}, ${y}).`;
         } else if (enemyType === "UltraSlime") {
+          const spawnX = x * scene.map.tileWidth + scene.map.tileWidth / 2;
+          const spawnY = y * scene.map.tileWidth + scene.map.tileWidth / 2;
           const ultraSlime = new UltraSlime(
             scene,
-            x * scene.map.tileWidth + scene.map.tileWidth / 2,
-            y * scene.map.tileWidth + scene.map.tileWidth / 2,
+            spawnX,
+            spawnY,
             scene.map,
             scene.groundLayer,
           );
+          // Store spawn position for reset when exiting play mode
+          ultraSlime.setData("spawnX", spawnX);
+          ultraSlime.setData("spawnY", spawnY);
           enemies.push(ultraSlime);
           scene.worldFacts.setFact("Enemy", x, y, "UltraSlime");
           return `✅ Placed UltraSlime at (${x}, ${y}).`;

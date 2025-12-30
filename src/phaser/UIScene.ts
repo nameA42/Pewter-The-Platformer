@@ -4,6 +4,7 @@ import {
   getDisplayChatHistory,
 } from "../languageModel/chatBox.ts";
 import { EditorScene } from "./editorScene.ts";
+import { SpriteGenerator } from "../enemySystem/sprite/SpriteGenerator.ts";
 import "./chatbox.css";
 
 export class UIScene extends Phaser.Scene {
@@ -38,6 +39,7 @@ export class UIScene extends Phaser.Scene {
   private regenerateButton!: Phaser.GameObjects.Container;
   private deselectBoxBtn!: Phaser.GameObjects.Container;
   private regenAlgoToggle!: Phaser.GameObjects.Container;
+  private apiSpriteToggle!: Phaser.GameObjects.Container;
 
   //Inputs
   private keyR!: Phaser.Input.Keyboard.Key;
@@ -169,6 +171,7 @@ export class UIScene extends Phaser.Scene {
         this.deselectBoxBtn.setVisible(isChatVisible);
         this.regenerateButton.setVisible(isChatVisible);
         this.regenAlgoToggle.setVisible(isChatVisible);
+        this.apiSpriteToggle.setVisible(isChatVisible);
         try {
           this.game.events.emit("ui:toggleMinimap", isChatVisible);
         } catch (err) {
@@ -194,6 +197,7 @@ export class UIScene extends Phaser.Scene {
           this.deselectBoxBtn.setVisible(isChatVisible);
           this.regenerateButton.setVisible(isChatVisible);
           this.regenAlgoToggle.setVisible(isChatVisible);
+          this.apiSpriteToggle.setVisible(isChatVisible);
           try {
             this.game.events.emit("ui:toggleMinimap", isChatVisible);
           } catch (err) {}
@@ -342,6 +346,47 @@ export class UIScene extends Phaser.Scene {
       },
     );
     this.regenAlgoToggle.setDepth(1001);
+
+    // API Sprite Generation toggle button
+    // Starts OFF to prevent accidental API credit usage
+    this.apiSpriteToggle = this.createButton(
+      this,
+      740, // x position (to the right of Event Queue Regen)
+      this.cameras.main.height - 50,
+      "API Sprites: OFF",
+      () => {
+        // Toggle the API sprite generation
+        SpriteGenerator.useExternalApi = !SpriteGenerator.useExternalApi;
+        const isEnabled = SpriteGenerator.useExternalApi;
+
+        // Update button text and color
+        const txt = this.apiSpriteToggle.list[1] as Phaser.GameObjects.Text;
+        const bg = this.apiSpriteToggle.list[0] as Phaser.GameObjects.Rectangle;
+
+        if (isEnabled) {
+          txt.setText("API Sprites: ON");
+          bg.setFillStyle(0x2e7d32); // Green when enabled
+        } else {
+          txt.setText("API Sprites: OFF");
+          bg.setFillStyle(0x1a1a1a); // Dark when disabled
+        }
+
+        console.log(
+          `🎨 API Sprite Generation: ${isEnabled ? "ENABLED" : "DISABLED"}`,
+        );
+      },
+      {
+        fill: 0x1a1a1a, // Starts dark (OFF)
+        hoverFill: 0x2b6bff,
+        downFill: 0x1f4fcf,
+        textColor: "#ffffff",
+        fontSize: 14,
+        paddingX: 10,
+        paddingY: 6,
+        fixedWidth: 140,
+      },
+    );
+    this.apiSpriteToggle.setDepth(1001);
 
     // Listen for event queue regeneration lifecycle events
     this.game.events.on("eventQueueRegen:started", () => {

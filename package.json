@@ -22,8 +22,11 @@
   "dependencies": {
     "20": "^1.0.0",
     "@langchain/google-genai": "^0.2.14",
+    "@pixellab-code/pixellab": "^1.0.0",
     "easystarjs": "^0.4.4",
     "node": "^20.19.4",
-    "phaser": "^3.90.0"
+    "phaser": "^3.90.0",
+    "yaml": "^2.8.2",
+    "zod": "^4.2.1"
   }
 }

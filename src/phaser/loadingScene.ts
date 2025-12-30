@@ -20,6 +20,10 @@ export class LoadingScene extends Phaser.Scene {
       frameWidth: 16,
       frameHeight: 16,
     });
+
+    // Load particle effects for enemy system (optional - effects will gracefully degrade if missing)
+    // Uncomment when kenny-particles assets are available:
+    // this.load.atlas("kenny-particles", "kenny-particles-0.png", "kenny-particles.json");
   }
 
   create() {

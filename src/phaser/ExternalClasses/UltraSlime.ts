@@ -2,8 +2,13 @@ import Phaser from "phaser";
 import { Pathfinding } from "./Pathfinding";
 
 export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
+  // Static flag to enable/disable debug overlay (shared with DynamicEnemy)
+  public static debugMode: boolean = false;
+
+  public type: string = "UltraSlime";
   // health
   private health: number = 20;
+  private maxHealth: number = 20;
 
   // essentials
   private frameCounter: number = 0;
@@ -25,6 +30,9 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
   private speed: number = 35;
 
   private patrolLength: number = 5;
+
+  // Debug overlay
+  private debugText: Phaser.GameObjects.Text | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -65,59 +73,71 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
     playerHealth: number,
     active: boolean,
   ) {
-    if (active) {
-      this.frameCounter++;
+    if (!active) {
+      this.hideDebugOverlay();
+      return playerHealth;
+    }
 
-      if (this.frameCounter > 100 && this.frameCounter <= 200) {
-        this.isRapidFiring = true;
-      } else if (this.frameCounter <= 100) {
-        this.isRapidFiring = false;
-      } else if (this.frameCounter > 200) {
-        this.frameCounter = 0;
+    this.frameCounter++;
+
+    if (this.frameCounter > 100 && this.frameCounter <= 200) {
+      this.isRapidFiring = true;
+    } else if (this.frameCounter <= 100) {
+      this.isRapidFiring = false;
+    } else if (this.frameCounter > 200) {
+      this.frameCounter = 0;
+    }
+
+    if (this.isRapidFiring == false) {
+      if (this.frameCounter % this.fireRate === 0) {
+        this.shootPellet();
       }
-
-      if (this.isRapidFiring == false) {
-        if (this.frameCounter % this.fireRate === 0) {
-          this.shootPellet();
-        }
-      } else {
-        if ((this.frameCounter % this.fireRate) / 10 === 0) {
-          this.shootMegaPellet();
-        }
-      }
-
-      this.pellets = this.pellets.filter((pellet) => {
-        this.scene.physics.add.overlap(player, pellet, () => {
-          const isMega = pellet.getData("isMega") === true;
-          playerHealth -= isMega ? 5 : 2;
-          pellet.destroy();
-        });
-        return playerHealth;
-      });
-
-      // --- PATROL LOGIC ---
-      if (this.reachedPoint) {
-        // reached a patrol point → set up next path
-        const start = this.patrolPoints[this.currentPatrolIndex == 1 ? 0 : 1];
-        const target = this.patrolPoints[this.currentPatrolIndex];
-
-        this.pathfinder.findPath(start.x, start.y, target.x, target.y);
-        this.reachedPoint = false;
-
-        // next target in sequence
-        this.currentPatrolIndex++;
-        this.currentPatrolIndex = this.currentPatrolIndex % 2;
-      } else {
-        // continue pathfinding
-        this.reachedPoint = this.pathfinder.pathfind();
-      }
-
-      if (this.currentPatrolIndex == 0) {
-        this.flip(false);
-      } else if (this.currentPatrolIndex == 1) {
-        this.flip(true);
+    } else {
+      if ((this.frameCounter % this.fireRate) / 10 === 0) {
+        this.shootMegaPellet();
       }
     }
+
+    this.pellets = this.pellets.filter((pellet) => {
+      this.scene.physics.add.overlap(player, pellet, () => {
+        const isMega = pellet.getData("isMega") === true;
+        playerHealth -= isMega ? 5 : 2;
+        pellet.destroy();
+      });
+      return playerHealth;
+    });
+
+    // --- PATROL LOGIC ---
+    if (this.reachedPoint) {
+      // reached a patrol point → set up next path
+      const start = this.patrolPoints[this.currentPatrolIndex == 1 ? 0 : 1];
+      const target = this.patrolPoints[this.currentPatrolIndex];
+
+      this.pathfinder.findPath(start.x, start.y, target.x, target.y);
+      this.reachedPoint = false;
+
+      // next target in sequence
+      this.currentPatrolIndex++;
+      this.currentPatrolIndex = this.currentPatrolIndex % 2;
+    } else {
+      // continue pathfinding
+      this.reachedPoint = this.pathfinder.pathfind();
+    }
+
+    if (this.currentPatrolIndex == 0) {
+      this.flip(false);
+    } else if (this.currentPatrolIndex == 1) {
+      this.flip(true);
+    }
+
+    // Update debug overlay if enabled
+    if (UltraSlime.debugMode) {
+      this.updateDebugOverlay(player);
+    } else {
+      this.hideDebugOverlay();
+    }
+
+    return playerHealth;
   }
 
   private shootPellet() {
@@ -159,5 +179,63 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
     } else {
       this.flipX = false;
     }
+  }
+
+  // Debug overlay methods
+  private updateDebugOverlay(player: Phaser.GameObjects.Sprite) {
+    if (!this.debugText) {
+      this.debugText = this.scene.add.text(this.x, this.y - 40, "", {
+        fontSize: "10px",
+        fontFamily: "monospace",
+        color: "#ffffff",
+        backgroundColor: "#000000aa",
+        padding: { x: 4, y: 2 },
+        align: "center",
+      });
+      this.debugText.setOrigin(0.5, 1);
+      this.debugText.setDepth(1001);
+    }
+
+    const distance = Math.floor(
+      Math.sqrt(
+        Math.pow(player.x - this.x, 2) + Math.pow(player.y - this.y, 2),
+      ),
+    );
+    const patrolState = this.reachedPoint ? "PATROL_WAIT" : "PATROL_MOVE";
+    const fireState = this.isRapidFiring ? "RAPID_FIRE 🔥" : "NORMAL_FIRE";
+    const direction = this.currentPatrolIndex === 0 ? "→" : "←";
+
+    const lines = [
+      `[UltraSlime]`,
+      `Move: ${patrolState} ${direction}`,
+      `Attack: ${fireState}`,
+      `HP: ${this.health}/${this.maxHealth}`,
+      `Dist: ${distance}px`,
+    ];
+
+    this.debugText.setText(lines.join("\n"));
+    this.debugText.setPosition(this.x, this.y - 20);
+
+    // Update color based on health
+    const healthPercent = this.health / this.maxHealth;
+    if (healthPercent <= 0.25) {
+      this.debugText.setStyle({ backgroundColor: "#aa0000cc" });
+    } else if (healthPercent <= 0.5) {
+      this.debugText.setStyle({ backgroundColor: "#aa6600cc" });
+    } else {
+      this.debugText.setStyle({ backgroundColor: "#000000aa" });
+    }
+  }
+
+  private hideDebugOverlay() {
+    if (this.debugText) {
+      this.debugText.destroy();
+      this.debugText = null;
+    }
+  }
+
+  destroy(fromScene?: boolean) {
+    this.hideDebugOverlay();
+    super.destroy(fromScene);
   }
 }

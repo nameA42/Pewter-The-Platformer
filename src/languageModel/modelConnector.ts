@@ -31,6 +31,15 @@ const sysPrompt =
   // Tool rules
   "Tool rules: " +
   "Place Enemy: Only place enemies on ground. Find the nearest ground tile and place the enemy one tile above it. Ensure the enemy has enough space to move side-to-side. If placement is impossible, suggest an alternative location but do not place it. " +
+  "Generate Enemy: Create custom enemies using CEDL or pre-built templates. " +
+  "TEMPLATE LIBRARY: 'Patrol Guard', 'Turret', 'Charger', 'Flyer', 'Sniper', 'Shotgunner', 'Bullet Hell', 'Homing Drone', 'Berserker', 'Teleporter'. " +
+  "TEMPLATE CUSTOMIZATION: Combine template with cedl_code to override properties. " +
+  "ACTIONS: Basic (patrol, move_toward_player, move_away_from_player, shoot, jump, tint, scale, wait). " +
+  "ENVIRONMENTAL ACTIONS: smart_patrol (avoids pits/walls), avoid_pit, jump_to_platform (max_height), seek_cover, lure_to_hazard, flee_from_hazard, ambush (trigger_distance), drop_attack. " +
+  "PROJECTILE PATTERNS: 'single', 'spread', 'burst', 'circular', 'homing'. " +
+  "CONDITIONS: player_distance, health, timer, player_x_relative, random, always. " +
+  "TERRAIN CONDITIONS: pit_ahead, pit_distance, wall_ahead, platform_above, platform_distance, cover_nearby, hazard_nearby, player_near_hazard, on_ground. " +
+  "Use smart_patrol instead of patrol for enemies that should avoid falling into pits. " +
   "Clear Tile: Clear only on the Ground_Layer unless specifically instructed otherwise. " +
   "World Facts: Use this tool to provide yourself with the facts within the world or within the selection. Using the get method, you " +
   "Place Tile: Use this tool to place a given index or term on a layer when told. Use the tile information and map each tile to the index. " +

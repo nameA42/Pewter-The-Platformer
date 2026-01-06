@@ -131,6 +131,10 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
       ? this.pelletVelocity
       : -this.pelletVelocity;
 
+    // Disable gravity on projectiles
+    pellet.body.setAllowGravity(false);
+    pellet.body.setGravityY(0);
+
     this.pellets.push(pellet);
 
     // auto-destroy after 2s

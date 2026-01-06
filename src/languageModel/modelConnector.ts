@@ -31,7 +31,8 @@ const sysPrompt =
   // Tool rules
   "Tool rules: " +
   "Place Enemy: Only place enemies on ground. Find the nearest ground tile and place the enemy one tile above it. Ensure the enemy has enough space to move side-to-side. If placement is impossible, suggest an alternative location but do not place it. " +
-  "Generate Enemy: Create custom enemies using CEDL or pre-built templates. " +
+  "Generate Enemy: Create custom enemies using CEDL or pre-built templates. Each enemy gets a unique name automatically (e.g., 'Slime', 'Slime 1', 'Slime 2' if duplicates exist). " +
+  "Modify Enemy: Modify existing enemies by their unique name. Accepts natural language requests - convert to CEDL format. Can update stats, looks, projectiles, or behavior. " +
   "TEMPLATE LIBRARY: 'Patrol Guard', 'Turret', 'Charger', 'Flyer', 'Sniper', 'Shotgunner', 'Bullet Hell', 'Homing Drone', 'Berserker', 'Teleporter'. " +
   "TEMPLATE CUSTOMIZATION: Combine template with cedl_code to override properties. " +
   "ACTIONS: Basic (patrol, move_toward_player, move_away_from_player, shoot, jump, tint, scale, wait). " +

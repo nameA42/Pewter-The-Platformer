@@ -25,6 +25,7 @@ import { WorldFactsTool } from "./languageModel/tools/worldFactsTool.ts";
 import { GetPlacedTiles } from "./languageModel/tools/getPlacedTiles.ts";
 import { RelativeRegeneration } from "./languageModel/tools/relativeGeneration.ts";
 import { GenerateEnemy } from "./languageModel/tools/generateEnemy.ts";
+import { ModifyEnemy } from "./languageModel/tools/modifyEnemy.ts";
 
 ////****LLM Tool Setup****////
 // const tools = {
@@ -47,6 +48,7 @@ const tools = {
   getPlacedTiles: new GetPlacedTiles(getScene),
   relativeGeneration: new RelativeRegeneration(getScene),
   generateEnemy: new GenerateEnemy(getScene),
+  modifyEnemy: new ModifyEnemy(getScene),
 };
 
 // Function to swap clearTile tool based on algorithm

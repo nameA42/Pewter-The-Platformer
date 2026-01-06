@@ -3,6 +3,7 @@ import type { EditorScene } from "../../phaser/editorScene.ts";
 import { Slime } from "../../phaser/ExternalClasses/Slime.ts";
 import { UltraSlime } from "../../phaser/ExternalClasses/UltraSlime.ts";
 import { z } from "zod";
+import { OverlapChecker } from "../../phaser/OverlapChecker.ts";
 
 export class PlaceEnemy {
   sceneGetter: () => EditorScene;
@@ -30,6 +31,17 @@ export class PlaceEnemy {
 
       const { enemyType, x, y } = args;
       const enemies = scene.enemies;
+
+      // Check for overlaps before placing enemy
+      const overlapCheck = OverlapChecker.checkTileOverlap(
+        scene,
+        x,
+        y,
+        "enemy",
+      );
+      if (!overlapCheck.canPlace) {
+        return `❌ Cannot place ${enemyType} at (${x}, ${y}): ${overlapCheck.reason}`;
+      }
 
       try {
         if (enemyType === "Slime") {

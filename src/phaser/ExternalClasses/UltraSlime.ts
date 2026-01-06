@@ -145,6 +145,11 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
     pellet.body.velocity.x = !this.isFlipped
       ? this.pelletVelocity
       : -this.pelletVelocity;
+
+    // Disable gravity on projectiles
+    pellet.body.setAllowGravity(false);
+    pellet.body.setGravityY(0);
+
     this.pellets.push(pellet);
     this.scene.time.delayedCall(2000, () => pellet.destroy());
   }
@@ -154,6 +159,11 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
     mega.body.velocity.x = !this.isFlipped
       ? this.megaPelletVelocity
       : -this.megaPelletVelocity;
+
+    // Disable gravity on projectiles
+    mega.body.setAllowGravity(false);
+    mega.body.setGravityY(0);
+
     mega.setData("isMega", true);
     this.pellets.push(mega);
     this.scene.time.delayedCall(2000, () => mega.destroy());

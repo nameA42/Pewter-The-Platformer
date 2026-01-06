@@ -1,6 +1,10 @@
 import { tool } from "@langchain/core/tools";
 import type { EditorScene } from "../../phaser/editorScene.ts";
 import { z } from "zod";
+import {
+  OverlapChecker,
+  type PlacementType,
+} from "../../phaser/OverlapChecker.ts";
 
 export class PlaceGridofTiles {
   sceneGetter: () => EditorScene;
@@ -63,12 +67,51 @@ export class PlaceGridofTiles {
         return `❌ Tool Failed: layer '${layerName}' not found.`;
       }
 
+      // Determine placement type
+      let placementType: PlacementType;
+      if (layerName === "Ground_Layer") {
+        placementType = "ground";
+      } else if (layerName === "Collectables_Layer") {
+        placementType = "collectable";
+      } else {
+        // Unknown layer - skip overlap check
+        try {
+          for (let x = xMin; x <= xMax; x++) {
+            for (let y = yMin; y <= yMax; y++) {
+              map.putTileAt(tileIndex, x, y, true, layer);
+              if (scene.activeBox) {
+                scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
+              }
+            }
+          }
+          return `✅ Placed grid of tile ${tileIndex} from (${xMin}, ${yMin}) to (${xMax}, ${yMax}) on layer '${layerName}'.`;
+        } catch (e) {
+          console.error("putTileAt failed:", e);
+          return "❌ Tool Failed: error while placing grid of tiles.";
+        }
+      }
+
+      // Check ALL tiles in grid for overlaps BEFORE placing any
+      for (let x = xMin; x <= xMax; x++) {
+        for (let y = yMin; y <= yMax; y++) {
+          const overlapCheck = OverlapChecker.checkTileOverlap(
+            scene,
+            x,
+            y,
+            placementType,
+          );
+          if (!overlapCheck.canPlace) {
+            return `❌ Cannot place grid: ${overlapCheck.reason} at position (${x}, ${y})`;
+          }
+        }
+      }
+
+      // All tiles are clear - proceed with placement
       try {
         for (let x = xMin; x <= xMax; x++) {
           for (let y = yMin; y <= yMax; y++) {
             map.putTileAt(tileIndex, x, y, true, layer);
 
-            //Record the placement
             if (scene.activeBox) {
               scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
             }
@@ -79,7 +122,7 @@ export class PlaceGridofTiles {
         } else if (layerName == "Collectables_Layer") {
           scene.worldFacts.setFact("Collectable");
         }
-        return `✅ Placed grid of tile ${tileIndex} from (${xMin}, ${yMin}) up to (${xMax}, ${yMax}) on layer '${layerName}'.`;
+        return `✅ Placed grid of tile ${tileIndex} from (${xMin}, ${yMin}) to (${xMax}, ${yMax}) on layer '${layerName}'.`;
       } catch (e) {
         console.error("putTileAt failed:", e);
         return "❌ Tool Failed: error while placing grid of tiles.";

@@ -9,6 +9,8 @@ import {
   getTemplateSummary,
 } from "../../enemySystem/cedl/templates";
 import { getSpriteGenerator } from "../../enemySystem/sprite/SpriteGenerator";
+import { OverlapChecker } from "../../phaser/OverlapChecker.ts";
+import { EnemyRegistry } from "../../enemySystem/EnemyRegistry.ts";
 
 export class GenerateEnemy {
   sceneGetter: () => EditorScene;
@@ -87,6 +89,16 @@ export class GenerateEnemy {
         return "❌ Tool Failed: parsed data is missing.";
       }
 
+      // Generate unique name for the enemy
+      const uniqueName = EnemyRegistry.generateUniqueName(
+        scene,
+        parseResult.data.name,
+      );
+      if (uniqueName !== parseResult.data.name) {
+        // Update the name in the parsed data
+        parseResult.data.name = uniqueName;
+      }
+
       // Generate sprite if needed
       let spriteGenerationNote = "";
       try {
@@ -134,6 +146,17 @@ export class GenerateEnemy {
       }
 
       try {
+        // Check for overlaps before creating enemy
+        const overlapCheck = OverlapChecker.checkTileOverlap(
+          scene,
+          x,
+          y,
+          "enemy",
+        );
+        if (!overlapCheck.canPlace) {
+          return `❌ Cannot place enemy "${parseResult.data.name}" at (${x}, ${y}): ${overlapCheck.reason}`;
+        }
+
         // Create enemy via factory
         const enemy = EnemyFactory.create(
           scene,

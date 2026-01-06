@@ -178,13 +178,14 @@ export class ProjectileManager {
     sprite.setRotation(finalAngle);
 
     // Handle gravity - disable world gravity by default, apply custom if specified
+    // Always disable gravity first to ensure world gravity doesn't affect projectiles
+    sprite.body.setAllowGravity(false);
+    sprite.body.setGravityY(0);
+
     if (definition.gravity !== undefined && definition.gravity !== 0) {
-      // Enable gravity and set custom value
+      // Enable gravity and set custom value only if explicitly specified
       sprite.body.setAllowGravity(true);
       sprite.body.setGravityY(definition.gravity);
-    } else {
-      // Disable gravity completely (ignore world gravity)
-      sprite.body.setAllowGravity(false);
     }
 
     // Store definition reference for damage lookup

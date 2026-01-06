@@ -6,6 +6,8 @@ The platformer editor now supports **dynamic enemy generation** through a Custom
 
 ### Latest Updates:
 
+- ✅ **Enemy Modification System** - Modify existing enemies by unique name (stats, looks, behavior, projectiles)
+- ✅ **Unique Enemy Naming** - Automatic unique naming system (e.g., "Slime", "Slime 1", "Slime 2")
 - ✅ **AI Sprite Generation** - Optional PixelLab API integration for custom enemy sprites
 - ✅ **API Credit Protection** - Toggle button to prevent accidental API usage
 - ✅ **Streamlined Tools** - Single `generateEnemy` tool handles everything
@@ -230,6 +232,42 @@ Real-time debugging for enemy AI:
 
 ---
 
+### ✏️ 13. **Enemy Modification System**
+
+Modify existing enemies without recreating them:
+
+**Key Features:**
+
+- **Unique Naming System** - Every enemy gets a unique name automatically
+  - First enemy: "Slime"
+  - Duplicate names get numbered: "Slime 1", "Slime 2", etc.
+  - No two enemies can have the same name
+
+- **Modify Enemy Tool** - Change enemy properties using partial CEDL:
+  - **Stats** (health, speed, damage_on_contact) - Updated in-place
+  - **Looks** (tint, scale, sprite, custom_texture) - Updated in-place
+  - **Projectiles** - Requires recreation (preserves position)
+  - **Behavior** - Requires recreation (preserves position)
+  - **Name** - Can rename enemies (ensures uniqueness)
+
+- **Smart Update Logic:**
+  - Simple changes (stats, looks) → Instant in-place updates
+  - Complex changes (behavior, projectiles) → Automatic recreation
+
+**Usage Examples:**
+
+```
+"Make that Turret shoot faster"      → Updates fire rate
+"Give the Sniper more health"        → Updates health stat
+"Change Charger's color to red"      → Updates tint
+"Make Slime 1 move faster"           → Updates speed
+```
+
+**Natural Language Support:**
+The LLM automatically converts natural language requests to CEDL updates, so you can just describe what you want changed!
+
+---
+
 ### 🎨 12. **AI Sprite Generation (Optional)**
 
 Generate custom pixel art sprites for enemies using PixelLab API:
@@ -296,14 +334,17 @@ Generate custom pixel art sprites for enemies using PixelLab API:
 - **ProjectileManager:** Handles patterns (spread, burst, circular, homing)
 - **EffectsManager:** Manages visual effects
 - **TerrainAwareness:** Detects pits, platforms, cover, hazards
-- **DynamicEnemy:** Main enemy class integrating all systems
+- **DynamicEnemy:** Main enemy class integrating all systems with runtime modification methods
 - **SpriteGenerator:** Handles PixelLab API integration for custom sprites
+- **EnemyRegistry:** Manages unique enemy naming and lookup
 
 ### LLM Integration
 
 - **generateEnemy Tool:** Single tool handles enemy creation + auto sprite generation
+- **modifyEnemy Tool:** Modify existing enemies by unique name with partial CEDL updates
 - **Template Support:** 10 pre-built archetypes with customization
 - **Error Handling:** Validation errors returned to LLM for correction
+- **EnemyRegistry:** Tracks enemies by unique names for modification
 
 ### UI Controls
 
@@ -412,6 +453,28 @@ Pewter: [Generates custom robot sprite via PixelLab → Creates enemy]
 Result: Enemy with unique AI-generated pixel art sprite
 ```
 
+### Workflow 8: Modify Existing Enemy
+
+```
+User: "Create a Turret at (10, 5)"
+Pewter: [Creates Turret enemy]
+User: "Make that Turret shoot 3x faster and give it more health"
+Pewter: [Modifies Turret's projectiles and stats]
+Result: Same Turret, updated properties
+```
+
+### Workflow 9: Enemy Renaming & Multiple Instances
+
+```
+User: "Create a Slime enemy"
+Pewter: [Creates "Slime" enemy]
+User: "Create another Slime enemy"
+Pewter: [Creates "Slime 1" enemy - automatically numbered]
+User: "Change Slime 1's color to green"
+Pewter: [Modifies "Slime 1" specifically]
+Result: Two Slimes with different appearances
+```
+
 ---
 
 ## 🔮 Future Enhancements (Potential)
@@ -422,6 +485,7 @@ Result: Enemy with unique AI-generated pixel art sprite
 - ~~Debug overlay~~ ✅ **IMPLEMENTED**
 - ~~AI sprite generation~~ ✅ **IMPLEMENTED** (PixelLab API)
 - ~~API credit protection~~ ✅ **IMPLEMENTED** (toggle button)
+- ~~Enemy modification system~~ ✅ **IMPLEMENTED** (modifyEnemy tool)
 - Animation support
 - Sound effect integration
 - Enemy-to-enemy interactions
@@ -441,6 +505,7 @@ Result: Enemy with unique AI-generated pixel art sprite
 | **Terrain Awareness**   | 8 actions, 9 conditions                                 |
 | **Debugging**           | State overlay (G key), auto-off on play mode exit       |
 | **AI Sprites**          | PixelLab API integration, credit protection toggle      |
+| **Enemy Modification**  | modifyEnemy tool, unique naming, in-place updates       |
 | **UI Controls**         | API toggle, debug toggle, play/edit mode switch         |
 
 ---

@@ -15,6 +15,8 @@ The Enemy Generation System adds **Custom Enemy Definition Language (CEDL)**, al
 7. **Smart Conditions** - Distance checks, health thresholds, timers, and randomness
 8. **AI Sprite Generation** - Optional PixelLab API integration for custom enemy sprites
 9. **10 Pre-built Templates** - Quick enemy creation with customizable archetypes
+10. **Enemy Modification System** - Modify existing enemies by unique name (NEW!)
+11. **Unique Enemy Naming** - Automatic unique naming with duplicate detection (NEW!)
 
 ---
 
@@ -76,6 +78,95 @@ Create a simple enemy that patrols back and forth
 - Pewter should generate CEDL code using the `generateEnemy` tool
 - A custom enemy will appear on the map
 - The enemy should patrol within its defined range
+- Enemy gets a unique name automatically
+
+---
+
+## ✏️ Enemy Modification System (NEW!)
+
+### Overview
+
+The enemy modification system allows you to modify existing enemies without recreating them. Every enemy gets a unique name, and you can reference and modify enemies by their exact name.
+
+### Unique Naming System
+
+- **First enemy:** Gets the requested name (e.g., "Slime")
+- **Duplicate names:** Automatically numbered (e.g., "Slime 1", "Slime 2")
+- **No conflicts:** Two enemies can never have the same name
+- **Name references:** Use exact names when modifying (including numbers)
+
+### Modification Capabilities
+
+**What Can Be Modified:**
+
+1. **Stats** (in-place updates):
+   - Health
+   - Speed
+   - Damage on contact
+
+2. **Looks** (in-place updates):
+   - Tint/color
+   - Scale/size
+   - Sprite frame
+   - Custom texture
+
+3. **Projectiles** (requires recreation):
+   - Fire rates
+   - Projectile definitions
+   - Patterns
+
+4. **Behavior** (requires recreation):
+   - State machine
+   - Actions
+   - Transitions
+
+5. **Name** (if changed, ensures uniqueness):
+   - Can rename enemies
+   - System ensures new name is unique
+
+### Examples
+
+**Simple Stat Updates:**
+
+```
+Create a Turret at (10, 5)
+Make that Turret have 50 health
+Give the Turret more speed - make it move faster
+```
+
+**Visual Updates:**
+
+```
+Change the Turret's color to red
+Make the Turret bigger (scale it up)
+```
+
+**Complex Updates (Behavior/Projectiles):**
+
+```
+Make the Turret shoot 3x faster
+Give the Turret a spread shot pattern
+```
+
+**Multiple Enemies:**
+
+```
+Create a Slime at (5, 5)
+Create another Slime at (10, 5)    → Named "Slime 1"
+Create one more Slime at (15, 5)   → Named "Slime 2"
+
+Make Slime 1 green
+Make Slime 2 bigger
+Change Slime's speed to 40
+```
+
+**Natural Language:**
+The LLM automatically converts your requests to the appropriate modifications:
+
+- "Give that enemy more health" → Updates health stat
+- "Make it shoot faster" → Updates projectile fire rate
+- "Change its color to blue" → Updates tint
+- "Make it bigger" → Updates scale
 
 ---
 
@@ -395,6 +486,64 @@ enemy:
    ```
 2. **Expected:** LLM receives validation error and can retry with correct values
 
+### Test 7: Test Enemy Modification (NEW!)
+
+1. **Create an enemy:**
+
+   ```
+   Create a Turret at position (10, 10)
+   ```
+
+2. **Modify its stats:**
+
+   ```
+   Give that Turret more health - make it 50 HP
+   ```
+
+   - **Expected:** Turret's health updates in-place (instant change)
+
+3. **Modify its appearance:**
+
+   ```
+   Change the Turret's color to red
+   ```
+
+   - **Expected:** Turret's tint updates immediately
+
+4. **Modify multiple properties:**
+   ```
+   Make the Turret shoot faster and move faster
+   ```
+
+   - **Expected:** Fire rate and speed updated (may require recreation for projectiles)
+
+### Test 8: Test Unique Naming (NEW!)
+
+1. **Create multiple enemies with same name:**
+
+   ```
+   Create a Slime enemy at (5, 5)
+   Create another Slime enemy at (10, 5)
+   Create one more Slime enemy at (15, 5)
+   ```
+
+2. **Expected Result:**
+   - First enemy: named "Slime"
+   - Second enemy: automatically named "Slime 1"
+   - Third enemy: automatically named "Slime 2"
+
+3. **Modify specific enemy:**
+
+   ```
+   Make Slime 1 move faster
+   ```
+
+   - **Expected:** Only "Slime 1" is modified, others unchanged
+
+4. **Check enemy names:**
+   - All enemies have unique names
+   - You can reference any enemy by its exact name (including numbers)
+
 ---
 
 ## 🔍 Debugging Tips
@@ -428,6 +577,12 @@ The system logs important events:
    - Verify particle texture exists ("kenny-particles")
    - Check overlay graphics are being updated in update loop
    - Ensure tint/scale values are valid hex numbers
+
+5. **Enemy modification fails:**
+   - Verify you're using the exact enemy name (including numbers like "Slime 1")
+   - Check that the enemy exists (use WorldFacts tool to see all enemies)
+   - Only DynamicEnemy instances can be modified (not legacy Slime/UltraSlime)
+   - Behavior/projectile changes require recreation (position is preserved)
 
 ---
 
@@ -864,5 +1019,16 @@ Once you're comfortable with the system, try:
 - Experimenting with different visual styles
 - Combining multiple enemies for coordinated attacks
 - Using the system to prototype game mechanics
+- **Modifying enemies iteratively** - Start with a template, then refine properties
+- **Creating variations** - Duplicate enemies and modify each one differently
+- **Balancing gameplay** - Adjust enemy stats in real-time during testing
+
+## 🔧 Enemy Modification Tips
+
+1. **Use unique names:** If you plan to modify enemies, use descriptive names
+2. **Reference by exact name:** When modifying, use the exact name (including numbers)
+3. **In-place vs recreation:** Stats/looks update instantly; behavior/projectiles recreate
+4. **Check available enemies:** Use WorldFacts or ask Pewter to list enemies if unsure of names
+5. **Iterative design:** Start with templates, then modify to fit your needs
 
 Happy enemy designing! 🎮

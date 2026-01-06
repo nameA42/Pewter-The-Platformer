@@ -753,6 +753,94 @@ export class DynamicEnemy extends Phaser.Physics.Arcade.Sprite {
     return this.health;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MODIFICATION METHODS - For runtime property updates
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Update enemy stats (health, speed, damage_on_contact)
+   * Can be updated in-place without recreating the enemy
+   */
+  updateStats(stats: Partial<EnemyDefinition["stats"]>): void {
+    if (stats.health !== undefined) {
+      const healthRatio = this.maxHealth > 0 ? this.health / this.maxHealth : 1;
+      this.maxHealth = stats.health;
+      this.health = Math.ceil(this.maxHealth * healthRatio); // Preserve health percentage
+      if (this.health > this.maxHealth) this.health = this.maxHealth;
+
+      // Update definition
+      this.definition.stats.health = stats.health;
+    }
+
+    if (stats.speed !== undefined) {
+      this.speed = stats.speed;
+      this.definition.stats.speed = stats.speed;
+      // Update pathfinder speed if it exists
+      if (this.pathfinder) {
+        // Pathfinding speed might need to be updated - check if Pathfinding has a setSpeed method
+        // For now, just update the stored speed
+      }
+    }
+
+    if (stats.damage_on_contact !== undefined) {
+      this.damageOnContact = stats.damage_on_contact;
+      this.definition.stats.damage_on_contact = stats.damage_on_contact;
+    }
+  }
+
+  /**
+   * Update enemy looks (tint, scale, base_sprite, shape_overlay)
+   * Can be updated in-place without recreating the enemy
+   */
+  updateLooks(looks: Partial<EnemyDefinition["looks"]>): void {
+    if (!this.definition.looks) {
+      this.definition.looks = {};
+    }
+
+    // Merge new looks with existing
+    Object.assign(this.definition.looks, looks);
+
+    // Apply the looks
+    this.applyLooks(this.definition.looks);
+  }
+
+  /**
+   * Update enemy name/type
+   * Updates both the type property and definition name
+   */
+  updateName(newName: string): void {
+    this.type = newName;
+    this.definition.name = newName;
+  }
+
+  /**
+   * Get the current enemy definition (read-only copy)
+   */
+  getDefinition(): Readonly<EnemyDefinition> {
+    return this.definition;
+  }
+
+  /**
+   * Check if behavior or projectiles need to be updated
+   * Returns true if enemy needs to be recreated for the changes
+   */
+  needsRecreation(newDefinition: Partial<EnemyDefinition>): boolean {
+    // If behavior changes, need recreation
+    if (newDefinition.behavior) {
+      return true;
+    }
+
+    // If projectiles change, need recreation
+    if (newDefinition.projectiles) {
+      return true;
+    }
+
+    // If effects change, might need recreation (but effects can be updated)
+    // For now, only behavior and projectiles require recreation
+
+    return false;
+  }
+
   // Debug overlay methods
   private createDebugOverlay() {
     if (this.debugText) return; // Already created

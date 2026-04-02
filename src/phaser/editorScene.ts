@@ -4,7 +4,7 @@ import Phaser from "phaser";
 type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
   isFalling?: boolean;
 };
-import { regenerateSelection as regenerateSelectionModule } from "./Regenerator";
+import { regenerateSelection as regenerateSelectionModule } from "./regenerator";
 import { sendUserPrompt } from "../languageModel/chatBox";
 import { setActiveSelectionBox } from "../languageModel/chatBox";
 import { Slime } from "./ExternalClasses/Slime.ts";
@@ -1413,7 +1413,8 @@ export class EditorScene extends Phaser.Scene {
         }
         // Stop all movement
         if (enemy.body) {
-          enemy.body.setVelocity(0, 0);
+          enemy.body.velocity.x = 0;
+          enemy.body.velocity.y = 0;
         }
       }
     });

@@ -116,6 +116,21 @@
   border-color: #4080ff;
 }
 
+#blocks-list-eraser button {
+  background: #7f1d1d;
+  border-color: #b91c1c;
+}
+
+#blocks-list-eraser button:hover {
+  background: #991b1b;
+  border-color: #ef4444;
+}
+
+#blocks-list-eraser button.selected {
+  background: #dc2626;
+  border-color: #f87171;
+}
+
 .pt-controls-content {
   flex: 1;
   display: none;

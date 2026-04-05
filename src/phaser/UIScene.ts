@@ -19,17 +19,16 @@ export class UIScene extends Phaser.Scene {
 
   //Data
   private currentBlock: string = "";
-  private blocks: string[] = [
-    "Block 1",
-    "Coin",
-    "Block 3",
-    "Block 4",
+  private collectables: string[] = ["Coin", "Fruit"];
+  private terrainBlocks: string[] = [
+    "Grass-Half Block",
     "Dirt Block",
-    "Block 6",
-    "Slime Enemy",
-    "Ultra Slime",
-    "Eraser",
+    "Question Block",
   ];
+  private enemies: string[] = ["Slime Enemy", "Ultra Slime"];
+  private eraserTools: string[] = ["Eraser"];
+  private blocks: string[] = [];
+
   //Registry (Global variables)
   private setPointerOverUI = (v: boolean) =>
     this.registry.set("uiPointerOver", v);
@@ -61,14 +60,10 @@ export class UIScene extends Phaser.Scene {
 
     //Variables
     this.blocks = [
-      "Coin",
-      "Fruit",
-      "Grass-Half Block",
-      "Dirt Block",
-      "Question Block",
-      "Slime Enemy",
-      "Ultra Slime",
-      "Eraser",
+      ...this.collectables,
+      ...this.terrainBlocks,
+      ...this.enemies,
+      ...this.eraserTools,
     ]; //Add more blocks to see capabilities
 
     //Input
@@ -93,7 +88,7 @@ export class UIScene extends Phaser.Scene {
       <div id="chatbox" class="pt-chatbox">
         <div id="tabs" class="pt-tabs">
           <button id="tab-chat" class="pt-tab active">Chat</button>
-          <button id="tab-blocks" class="pt-tab">Blocks</button>
+          <button id="tab-blocks" class="pt-tab">Manual Edit</button>
           <button id="tab-controls" class="pt-tab">Controls</button>
         </div>
         <div id="tab-contents" class="pt-tab-contents">
@@ -102,7 +97,21 @@ export class UIScene extends Phaser.Scene {
             <input id="chat-input" class="pt-chat-input" type="text" placeholder="Type a command..." autocomplete="off" />
           </div>
           <div id="blocks-content" class="pt-blocks-content">
-            <div id="blocks-list" class="pt-blocks-list"></div>
+            <div class="pt-blocks-group">
+              <div id="blocks-list-eraser" class="pt-blocks-list"></div>
+            </div>
+            <div class="pt-blocks-group">
+              <h4 class="pt-blocks-heading">Collectables</h4>
+              <div id="blocks-list-collectables" class="pt-blocks-list"></div>
+            </div>
+            <div class="pt-blocks-group">
+              <h4 class="pt-blocks-heading">Blocks</h4>
+              <div id="blocks-list-terrain" class="pt-blocks-list"></div>
+            </div>
+            <div class="pt-blocks-group">
+              <h4 class="pt-blocks-heading">Enemies</h4>
+              <div id="blocks-list-enemies" class="pt-blocks-list"></div>
+            </div>
           </div>
           <div id="controls-content" class="pt-controls-content">
             <h3>Basic Controls</h3>
@@ -469,6 +478,32 @@ export class UIScene extends Phaser.Scene {
 
   public populateBlocks(blocks: string[]) {
     try {
+      const groupedCollectables = this.dom.getChildByID(
+        "blocks-list-collectables",
+      ) as HTMLDivElement | null;
+      const groupedTerrain = this.dom.getChildByID(
+        "blocks-list-terrain",
+      ) as HTMLDivElement | null;
+      const groupedEnemies = this.dom.getChildByID(
+        "blocks-list-enemies",
+      ) as HTMLDivElement | null;
+      const groupedEraser = this.dom.getChildByID(
+        "blocks-list-eraser",
+      ) as HTMLDivElement | null;
+
+      if (
+        groupedCollectables &&
+        groupedTerrain &&
+        groupedEnemies &&
+        groupedEraser
+      ) {
+        this.populateBlockGroup(groupedCollectables, this.collectables);
+        this.populateBlockGroup(groupedTerrain, this.terrainBlocks);
+        this.populateBlockGroup(groupedEnemies, this.enemies);
+        this.populateBlockGroup(groupedEraser, this.eraserTools);
+        return;
+      }
+
       const blocksList = this.dom.getChildByID(
         "blocks-list",
       ) as HTMLDivElement | null;
@@ -476,26 +511,32 @@ export class UIScene extends Phaser.Scene {
         console.log("Unable to populate block list!");
         return;
       }
-      blocksList.innerHTML = "";
-      for (const block of blocks) {
-        const b = document.createElement("button");
-        // Use the block name for the label and emit selection so other scenes can react
-        b.textContent = block;
-        b.addEventListener("click", () => {
-          // Remove 'selected' class from all buttons
-          Array.from(blocksList.children).forEach((btn) => {
-            btn.classList.remove("selected");
-          });
-          // Add 'selected' class to the clicked button
-          b.classList.add("selected");
-          // Update current block and emit event
-          this.currentBlock = block;
-          this.emitSelect(block);
-        });
-        blocksList.appendChild(b);
-      }
+      this.populateBlockGroup(blocksList, blocks);
     } catch (e) {
       // ignore
+    }
+  }
+
+  private populateBlockGroup(container: HTMLDivElement, blocks: string[]) {
+    container.innerHTML = "";
+    for (const block of blocks) {
+      const b = document.createElement("button");
+      // Use the block name for the label and emit selection so other scenes can react
+      b.textContent = block;
+      b.addEventListener("click", () => {
+        // Remove 'selected' class from all block buttons in the Blocks tab
+        const allBlockButtons = (
+          this.chatBox.node as HTMLElement
+        ).querySelectorAll(".pt-blocks-list button");
+        allBlockButtons.forEach((btn) => btn.classList.remove("selected"));
+
+        // Add 'selected' class to the clicked button
+        b.classList.add("selected");
+        // Update current block and emit event
+        this.currentBlock = block;
+        this.emitSelect(block);
+      });
+      container.appendChild(b);
     }
   }
 

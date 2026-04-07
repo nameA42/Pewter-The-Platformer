@@ -57,7 +57,7 @@ export function setActiveSelectionBox(
     "The layers are Background_Layer and Ground_Layer. there are no backslashes" +
     "Tile ID 1 matches with an empty tile. Tile ID 2 matches with a coin. Tile ID 3 matches with a fruit (apple, mango, etc.). Tile ID 4 matches with a platform block. Tile ID 5 matches with a dirt block. Tile ID 6 matches with a item (question mark (?)) block." +
     "Each tool has a description associated to it so make sure to check out each tool. Most of your task will require you to use at lease one of the tools or multiple tools at once so use them. You may use each tool multiple times if instructed. When told specific coordinates, make sure to use them strictly. If told to choose random coordinates or place something in a general viscinity of the selection, make sure to be open to such situations and accomodate what they ask of you." +
-    "Be friendly and remember to do what you are told. You may also provide suggestions occasionally if you feel it is right to do so. Account for the fact that the level has to be completable and things look straight.";
+    "Be friendly and remember to do what you are told. You may also provide suggestions occasionally if you feel it is right to do so. Account for the fact that the level has to be completable and things look straight. The player character is 2 tiles wide and 2 tiles tall, and can jump approximately 6 tiles high — keep this in mind when placing platforms, enemies, and obstacles.";
   const isSystemMessage = (msg: any) =>
     msg && msg._getType && msg._getType() === "system";
   if (

@@ -108,6 +108,15 @@ export class EditorScene extends Phaser.Scene {
   private damageKey!: Phaser.Input.Keyboard.Key;
   private flipKey!: Phaser.Input.Keyboard.Key;
 
+  // Play mode: player stats and HUD
+  private playerHealth = 5;
+  private readonly maxPlayerHealth = 5;
+  private coinCount = 0;
+  private healthText: Phaser.GameObjects.Text | null = null;
+  private coinText: Phaser.GameObjects.Text | null = null;
+  private collectablesSnapshot: { x: number; y: number; index: number }[] = [];
+  private isDead = false;
+
   private currentZLevel: number = 1;
   private useEventQueueRegen: boolean = false; // Toggle between linear and event queue regen
 
@@ -147,9 +156,20 @@ export class EditorScene extends Phaser.Scene {
 
   startGame() {
     this.gameActive = true;
+    this.isDead = false;
+    this.playerHealth = this.maxPlayerHealth;
+    this.coinCount = 0;
     this.removeMinimap();
     this.createEditorButton();
     this.setupPlayer();
+
+    // Snapshot all collectable tiles so we can restore them on death/exit
+    this.collectablesSnapshot = [];
+    this.collectablesLayer.forEachTile((tile) => {
+      if (tile.index > 0) {
+        this.collectablesSnapshot.push({ x: tile.x, y: tile.y, index: tile.index });
+      }
+    });
 
     // Enable physics and gravity for play mode
     this.physics.world.gravity.y = 1500;
@@ -160,6 +180,24 @@ export class EditorScene extends Phaser.Scene {
     }
     // Add collider between player and ground layer
     this.physics.add.collider(this.player, this.groundLayer);
+
+    // Enable overlap detection for collectables (coin = 2, fruit = 3)
+    this.collectablesLayer.setCollision([2, 3]);
+    this.physics.add.overlap(
+      this.player,
+      this.collectablesLayer,
+      (_player, tile) => {
+        const t = tile as Phaser.Tilemaps.Tile;
+        if (t.index === 2) {
+          // Coin collected
+          this.coinCount++;
+        } else if (t.index === 3) {
+          // Fruit collected — restore 1 HP
+          this.playerHealth = Math.min(this.playerHealth + 1, this.maxPlayerHealth);
+        }
+        this.collectablesLayer.putTileAt(-1, t.x, t.y);
+      },
+    );
 
     // Camera follows player in play mode
     this.cameras.main
@@ -184,6 +222,29 @@ export class EditorScene extends Phaser.Scene {
         this.toggleDebugOverlay();
       });
     }
+
+    // Create play-mode HUD (scroll factor 0 = fixed on screen)
+    this.healthText = this.add
+      .text(16, 16, "", {
+        fontSize: "18px",
+        fontFamily: "monospace",
+        color: "#ff4444",
+        backgroundColor: "#000000bb",
+        padding: { x: 8, y: 4 },
+      })
+      .setScrollFactor(0)
+      .setDepth(1000);
+
+    this.coinText = this.add
+      .text(16, 52, "", {
+        fontSize: "18px",
+        fontFamily: "monospace",
+        color: "#ffcc00",
+        backgroundColor: "#000000bb",
+        padding: { x: 8, y: 4 },
+      })
+      .setScrollFactor(0)
+      .setDepth(1000);
   }
 
   // Toggle debug overlay for all enemies
@@ -748,17 +809,38 @@ export class EditorScene extends Phaser.Scene {
     if (this.gameActive && this.player) {
       // Play mode: player movement and camera follow
       // Hide grid and red outline
-      let playerHealth = 100; // Track actual health
 
-      // Iterate backwards to safely remove elements
-      for (let i = this.enemies.length - 1; i >= 0; i--) {
-        const enemy = this.enemies[i];
-        if (!enemy || !enemy.active) {
-          enemy?.destroy();
-          this.enemies.splice(i, 1);
-          continue;
+      // Apply enemy damage to persistent health (only when alive)
+      if (!this.isDead) {
+        for (let i = this.enemies.length - 1; i >= 0; i--) {
+          const enemy = this.enemies[i];
+          if (!enemy || !enemy.active) {
+            enemy?.destroy();
+            this.enemies.splice(i, 1);
+            continue;
+          }
+          this.playerHealth = enemy.update(this.player, this.playerHealth, this.gameActive);
         }
-        playerHealth = enemy.update(this.player, playerHealth, this.gameActive);
+      }
+
+      // Update HUD
+      if (this.healthText) {
+        const hearts =
+          "♥".repeat(Math.max(0, this.playerHealth)) +
+          "♡".repeat(Math.max(0, this.maxPlayerHealth - this.playerHealth));
+        this.healthText.setText(`HP: ${hearts}`);
+      }
+      if (this.coinText) {
+        this.coinText.setText(`Coins: ${this.coinCount}`);
+      }
+
+      // Death checks — health depleted or fell off the map
+      if (!this.isDead) {
+        const fellOff = this.player.y > this.map.heightInPixels + 100;
+        if (this.playerHealth <= 0 || fellOff) {
+          this.isDead = true;
+          this.resetPlayLevel();
+        }
       }
 
       if (this.gridGraphics) this.gridGraphics.clear();
@@ -836,12 +918,6 @@ export class EditorScene extends Phaser.Scene {
         }
 
         player.setVelocity(velocityX, velocityY);
-
-        // Reset if fallen off world
-        if (player.y > this.map.heightInPixels + 100) {
-          player.setPosition(100, 150);
-          player.setVelocity(0, 0);
-        }
       }
       // update the play button's position to the camera
       if (this.playButton) {
@@ -1427,6 +1503,21 @@ export class EditorScene extends Phaser.Scene {
     this.wasd = undefined as any;
     this.isJumpPressed = false;
 
+    // Destroy play-mode HUD
+    if (this.healthText) { this.healthText.destroy(); this.healthText = null; }
+    if (this.coinText) { this.coinText.destroy(); this.coinText = null; }
+
+    // Restore collected tiles so the editor shows the original map
+    for (const t of this.collectablesSnapshot) {
+      this.collectablesLayer.putTileAt(t.index, t.x, t.y);
+    }
+    this.collectablesSnapshot = [];
+
+    // Reset play-mode state
+    this.playerHealth = this.maxPlayerHealth;
+    this.coinCount = 0;
+    this.isDead = false;
+
     // Redraw grid and highlight
     if (this.gridGraphics) this.gridGraphics.clear();
     this.drawGrid();
@@ -1437,6 +1528,44 @@ export class EditorScene extends Phaser.Scene {
     this.cameras.main.centerOn(0, 0);
 
     // also remove the editor button
+  }
+
+  private resetPlayLevel() {
+    // Brief pause so the player notices the death before the level resets
+    this.time.delayedCall(600, () => {
+      if (!this.gameActive) return; // aborted to editor before delay finished
+
+      // Restore all collectable tiles from the snapshot
+      for (const t of this.collectablesSnapshot) {
+        this.collectablesLayer.putTileAt(t.index, t.x, t.y);
+      }
+
+      // Respawn player
+      if (this.player) {
+        this.player.setPosition(100, 150);
+        this.player.setVelocity(0, 0);
+      }
+
+      // Reset stats
+      this.playerHealth = this.maxPlayerHealth;
+      this.coinCount = 0;
+      this.isDead = false;
+
+      // Reset enemies to their spawn positions
+      this.enemies.forEach((enemy) => {
+        if (enemy && enemy.active) {
+          const spawnX = enemy.getData("spawnX");
+          const spawnY = enemy.getData("spawnY");
+          if (spawnX !== undefined && spawnY !== undefined) {
+            enemy.setPosition(spawnX, spawnY);
+          }
+          if (enemy.body) {
+            enemy.body.velocity.x = 0;
+            enemy.body.velocity.y = 0;
+          }
+        }
+      });
+    });
   }
 
   private createMinimap() {

@@ -58,7 +58,7 @@ Object.values(tools).forEach((generator) => {
 initializeTools();
 
 // // Tell the system to introduce itself and explain what it can do
-sendSystemMessage("Introduce yourself and explain what you can do. ");
+sendSystemMessage("Introduce yourself and explain what you can do briefly.");
 
 ////****Phaser Game Setup****////
 

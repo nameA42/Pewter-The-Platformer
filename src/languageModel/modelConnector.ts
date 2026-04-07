@@ -3,7 +3,6 @@ import {
   BaseMessage,
   ToolMessage,
   SystemMessage,
-  AIMessageChunk,
 } from "@langchain/core/messages";
 
 const apiKey: string | undefined = import.meta.env.VITE_LLM_API_KEY;
@@ -47,6 +46,7 @@ const sysPrompt =
   "Place Grid of Tiles: Use this tool to place a grid of tiles with a given index or term on a layer when told. Use the tile information and map each tile to the index. " +
   "Get Placed Tiles: Use this tool to retrieve all tiles placed within a selection box. " +
   "PLEASE USE THE WORLD FACTS TOOL TO RECEIVE INFORMATION ABOUT THE LAYER YOU MIGHT NEED TO WORK ON. For example, if the player asks you to place an enemy within a selection, first check where the top of the ground is before placing making sure not to place it within the ground. Same applies to collectables or anything else. The world facts tool is your best guide as to what is within the game world. Use it to your advantage PLEASE. " +
+  "Player size and movement: the player character is 2 tiles wide and 2 tiles tall, and can jump approximately 6 tiles high. Account for this when placing platforms, enemies, and obstacles to ensure the level is navigable and completable. " +
   "Always be friendly and helpful. Make the level playable and visually consistent. You may offer suggestions occasionally, but you must always follow these rules.";
 
 let tools: any = []; //tool functions and their schemas
@@ -210,7 +210,6 @@ export async function getChatResponse(
     console.log("Invoking LLM with message history:", chatMessageHistory);
     let response = await llmWithTools.invoke(chatMessageHistory);
     console.log("Raw LLM response:", response);
-    chatMessageHistory.push(response);
 
     // Extract any text content
     if (typeof response.content === "string") {
@@ -287,6 +286,14 @@ export async function getChatResponse(
           );
         }
       }
+    }
+
+    // Only push AI response to history if there are tool calls — required so the
+    // LLM can see its own tool-call requests when processing ToolMessages.
+    // For plain responses the caller pushes its own AIMessage, so we skip this
+    // to avoid duplicate AI entries in the chat display.
+    if ((response.tool_calls?.length ?? 0) > 0) {
+      chatMessageHistory.push(response);
     }
 
     await handleToolCall();

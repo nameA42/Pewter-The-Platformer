@@ -61,6 +61,21 @@ export class ClearTile {
           }
         }
 
+        // Remove any enemies whose tile position falls within the cleared region
+        const tileW = scene.map.tileWidth;
+        const tileH = scene.map.tileHeight;
+        const toRemove = scene.enemies.filter((enemy) => {
+          const tileX = Math.floor(enemy.x / tileW);
+          const tileY = Math.floor(enemy.y / tileH);
+          return tileX >= xMin && tileX < xMax && tileY >= yMin && tileY < yMax;
+        });
+        for (const enemy of toRemove) {
+          const idx = scene.enemies.indexOf(enemy);
+          if (idx !== -1) scene.enemies.splice(idx, 1);
+          enemy.destroy();
+        }
+        scene.worldFacts.refresh();
+
         if (layerName == "Ground_Layer") {
           scene.worldFacts.setFact("Structure");
         } else if (layerName == "Collectables_Layer") {
@@ -127,11 +142,11 @@ export class ClearTile {
       name: "clearTiles",
       schema: ClearTile.argsSchema,
       description: `
-Clears a rectangular section of the map by removing tiles from the specified layer.
+Clears a rectangular section of the map by removing tiles from the specified layer. Also removes any enemies whose position falls within the cleared region.
 
 - (xMin, yMin): top-left inclusive coordinates.
 - (xMax, yMax): bottom-right exclusive coordinates.
-- layerName: the name of the target map layer. Choose between 'Ground_Layer' and 'Collectables_Layer' 
+- layerName: the name of the target map layer. Choose between 'Ground_Layer' and 'Collectables_Layer'
 `,
     },
   );

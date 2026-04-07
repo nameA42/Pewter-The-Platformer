@@ -103,6 +103,28 @@ export class ClearTile {
           }
         }
 
+        // Remove enemies in the cleared region (respects same selection-box exclusions as tiles)
+        const tileW = scene.map.tileWidth;
+        const tileH = scene.map.tileHeight;
+        const toRemove = scene.enemies.filter((enemy) => {
+          const tileX = Math.floor(enemy.x / tileW);
+          const tileY = Math.floor(enemy.y / tileH);
+          if (tileX < xMin || tileX >= xMax || tileY < yMin || tileY >= yMax)
+            return false;
+          for (const sel of affectedSelections) {
+            const [[sx, sy], [ex, ey]] = sel;
+            if (tileX >= sx && tileX <= ex && tileY >= sy && tileY <= ey)
+              return false;
+          }
+          return true;
+        });
+        for (const enemy of toRemove) {
+          const idx = scene.enemies.indexOf(enemy);
+          if (idx !== -1) scene.enemies.splice(idx, 1);
+          enemy.destroy();
+        }
+        scene.worldFacts.refresh();
+
         if (layerName == "Ground_Layer") {
           scene.worldFacts.setFact("Structure");
         } else if (layerName == "Collectables_Layer") {

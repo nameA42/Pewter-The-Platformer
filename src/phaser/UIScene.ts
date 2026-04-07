@@ -125,7 +125,7 @@ export class UIScene extends Phaser.Scene {
             </div>
             <div class="control-item">
               <span class="control-key">WASD</span>
-              <span class="control-desc">Move camera & character</span>
+              <span class="control-desc">Move camera & character (Press <strong>Shift</strong> to move slower)</span>
             </div>
             <div class="control-item">
               <span class="control-key">U</span>

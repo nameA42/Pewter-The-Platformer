@@ -286,28 +286,38 @@ export class UIScene extends Phaser.Scene {
       }
     });
 
+    const toolbarButtonHeight = 52;
+    const toolbarButtonFontSize = 14;
+    const toolbarButtonPaddingX = 16;
+    const toolbarButtonPaddingY = 11;
+    const toolbarButtonGap = 14;
+    const toolbarY = this.cameras.main.height - 50;
+
     // Play mode button - Shawn
     this.createPlayButton();
 
     // Add a small helper button to select the current temporary selection box
     this.deselectBoxBtn = this.createButton(
       this,
-      220, // x position
-      this.cameras.main.height - 50,
+      220,
+      toolbarY,
       "Deselect Box",
       () => {
         // Emit an event the EditorScene can listen to; per request this will deselect all boxes
         this.game.events.emit("ui:deselectAllBoxes");
       },
       {
-        fill: 0x1a1a1a,
-        hoverFill: 0x2b6bff,
-        downFill: 0x1f4fcf,
+        fill: 0x222222,
+        hoverFill: 0x222222,
+        downFill: 0x1a1a1a,
+        stroke: 0x444444,
+        hoverStroke: 0xb3b3b3,
+        downStroke: 0xd9d9d9,
         textColor: "#ffffff",
-        fontSize: 14,
-        paddingX: 10,
-        paddingY: 6,
-        fixedWidth: 120,
+        fontSize: toolbarButtonFontSize,
+        paddingX: toolbarButtonPaddingX,
+        paddingY: toolbarButtonPaddingY,
+        minHeight: toolbarButtonHeight,
       },
     );
     this.deselectBoxBtn.setDepth(1001);
@@ -315,21 +325,24 @@ export class UIScene extends Phaser.Scene {
     // Linear Regen button - emits a request the EditorScene will handle
     this.regenerateButton = this.createButton(
       this,
-      380, // x position (to the right of Deselect)
-      this.cameras.main.height - 50,
+      380,
+      toolbarY,
       "Linear Regen",
       () => {
         this.game.events.emit("ui:regenerateSelection");
       },
       {
-        fill: 0x1a1a1a,
-        hoverFill: 0x2b6bff,
-        downFill: 0x1f4fcf,
+        fill: 0x222222,
+        hoverFill: 0x222222,
+        downFill: 0x1a1a1a,
+        stroke: 0x444444,
+        hoverStroke: 0xb3b3b3,
+        downStroke: 0xd9d9d9,
         textColor: "#ffffff",
-        fontSize: 14,
-        paddingX: 10,
-        paddingY: 6,
-        fixedWidth: 140,
+        fontSize: toolbarButtonFontSize,
+        paddingX: toolbarButtonPaddingX,
+        paddingY: toolbarButtonPaddingY,
+        minHeight: toolbarButtonHeight,
       },
     );
     this.regenerateButton.setDepth(1001);
@@ -337,21 +350,24 @@ export class UIScene extends Phaser.Scene {
     // Event Queue Regen button
     this.regenAlgoToggle = this.createButton(
       this,
-      550, // x position (to the right of Linear Regen)
-      this.cameras.main.height - 50,
+      550,
+      toolbarY,
       "Event Queue Regen",
       () => {
         this.game.events.emit("ui:eventQueueRegen");
       },
       {
-        fill: 0x1a1a1a,
-        hoverFill: 0x2b6bff,
-        downFill: 0x1f4fcf,
+        fill: 0x222222,
+        hoverFill: 0x222222,
+        downFill: 0x1a1a1a,
+        stroke: 0x444444,
+        hoverStroke: 0xb3b3b3,
+        downStroke: 0xd9d9d9,
         textColor: "#ffffff",
-        fontSize: 14,
-        paddingX: 10,
-        paddingY: 6,
-        fixedWidth: 160,
+        fontSize: toolbarButtonFontSize,
+        paddingX: toolbarButtonPaddingX,
+        paddingY: toolbarButtonPaddingY,
+        minHeight: toolbarButtonHeight,
       },
     );
     this.regenAlgoToggle.setDepth(1001);
@@ -360,8 +376,8 @@ export class UIScene extends Phaser.Scene {
     // Starts OFF to prevent accidental API credit usage
     this.apiSpriteToggle = this.createButton(
       this,
-      740, // x position (to the right of Event Queue Regen)
-      this.cameras.main.height - 50,
+      740,
+      toolbarY,
       "API Sprites: OFF",
       () => {
         // Toggle the API sprite generation
@@ -374,10 +390,12 @@ export class UIScene extends Phaser.Scene {
 
         if (isEnabled) {
           txt.setText("API Sprites: ON");
-          bg.setFillStyle(0x2e7d32); // Green when enabled
+          bg.setFillStyle(0x222222);
+          bg.setStrokeStyle(2, 0xffffff);
         } else {
           txt.setText("API Sprites: OFF");
-          bg.setFillStyle(0x1a1a1a); // Dark when disabled
+          bg.setFillStyle(0x222222);
+          bg.setStrokeStyle(2, 0x444444);
         }
 
         console.log(
@@ -385,17 +403,35 @@ export class UIScene extends Phaser.Scene {
         );
       },
       {
-        fill: 0x1a1a1a, // Starts dark (OFF)
-        hoverFill: 0x2b6bff,
-        downFill: 0x1f4fcf,
+        fill: 0x222222,
+        hoverFill: 0x222222,
+        downFill: 0x1a1a1a,
+        stroke: 0x444444,
+        hoverStroke: 0xb3b3b3,
+        downStroke: 0xd9d9d9,
         textColor: "#ffffff",
-        fontSize: 14,
-        paddingX: 10,
-        paddingY: 6,
-        fixedWidth: 140,
+        fontSize: toolbarButtonFontSize,
+        paddingX: toolbarButtonPaddingX,
+        paddingY: toolbarButtonPaddingY,
+        minHeight: toolbarButtonHeight,
       },
     );
     this.apiSpriteToggle.setDepth(1001);
+
+    // Layout toolbar buttons based on measured text width with consistent spacing.
+    const toolbarButtons = [
+      this.playButton,
+      this.deselectBoxBtn,
+      this.regenerateButton,
+      this.regenAlgoToggle,
+      this.apiSpriteToggle,
+    ];
+    let toolbarX = 20;
+    for (const btn of toolbarButtons) {
+      const w = btn.width || 0;
+      btn.setPosition(toolbarX + w / 2, toolbarY);
+      toolbarX += w + toolbarButtonGap;
+    }
 
     // Listen for event queue regeneration lifecycle events
     this.game.events.on("eventQueueRegen:started", () => {
@@ -661,6 +697,8 @@ export class UIScene extends Phaser.Scene {
       fill?: number;
       hoverFill?: number;
       downFill?: number;
+      hoverStroke?: number;
+      downStroke?: number;
       textColor?: string;
       fontSize?: number;
       fixedWidth?: number;
@@ -674,6 +712,8 @@ export class UIScene extends Phaser.Scene {
     const fill = opts?.fill ?? 0xffffff;
     const hoverFill = opts?.hoverFill ?? 0xeeeeee;
     const downFill = opts?.downFill ?? 0xdddddd;
+    const hoverStroke = opts?.hoverStroke ?? stroke;
+    const downStroke = opts?.downStroke ?? stroke;
     const fontSize = opts?.fontSize ?? 25;
     const textColor = opts?.textColor ?? "#111111";
 
@@ -714,27 +754,32 @@ export class UIScene extends Phaser.Scene {
     // ----- States -----
     bg.on("pointerover", () => {
       bg.setFillStyle(hoverFill);
+      bg.setStrokeStyle(strokeW, hoverStroke);
       (scene as UIScene).setPointerOverUI?.(true);
     });
 
     bg.on("pointerout", () => {
       bg.setFillStyle(fill);
+      bg.setStrokeStyle(strokeW, stroke);
       (scene as UIScene).setPointerOverUI?.(false);
     });
 
     bg.on("pointerdown", () => {
       bg.setFillStyle(downFill);
+      bg.setStrokeStyle(strokeW, downStroke);
     });
 
     // Fire only on release *inside*; also handle outside release to reset color
     bg.on("pointerup", () => {
       bg.setFillStyle(hoverFill);
+      bg.setStrokeStyle(strokeW, hoverStroke);
       onClick();
     });
 
     bg.on("pointerupoutside", () => {
       // released outside: revert to normal, don't click
       bg.setFillStyle(fill);
+      bg.setStrokeStyle(strokeW, stroke);
     });
 
     return btn;
@@ -767,20 +812,24 @@ export class UIScene extends Phaser.Scene {
   private createPlayButton() {
     this.playButton = this.createButton(
       this,
-      100, // 100 pixels from left of screen
+      100,
       this.cameras.main.height - 50, // 100 pixels from bottom of screen
       "Play",
       () => {
         this.startGame();
       },
       {
-        fill: 0x1a1a1a, // Dark background
-        hoverFill: 0x127803, // Green hover
-        downFill: 0x0f5f02, // Darker green
+        fill: 0x222222,
+        hoverFill: 0x222222,
+        downFill: 0x1a1a1a,
+        stroke: 0x444444,
+        hoverStroke: 0xb3b3b3,
+        downStroke: 0xd9d9d9,
         textColor: "#ffffff", // White text
-        fontSize: 24,
-        paddingX: 15,
-        paddingY: 10,
+        fontSize: 14,
+        paddingX: 16,
+        paddingY: 11,
+        minHeight: 52,
       },
     );
 

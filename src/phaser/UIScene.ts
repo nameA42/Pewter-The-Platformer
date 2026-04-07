@@ -154,7 +154,7 @@ export class UIScene extends Phaser.Scene {
             </div>
             <div class="control-item">
               <span class="control-key">N</span>
-              <span class="control-desc">Make new selection box</span>
+              <span class="control-desc">Confirm new selection box</span>
             </div>
           </div>
         </div>

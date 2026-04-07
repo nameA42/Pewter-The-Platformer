@@ -24,7 +24,7 @@
   flex: 1;
   padding: 8px;
   border-radius: 6px;
-  border: none;
+  border: 2px solid transparent;
   background: transparent;
   color: #ddd;
   cursor: pointer;
@@ -34,6 +34,23 @@
 .pt-tab.active {
   background: #222;
   color: #fff;
+  border-color: #fff;
+}
+
+.pt-tab:hover {
+  border-color: #b3b3b3;
+  color: #fff;
+}
+
+.pt-tab.active:hover {
+  border-color: #fff;
+}
+
+.pt-tab:focus,
+.pt-tab:focus-visible {
+  outline: 2px solid #d9d9d9;
+  outline-offset: 1px;
+  border-color: #d9d9d9;
 }
 
 .pt-tab-contents {

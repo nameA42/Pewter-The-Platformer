@@ -16,8 +16,8 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
   // pellet information
   private fireRate: number = 50;
   private pellets: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody[] = [];
-  private pelletVelocity: number = 250;
-  private megaPelletVelocity: number = 275;
+  private pelletVelocity: number = 125;
+  private megaPelletVelocity: number = 138;
   private isRapidFiring = false;
 
   // flipped left or right
@@ -99,13 +99,31 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
     }
 
     this.pellets = this.pellets.filter((pellet) => {
-      this.scene.physics.add.overlap(player, pellet, () => {
+      if (!pellet || !pellet.active || !pellet.body) return false;
+      if (this.scene.physics.overlap(player, pellet)) {
         const isMega = pellet.getData("isMega") === true;
-        playerHealth -= isMega ? 5 : 2;
+        playerHealth -= isMega ? 2 : 1;
         pellet.destroy();
-      });
-      return playerHealth;
+        return false;
+      }
+      return true;
     });
+
+    // Stomp check - head hitbox only (won't trigger from side)
+    {
+      const playerBody = (player as any).body as Phaser.Physics.Arcade.Body;
+      const thisBody = this.body as Phaser.Physics.Arcade.Body;
+      if (playerBody && thisBody) {
+        const hOverlap = playerBody.right > thisBody.left && playerBody.left < thisBody.right;
+        const headBottom = thisBody.top + thisBody.height * 0.4;
+        const onHead = playerBody.bottom >= thisBody.top - 4 && playerBody.bottom <= headBottom;
+        if (hOverlap && onHead && playerBody.velocity.y > 100) {
+          playerBody.setVelocityY(-450);
+          this.causeDamage(this.health);
+          return playerHealth;
+        }
+      }
+    }
 
     // --- PATROL LOGIC ---
     if (this.reachedPoint) {
@@ -142,39 +160,49 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
 
   private shootPellet() {
     const pellet = this.scene.physics.add.sprite(this.x, this.y, "pellets", 0);
+    pellet.setScale(2);
     pellet.body.velocity.x = !this.isFlipped
       ? this.pelletVelocity
       : -this.pelletVelocity;
-
-    // Disable gravity on projectiles
     pellet.body.setAllowGravity(false);
     pellet.body.setGravityY(0);
-
     this.pellets.push(pellet);
-    this.scene.time.delayedCall(2000, () => pellet.destroy());
+    this.scene.time.delayedCall(2000, () => { if (pellet.active) pellet.destroy(); });
   }
 
   private shootMegaPellet() {
-    const mega = this.scene.physics.add.sprite(this.x, this.y, "pellets", 2); // Different frame
+    const mega = this.scene.physics.add.sprite(this.x, this.y, "pellets", 2);
+    mega.setScale(2);
     mega.body.velocity.x = !this.isFlipped
       ? this.megaPelletVelocity
       : -this.megaPelletVelocity;
-
-    // Disable gravity on projectiles
     mega.body.setAllowGravity(false);
     mega.body.setGravityY(0);
-
     mega.setData("isMega", true);
     this.pellets.push(mega);
-    this.scene.time.delayedCall(2000, () => mega.destroy());
+    this.scene.time.delayedCall(2000, () => { if (mega.active) mega.destroy(); });
   }
 
   causeDamage(healthDamage: number) {
     this.health -= healthDamage;
-
     if (this.health <= 0) {
-      this.destroy();
+      this.clearProjectiles();
+      this.disableBody(true, true);
     }
+  }
+
+  respawn(x: number, y: number) {
+    this.health = this.maxHealth;
+    this.enableBody(true, x, y, true, true);
+    this.body.velocity.x = 0;
+    this.body.velocity.y = 0;
+  }
+
+  clearProjectiles() {
+    for (const pellet of this.pellets) {
+      if (pellet && pellet.active) pellet.destroy();
+    }
+    this.pellets = [];
   }
 
   getHealth() {

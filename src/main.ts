@@ -5,34 +5,22 @@ import { sendSystemMessage } from "./languageModel/chatBox.ts";
 import { GameScene } from "./phaser/gameScene.ts";
 import { UIScene } from "./phaser/UIScene.ts";
 
-//initializeTools();
-
-// import { GravityTool } from "./languageModel/tools/gravityTool.ts";
 import {
   initializeTools,
   registerTool,
 } from "./languageModel/modelConnector.ts";
-// import { MoveTool } from "./languageModel/tools/moveTool.ts";
-// import { sendSystemMessage } from "./languageModel/chatBox.ts";
-// import { ZoomTool } from "./languageModel/tools/zoomTool.ts";
-
 import { PlaceSingleTile } from "./languageModel/tools/placeSingleTile.ts";
 import { PlaceEnemy } from "./languageModel/tools/placeEnemy.ts";
 import { PlaceGridofTiles } from "./languageModel/tools/placeGridofTiles.ts";
 import { ClearTile } from "./languageModel/tools/clearTile.ts";
-// import { ClearTile as ClearTileV1 } from "./languageModel/tools/clearTileV1.ts";
 import { WorldFactsTool } from "./languageModel/tools/worldFactsTool.ts";
 import { GetPlacedTiles } from "./languageModel/tools/getPlacedTiles.ts";
 import { RelativeRegeneration } from "./languageModel/tools/relativeGeneration.ts";
 import { GenerateEnemy } from "./languageModel/tools/generateEnemy.ts";
 import { ModifyEnemy } from "./languageModel/tools/modifyEnemy.ts";
+import { UndoRedoTool } from "./languageModel/tools/undoRedoTool.ts";
 
 ////****LLM Tool Setup****////
-// const tools = {
-//   gravity: new GravityTool(getScene),
-//   direction: new MoveTool(getScene),
-//   zoom: new ZoomTool(getScene),
-// };
 
 const tools = {
   placeSingleTile: new PlaceSingleTile(getScene),
@@ -44,6 +32,7 @@ const tools = {
   relativeGeneration: new RelativeRegeneration(getScene),
   generateEnemy: new GenerateEnemy(getScene),
   modifyEnemy: new ModifyEnemy(getScene),
+  undoRedo: new UndoRedoTool(getScene),
 };
 
 // // Register all tools with the LLM
@@ -70,7 +59,7 @@ const gameInstance = new Phaser.Game({
   physics: {
     default: "arcade",
     arcade: {
-      debug: true,
+      debug: false,
       gravity: {
         x: 0,
         y: 0,
@@ -91,4 +80,3 @@ export function getScene(): EditorScene {
   console.log(gameInstance.scene.getScene("editorScene"));
   return gameInstance.scene.getScene("editorScene") as EditorScene;
 }
-//sendSystemMessage("Introduce yourself and explain what you can do.");

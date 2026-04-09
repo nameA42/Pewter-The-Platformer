@@ -10,6 +10,7 @@ type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
 
 export class GameScene extends Phaser.Scene {
   private collectedItems = 0;
+  private playerHP = 3;
   isUpDown = false;
   //private readonly acceleration = 400;
   //private readonly drag = 1100;
@@ -23,7 +24,8 @@ export class GameScene extends Phaser.Scene {
   private backgroundLayer!: Phaser.Tilemaps.TilemapLayer;
   private coinGroup!: Phaser.GameObjects.Group;
   //private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private partCountText!: Phaser.GameObjects.Text;
+  private coinText!: Phaser.GameObjects.Text;
+  private hpText!: Phaser.GameObjects.Text;
   private background!: Phaser.GameObjects.TileSprite;
   private midground!: Phaser.GameObjects.TileSprite;
   private vfx: VFX = {};
@@ -44,6 +46,7 @@ export class GameScene extends Phaser.Scene {
 
   init(data: { map: Phaser.Tilemaps.Tilemap }) {
     this.collectedItems = 0;
+    this.playerHP = 3;
     this.isUpDown = false;
     console.log("GameScene initialized with data:", data);
     if (data.map) {
@@ -278,19 +281,15 @@ export class GameScene extends Phaser.Scene {
       .setScale(5);
       */
 
-    this.partCountText = this.add
-      .text(0, 0, "Parts Collected: 0 / 10", { fontSize: "20px" })
+    this.coinText = this.add
+      .text(16, 16, "Coins: 0", { fontSize: "18px", color: "#FFD700", stroke: "#000000", strokeThickness: 4 })
       .setDepth(99)
-      .setScrollFactor(1); //bad text that should be done better
+      .setScrollFactor(0);
 
-    /*
-    this.add
-      .text(20, 600, "Press 'G' to\n flip gravity", { fontSize: "12px" })
-      .setDepth(99);
-    */
-
-    this.cameras.main.on("cameraupdate", this.updateTextPosition, this);
-    this.updateTextPosition();
+    this.hpText = this.add
+      .text(16, 42, "HP: 3", { fontSize: "18px", color: "#FF4444", stroke: "#000000", strokeThickness: 4 })
+      .setDepth(99)
+      .setScrollFactor(0);
 
     // editor button
     this.createEditorButton();
@@ -298,7 +297,6 @@ export class GameScene extends Phaser.Scene {
 
   update() {
     this.handlePlayerMovement();
-    this.updateTextPosition();
 
     // update the edit button's position to the camera
     if (this.editorButton) {
@@ -440,17 +438,6 @@ export class GameScene extends Phaser.Scene {
     return { x, y };
   }
 
-  private updateTextPosition() {
-    const offset = 20;
-    const cam = this.cameras.main;
-    const worldPoint = cam.getWorldPoint(offset, offset);
-    this.partCountText.x = worldPoint.x;
-    this.partCountText.y = worldPoint.y;
-
-    const baseFontSize = 20;
-    const scaledFontSize = Math.max(10, baseFontSize / cam.zoom);
-    this.partCountText.setFontSize(scaledFontSize);
-  }
 
   // Editor button
   private createEditorButton() {

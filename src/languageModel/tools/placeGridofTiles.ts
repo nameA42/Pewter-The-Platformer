@@ -136,7 +136,7 @@ Places a rectangular grid of tiles on the map.
 
 - tileIndex: numeric ID of the tile to place.
 - (xMin, yMin): top-left inclusive coordinates.
-- (xMax, yMax): bottom-right exclusive coordinates.
+- (xMax, yMax): bottom-right inclusive coordinates.
 - layerName: the name of the target map layer. Choose between 'Ground_Layer' and 'Collectables_Layer' 
 `,
     },

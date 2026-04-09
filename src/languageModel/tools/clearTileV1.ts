@@ -109,10 +109,12 @@ export class ClearTile {
         const toRemove = scene.enemies.filter((enemy) => {
           const tileX = Math.floor(enemy.x / tileW);
           const tileY = Math.floor(enemy.y / tileH);
-          if (tileX < xMin || tileX >= xMax || tileY < yMin || tileY >= yMax) return false;
+          if (tileX < xMin || tileX >= xMax || tileY < yMin || tileY >= yMax)
+            return false;
           for (const sel of affectedSelections) {
             const [[sx, sy], [ex, ey]] = sel;
-            if (tileX >= sx && tileX <= ex && tileY >= sy && tileY <= ey) return false;
+            if (tileX >= sx && tileX <= ex && tileY >= sy && tileY <= ey)
+              return false;
           }
           return true;
         });

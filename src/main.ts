@@ -46,7 +46,6 @@ const tools = {
   modifyEnemy: new ModifyEnemy(getScene),
 };
 
-
 // // Register all tools with the LLM
 Object.values(tools).forEach((generator) => {
   if (generator.toolCall) {

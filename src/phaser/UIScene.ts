@@ -19,17 +19,16 @@ export class UIScene extends Phaser.Scene {
 
   //Data
   private currentBlock: string = "";
-  private blocks: string[] = [
-    "Block 1",
-    "Coin",
-    "Block 3",
-    "Block 4",
+  private collectables: string[] = ["Coin", "Fruit"];
+  private terrainBlocks: string[] = [
+    "Grass-Half Block",
     "Dirt Block",
-    "Block 6",
-    "Slime Enemy",
-    "Ultra Slime",
-    "Eraser",
+    "Question Block",
   ];
+  private enemies: string[] = ["Slime Enemy", "Ultra Slime"];
+  private eraserTools: string[] = ["Eraser"];
+  private blocks: string[] = [];
+
   //Registry (Global variables)
   private setPointerOverUI = (v: boolean) =>
     this.registry.set("uiPointerOver", v);
@@ -61,14 +60,10 @@ export class UIScene extends Phaser.Scene {
 
     //Variables
     this.blocks = [
-      "Coin",
-      "Fruit",
-      "Grass-Half Block",
-      "Dirt Block",
-      "Question Block",
-      "Slime Enemy",
-      "Ultra Slime",
-      "Eraser",
+      ...this.collectables,
+      ...this.terrainBlocks,
+      ...this.enemies,
+      ...this.eraserTools,
     ]; //Add more blocks to see capabilities
 
     //Input
@@ -93,7 +88,7 @@ export class UIScene extends Phaser.Scene {
       <div id="chatbox" class="pt-chatbox">
         <div id="tabs" class="pt-tabs">
           <button id="tab-chat" class="pt-tab active">Chat</button>
-          <button id="tab-blocks" class="pt-tab">Blocks</button>
+          <button id="tab-blocks" class="pt-tab">Manual Edit</button>
           <button id="tab-controls" class="pt-tab">Controls</button>
         </div>
         <div id="tab-contents" class="pt-tab-contents">
@@ -102,7 +97,21 @@ export class UIScene extends Phaser.Scene {
             <input id="chat-input" class="pt-chat-input" type="text" placeholder="Type a command..." autocomplete="off" />
           </div>
           <div id="blocks-content" class="pt-blocks-content">
-            <div id="blocks-list" class="pt-blocks-list"></div>
+            <div class="pt-blocks-group">
+              <div id="blocks-list-eraser" class="pt-blocks-list"></div>
+            </div>
+            <div class="pt-blocks-group">
+              <h4 class="pt-blocks-heading">Collectables</h4>
+              <div id="blocks-list-collectables" class="pt-blocks-list"></div>
+            </div>
+            <div class="pt-blocks-group">
+              <h4 class="pt-blocks-heading">Blocks</h4>
+              <div id="blocks-list-terrain" class="pt-blocks-list"></div>
+            </div>
+            <div class="pt-blocks-group">
+              <h4 class="pt-blocks-heading">Enemies</h4>
+              <div id="blocks-list-enemies" class="pt-blocks-list"></div>
+            </div>
           </div>
           <div id="controls-content" class="pt-controls-content">
             <h3>Basic Controls</h3>
@@ -116,7 +125,7 @@ export class UIScene extends Phaser.Scene {
             </div>
             <div class="control-item">
               <span class="control-key">WASD</span>
-              <span class="control-desc">Move camera & character</span>
+              <span class="control-desc">Move camera & character (Press <strong>Shift</strong> to move slower)</span>
             </div>
             <div class="control-item">
               <span class="control-key">U</span>
@@ -145,7 +154,7 @@ export class UIScene extends Phaser.Scene {
             </div>
             <div class="control-item">
               <span class="control-key">N</span>
-              <span class="control-desc">Make new selection box</span>
+              <span class="control-desc">Confirm new selection box</span>
             </div>
           </div>
         </div>
@@ -277,28 +286,38 @@ export class UIScene extends Phaser.Scene {
       }
     });
 
+    const toolbarButtonHeight = 52;
+    const toolbarButtonFontSize = 14;
+    const toolbarButtonPaddingX = 16;
+    const toolbarButtonPaddingY = 11;
+    const toolbarButtonGap = 14;
+    const toolbarY = this.cameras.main.height - 50;
+
     // Play mode button - Shawn
     this.createPlayButton();
 
     // Add a small helper button to select the current temporary selection box
     this.deselectBoxBtn = this.createButton(
       this,
-      220, // x position
-      this.cameras.main.height - 50,
+      220,
+      toolbarY,
       "Deselect Box",
       () => {
         // Emit an event the EditorScene can listen to; per request this will deselect all boxes
         this.game.events.emit("ui:deselectAllBoxes");
       },
       {
-        fill: 0x1a1a1a,
-        hoverFill: 0x2b6bff,
-        downFill: 0x1f4fcf,
+        fill: 0x222222,
+        hoverFill: 0x222222,
+        downFill: 0x1a1a1a,
+        stroke: 0x444444,
+        hoverStroke: 0xb3b3b3,
+        downStroke: 0xd9d9d9,
         textColor: "#ffffff",
-        fontSize: 14,
-        paddingX: 10,
-        paddingY: 6,
-        fixedWidth: 120,
+        fontSize: toolbarButtonFontSize,
+        paddingX: toolbarButtonPaddingX,
+        paddingY: toolbarButtonPaddingY,
+        minHeight: toolbarButtonHeight,
       },
     );
     this.deselectBoxBtn.setDepth(1001);
@@ -306,21 +325,24 @@ export class UIScene extends Phaser.Scene {
     // Linear Regen button - emits a request the EditorScene will handle
     this.regenerateButton = this.createButton(
       this,
-      380, // x position (to the right of Deselect)
-      this.cameras.main.height - 50,
+      380,
+      toolbarY,
       "Linear Regen",
       () => {
         this.game.events.emit("ui:regenerateSelection");
       },
       {
-        fill: 0x1a1a1a,
-        hoverFill: 0x2b6bff,
-        downFill: 0x1f4fcf,
+        fill: 0x222222,
+        hoverFill: 0x222222,
+        downFill: 0x1a1a1a,
+        stroke: 0x444444,
+        hoverStroke: 0xb3b3b3,
+        downStroke: 0xd9d9d9,
         textColor: "#ffffff",
-        fontSize: 14,
-        paddingX: 10,
-        paddingY: 6,
-        fixedWidth: 140,
+        fontSize: toolbarButtonFontSize,
+        paddingX: toolbarButtonPaddingX,
+        paddingY: toolbarButtonPaddingY,
+        minHeight: toolbarButtonHeight,
       },
     );
     this.regenerateButton.setDepth(1001);
@@ -328,21 +350,24 @@ export class UIScene extends Phaser.Scene {
     // Event Queue Regen button
     this.regenAlgoToggle = this.createButton(
       this,
-      550, // x position (to the right of Linear Regen)
-      this.cameras.main.height - 50,
+      550,
+      toolbarY,
       "Event Queue Regen",
       () => {
         this.game.events.emit("ui:eventQueueRegen");
       },
       {
-        fill: 0x1a1a1a,
-        hoverFill: 0x2b6bff,
-        downFill: 0x1f4fcf,
+        fill: 0x222222,
+        hoverFill: 0x222222,
+        downFill: 0x1a1a1a,
+        stroke: 0x444444,
+        hoverStroke: 0xb3b3b3,
+        downStroke: 0xd9d9d9,
         textColor: "#ffffff",
-        fontSize: 14,
-        paddingX: 10,
-        paddingY: 6,
-        fixedWidth: 160,
+        fontSize: toolbarButtonFontSize,
+        paddingX: toolbarButtonPaddingX,
+        paddingY: toolbarButtonPaddingY,
+        minHeight: toolbarButtonHeight,
       },
     );
     this.regenAlgoToggle.setDepth(1001);
@@ -351,8 +376,8 @@ export class UIScene extends Phaser.Scene {
     // Starts OFF to prevent accidental API credit usage
     this.apiSpriteToggle = this.createButton(
       this,
-      740, // x position (to the right of Event Queue Regen)
-      this.cameras.main.height - 50,
+      740,
+      toolbarY,
       "API Sprites: OFF",
       () => {
         // Toggle the API sprite generation
@@ -365,10 +390,12 @@ export class UIScene extends Phaser.Scene {
 
         if (isEnabled) {
           txt.setText("API Sprites: ON");
-          bg.setFillStyle(0x2e7d32); // Green when enabled
+          bg.setFillStyle(0x222222);
+          bg.setStrokeStyle(2, 0xffffff);
         } else {
           txt.setText("API Sprites: OFF");
-          bg.setFillStyle(0x1a1a1a); // Dark when disabled
+          bg.setFillStyle(0x222222);
+          bg.setStrokeStyle(2, 0x444444);
         }
 
         console.log(
@@ -376,17 +403,35 @@ export class UIScene extends Phaser.Scene {
         );
       },
       {
-        fill: 0x1a1a1a, // Starts dark (OFF)
-        hoverFill: 0x2b6bff,
-        downFill: 0x1f4fcf,
+        fill: 0x222222,
+        hoverFill: 0x222222,
+        downFill: 0x1a1a1a,
+        stroke: 0x444444,
+        hoverStroke: 0xb3b3b3,
+        downStroke: 0xd9d9d9,
         textColor: "#ffffff",
-        fontSize: 14,
-        paddingX: 10,
-        paddingY: 6,
-        fixedWidth: 140,
+        fontSize: toolbarButtonFontSize,
+        paddingX: toolbarButtonPaddingX,
+        paddingY: toolbarButtonPaddingY,
+        minHeight: toolbarButtonHeight,
       },
     );
     this.apiSpriteToggle.setDepth(1001);
+
+    // Layout toolbar buttons based on measured text width with consistent spacing.
+    const toolbarButtons = [
+      this.playButton,
+      this.deselectBoxBtn,
+      this.regenerateButton,
+      this.regenAlgoToggle,
+      this.apiSpriteToggle,
+    ];
+    let toolbarX = 20;
+    for (const btn of toolbarButtons) {
+      const w = btn.width || 0;
+      btn.setPosition(toolbarX + w / 2, toolbarY);
+      toolbarX += w + toolbarButtonGap;
+    }
 
     // Listen for event queue regeneration lifecycle events
     this.game.events.on("eventQueueRegen:started", () => {
@@ -469,6 +514,32 @@ export class UIScene extends Phaser.Scene {
 
   public populateBlocks(blocks: string[]) {
     try {
+      const groupedCollectables = this.dom.getChildByID(
+        "blocks-list-collectables",
+      ) as HTMLDivElement | null;
+      const groupedTerrain = this.dom.getChildByID(
+        "blocks-list-terrain",
+      ) as HTMLDivElement | null;
+      const groupedEnemies = this.dom.getChildByID(
+        "blocks-list-enemies",
+      ) as HTMLDivElement | null;
+      const groupedEraser = this.dom.getChildByID(
+        "blocks-list-eraser",
+      ) as HTMLDivElement | null;
+
+      if (
+        groupedCollectables &&
+        groupedTerrain &&
+        groupedEnemies &&
+        groupedEraser
+      ) {
+        this.populateBlockGroup(groupedCollectables, this.collectables);
+        this.populateBlockGroup(groupedTerrain, this.terrainBlocks);
+        this.populateBlockGroup(groupedEnemies, this.enemies);
+        this.populateBlockGroup(groupedEraser, this.eraserTools);
+        return;
+      }
+
       const blocksList = this.dom.getChildByID(
         "blocks-list",
       ) as HTMLDivElement | null;
@@ -476,26 +547,32 @@ export class UIScene extends Phaser.Scene {
         console.log("Unable to populate block list!");
         return;
       }
-      blocksList.innerHTML = "";
-      for (const block of blocks) {
-        const b = document.createElement("button");
-        // Use the block name for the label and emit selection so other scenes can react
-        b.textContent = block;
-        b.addEventListener("click", () => {
-          // Remove 'selected' class from all buttons
-          Array.from(blocksList.children).forEach((btn) => {
-            btn.classList.remove("selected");
-          });
-          // Add 'selected' class to the clicked button
-          b.classList.add("selected");
-          // Update current block and emit event
-          this.currentBlock = block;
-          this.emitSelect(block);
-        });
-        blocksList.appendChild(b);
-      }
+      this.populateBlockGroup(blocksList, blocks);
     } catch (e) {
       // ignore
+    }
+  }
+
+  private populateBlockGroup(container: HTMLDivElement, blocks: string[]) {
+    container.innerHTML = "";
+    for (const block of blocks) {
+      const b = document.createElement("button");
+      // Use the block name for the label and emit selection so other scenes can react
+      b.textContent = block;
+      b.addEventListener("click", () => {
+        // Remove 'selected' class from all block buttons in the Blocks tab
+        const allBlockButtons = (
+          this.chatBox.node as HTMLElement
+        ).querySelectorAll(".pt-blocks-list button");
+        allBlockButtons.forEach((btn) => btn.classList.remove("selected"));
+
+        // Add 'selected' class to the clicked button
+        b.classList.add("selected");
+        // Update current block and emit event
+        this.currentBlock = block;
+        this.emitSelect(block);
+      });
+      container.appendChild(b);
     }
   }
 
@@ -620,6 +697,8 @@ export class UIScene extends Phaser.Scene {
       fill?: number;
       hoverFill?: number;
       downFill?: number;
+      hoverStroke?: number;
+      downStroke?: number;
       textColor?: string;
       fontSize?: number;
       fixedWidth?: number;
@@ -633,6 +712,8 @@ export class UIScene extends Phaser.Scene {
     const fill = opts?.fill ?? 0xffffff;
     const hoverFill = opts?.hoverFill ?? 0xeeeeee;
     const downFill = opts?.downFill ?? 0xdddddd;
+    const hoverStroke = opts?.hoverStroke ?? stroke;
+    const downStroke = opts?.downStroke ?? stroke;
     const fontSize = opts?.fontSize ?? 25;
     const textColor = opts?.textColor ?? "#111111";
 
@@ -673,27 +754,32 @@ export class UIScene extends Phaser.Scene {
     // ----- States -----
     bg.on("pointerover", () => {
       bg.setFillStyle(hoverFill);
+      bg.setStrokeStyle(strokeW, hoverStroke);
       (scene as UIScene).setPointerOverUI?.(true);
     });
 
     bg.on("pointerout", () => {
       bg.setFillStyle(fill);
+      bg.setStrokeStyle(strokeW, stroke);
       (scene as UIScene).setPointerOverUI?.(false);
     });
 
     bg.on("pointerdown", () => {
       bg.setFillStyle(downFill);
+      bg.setStrokeStyle(strokeW, downStroke);
     });
 
     // Fire only on release *inside*; also handle outside release to reset color
     bg.on("pointerup", () => {
       bg.setFillStyle(hoverFill);
+      bg.setStrokeStyle(strokeW, hoverStroke);
       onClick();
     });
 
     bg.on("pointerupoutside", () => {
       // released outside: revert to normal, don't click
       bg.setFillStyle(fill);
+      bg.setStrokeStyle(strokeW, stroke);
     });
 
     return btn;
@@ -726,20 +812,24 @@ export class UIScene extends Phaser.Scene {
   private createPlayButton() {
     this.playButton = this.createButton(
       this,
-      100, // 100 pixels from left of screen
+      100,
       this.cameras.main.height - 50, // 100 pixels from bottom of screen
       "Play",
       () => {
         this.startGame();
       },
       {
-        fill: 0x1a1a1a, // Dark background
-        hoverFill: 0x127803, // Green hover
-        downFill: 0x0f5f02, // Darker green
+        fill: 0x222222,
+        hoverFill: 0x222222,
+        downFill: 0x1a1a1a,
+        stroke: 0x444444,
+        hoverStroke: 0xb3b3b3,
+        downStroke: 0xd9d9d9,
         textColor: "#ffffff", // White text
-        fontSize: 24,
-        paddingX: 15,
-        paddingY: 10,
+        fontSize: 14,
+        paddingX: 16,
+        paddingY: 11,
+        minHeight: 52,
       },
     );
 

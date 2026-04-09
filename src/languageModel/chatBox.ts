@@ -272,8 +272,8 @@ export async function sendSystemMessage(message: string): Promise<string> {
     const replyText = Array.isArray(reply.text)
       ? reply.text.join("\n")
       : String(reply.text);
-    const aiMessage = new AIMessage(replyText);
-    historyRef.push(aiMessage);
+    // const aiMessage = new AIMessage(replyText);
+    // historyRef.push(aiMessage); // ! get chat response already pushes
 
     if (
       typeof window !== "undefined" &&

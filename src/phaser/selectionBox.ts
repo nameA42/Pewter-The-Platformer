@@ -269,7 +269,7 @@ export class SelectionBox {
 
     // If intersections changed, update visuals
     if (this.intersections.size !== previous.size) {
-      this.updateTabWithNetworkInfo();
+      this.updateTabWithNewInfo();
     }
   }
 
@@ -283,7 +283,7 @@ export class SelectionBox {
     // Share our shareable data with the new neighbor
     this.shareDataWithNeighbor(neighbor);
     // Update visual indicator
-    this.updateTabWithNetworkInfo();
+    this.updateTabWithNewInfo();
   }
 
   /**
@@ -294,7 +294,7 @@ export class SelectionBox {
       `Box ${this.localContext.id} lost neighbor ${neighbor.localContext.id}`,
     );
     // Update visual indicator
-    this.updateTabWithNetworkInfo();
+    this.updateTabWithNewInfo();
   }
 
   /**
@@ -651,7 +651,7 @@ export class SelectionBox {
                   layerName: p.layerName,
                 }));
               }
-            } catch (e) {}
+            } catch (e) { }
 
             this.start = candidateStart;
             this.end = candidateEnd;
@@ -672,11 +672,11 @@ export class SelectionBox {
         try {
           if (this._pointerMoveHandler)
             this.scene.input.off("pointermove", this._pointerMoveHandler);
-        } catch (e) {}
+        } catch (e) { }
         try {
           if (this._pointerUpHandler)
             this.scene.input.off("pointerup", this._pointerUpHandler);
-        } catch (e) {}
+        } catch (e) { }
         // If we had a snapshot of placed tiles, commit a move of those tiles on the map
         try {
           const orig = this._dragOriginalPlacedTiles;
@@ -797,7 +797,7 @@ export class SelectionBox {
         // clear drag snapshot
         try {
           this._dragOriginalPlacedTiles = undefined;
-        } catch (e) {}
+        } catch (e) { }
 
         // Only commit if we actually started a drag snapshot - Drag and Drop
         if (this.dragSnapshot) {
@@ -820,7 +820,7 @@ export class SelectionBox {
           try {
             if (event && typeof event.stopPropagation === "function")
               event.stopPropagation();
-          } catch (e) {}
+          } catch (e) { }
           if (this.onSelect) this.onSelect(this);
           if (!this.isFinalized) return;
           // prepare drag
@@ -921,6 +921,7 @@ export class SelectionBox {
       }
       this.tabText.setStyle({ color: "#ffffff" });
     }
+    this.updateTabWithNewInfo()
   }
 
   copyTiles() {
@@ -941,7 +942,7 @@ export class SelectionBox {
   }
 
   private getColorForZLevel(zLevel: number): number {
-  // Clamp Z-Level
+    // Clamp Z-Level
     if (zLevel < 1) return Z_LEVEL_COLORS[0];
     if (zLevel > Z_LEVEL_COLORS.length)
       return Z_LEVEL_COLORS[Z_LEVEL_COLORS.length - 1];
@@ -989,7 +990,7 @@ export class SelectionBox {
     return this.layer;
   }
 
-   // Check if this box overlaps with another box in tile-space
+  // Check if this box overlaps with another box in tile-space
   // Returns true only if they share actual tiles (not just edges)
   overlapsWith(otherBox: SelectionBox): boolean {
     const thisBounds = this.getBounds();
@@ -1285,7 +1286,7 @@ export class SelectionBox {
   /**
    * Visual indicator: Change tab color based on neighbor count
    */
-  public updateTabWithNetworkInfo(): void {
+  public updateTabWithNewInfo(): void {
     if (!this.tabText) return;
 
     const neighborCount = this.neighbors.size;
@@ -1297,7 +1298,8 @@ export class SelectionBox {
     if (neighborCount > 0) parts.push(`${neighborCount}n`);
     if (dataCount > 0) parts.push(`${dataCount}d`);
     if (intersectionCount > 0) parts.push(`${intersectionCount}z`);
-    const text = parts.length > 0 ? `Box (${parts.join(", ")})` : `Box`;
+    let text = `Box${this.isActive ? `[(${this.start.x},${this.start.y}),(${this.end.x},${this.end.y})]` : ''}${parts.length > 0 ? ` (${parts.join(", ")})` : ''}`;
+
     this.tabText.setText(text);
 
     // Make the tab wider when visual indicators are added: add 20px per indicator
@@ -1328,7 +1330,7 @@ export class SelectionBox {
       // Keep text positioned with left padding
       try {
         this.tabText.x = padding;
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // Change color based on connectivity
@@ -1587,7 +1589,7 @@ export class SelectionBox {
       this.destroyPreviewLayer();
       this.dragSnapshot = undefined;
       this.dragOriginStart = undefined;
-      this.start.set(oldSX, oldSY);
+      this.start.set(oldSX, oldSY); // TODO: wat?
       this.end.set(
         oldSX + this.dragSnapshot!.w - 1,
         oldSY + this.dragSnapshot!.h - 1,

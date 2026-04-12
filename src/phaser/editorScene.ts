@@ -1412,6 +1412,7 @@ export class EditorScene extends Phaser.Scene {
     if (uiScene && typeof uiScene.handleSelectionInfo === "function") {
       uiScene.handleSelectionInfo(msg);
     }
+
   }
 
   // Copy selection of tiles function

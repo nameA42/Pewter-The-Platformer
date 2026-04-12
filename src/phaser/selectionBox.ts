@@ -19,6 +19,27 @@ interface BoxContext {
   version: number;
 }
 
+const allSelectionBoxes: SelectionBox[] = [];
+
+
+function replaceAllBoxes() {
+  // ! because I am lazy will just be regeneing all of everything ever place, not efficient but computer are fast
+  allSelectionBoxes.sort((a: SelectionBox, b: SelectionBox) => {
+    if (a.getZLevel() < b.getZLevel()) {
+      return -1;
+    }
+    if (a.getZLevel() > b.getZLevel()) {
+      return 1;
+    }
+    return 0;
+  })
+  for (let sb of allSelectionBoxes) {
+    for (let tile of sb.placedTiles) {
+      sb.getLayer().putTileAt(tile.tileIndex, tile.x, tile.y);
+    }
+  }
+}
+
 export class SelectionBox {
   private graphics: Phaser.GameObjects.Graphics;
   private start: Phaser.Math.Vector2;
@@ -123,6 +144,7 @@ export class SelectionBox {
     this.onSelect = onSelect;
     // create tab after initial draw
     this.createTab();
+    allSelectionBoxes.push(this);
   }
 
   // STEP 2: Collaborative Context Merging - Basic data management methods
@@ -657,6 +679,7 @@ export class SelectionBox {
             this.end = candidateEnd;
             this.redraw();
             this.updatePreviewLayerPosition(); //Drag and Drop
+            this.updateTabWithNewInfo();
           }
         } catch (e) {
           this.start = candidateStart;
@@ -677,6 +700,7 @@ export class SelectionBox {
           if (this._pointerUpHandler)
             this.scene.input.off("pointerup", this._pointerUpHandler);
         } catch (e) { }
+
         // If we had a snapshot of placed tiles, commit a move of those tiles on the map
         try {
           const orig = this._dragOriginalPlacedTiles;
@@ -735,6 +759,9 @@ export class SelectionBox {
                 console.error("SelectionBox: moveObjects failed", e);
               }
             }
+
+            // console.log(`Things be thinging: ${movements}`);
+            this.printPlacedTiles();
           }
         } catch (e) {
           // swallow
@@ -784,6 +811,7 @@ export class SelectionBox {
               typeof rg.moveObjects === "function"
             ) {
               try {
+                // console.log("Things be thinging"); // NOTE: This be not being happening
                 rg.moveObjects(eMoves);
               } catch (er) {
                 // eslint-disable-next-line no-console
@@ -801,6 +829,8 @@ export class SelectionBox {
 
         // Only commit if we actually started a drag snapshot - Drag and Drop
         if (this.dragSnapshot) {
+          console.log("drop finished");
+
           this.commitMoveToCurrentPosition();
         } else {
           // No snapshot -> just ensure ghost is gone
@@ -1489,14 +1519,20 @@ export class SelectionBox {
     const h = eY - sY + 1;
 
     const tiles: { dx: number; dy: number; index: number }[] = [];
-    for (let ty = 0; ty < h; ty++) {
-      for (let tx = 0; tx < w; tx++) {
-        const tile = this.layer.getTileAt(sX + tx, sY + ty);
-        if (tile && tile.index !== -1) {
-          tiles.push({ dx: tx, dy: ty, index: tile.index });
-        }
-      }
+
+    for (let t of this.placedTiles) {
+      console.log(`tiles: (tx: ${t.x}, ty: ${t.y}), (sx: ${sX}, sy: ${sY}), (dx: ${t.x - sX}, dy: ${t.y - sY}), index: ${t.tileIndex} }}`);
+      tiles.push({ dx: t.x - sX, dy: t.y - sY, index: t.tileIndex });
     }
+
+    // for (let ty = 0; ty < h; ty++) {
+    //   for (let tx = 0; tx < w; tx++) {
+    //     const tile = this.layer.getTileAt(sX + tx, sY + ty);
+    //     if (tile && tile.index !== -1) {
+    //       tiles.push({ dx: tx, dy: ty, index: tile.index });
+    //     }
+    //   }
+    // }
 
     this.dragSnapshot = { w, h, tiles };
     this.dragOriginStart = new Phaser.Math.Vector2(sX, sY);
@@ -1582,21 +1618,21 @@ export class SelectionBox {
     const dx = newSX - oldSX;
     const dy = newSY - oldSY;
 
-    // OPTIONAL: prevent overlapping paste
-    if (!this.targetAreaIsClear(newSX, newSY)) {
-      console.log("Overlapped!");
-      // cleanup + snap back to original
-      this.destroyPreviewLayer();
-      this.dragSnapshot = undefined;
-      this.dragOriginStart = undefined;
-      this.start.set(oldSX, oldSY); // TODO: wat?
-      this.end.set(
-        oldSX + this.dragSnapshot!.w - 1,
-        oldSY + this.dragSnapshot!.h - 1,
-      );
-      this.redraw();
-      return;
-    }
+    // OPTIONAL: prevent overlapping paste // ! think this is bad, layers viewed as filters this dont make sense, also prevents 1 tile moves if tile in over self
+    // if (!this.targetAreaIsClear(newSX, newSY)) {
+    //   console.log("Overlapped!");
+    //   // cleanup + snap back to original
+    //   this.destroyPreviewLayer();
+    //   this.start.set(oldSX, oldSY);
+    //   this.end.set(
+    //     oldSX + this.dragSnapshot!.w - 1,
+    //     oldSY + this.dragSnapshot!.h - 1,
+    //   );
+    //   this.dragSnapshot = undefined;
+    //   this.dragOriginStart = undefined;
+    //   this.redraw();
+    //   return;
+    // }
 
     // 1) Clear original snapshot footprint (only cells that had tiles)
     for (let ty = 0; ty < this.dragSnapshot.h; ty++) {
@@ -1608,28 +1644,31 @@ export class SelectionBox {
       }
     }
 
-    // 2) Paste at new location
-    for (const t of this.dragSnapshot.tiles) {
-      const nx = newSX + t.dx;
-      const ny = newSY + t.dy;
-      this.layer.putTileAt(t.index, nx, ny);
-    }
+    // // 2) Paste at new location
+    // for (const t of this.dragSnapshot.tiles) {
+    //   const nx = newSX + t.dx;
+    //   const ny = newSY + t.dy;
+    //   this.layer.putTileAt(t.index, nx, ny);
+    // }
+    replaceAllBoxes(); // Todo: this is evil but works :thumbsup:
 
-    // 3) Update bookkeeping for tiles associated with this box
-    if (this.placedTiles?.length) {
-      for (const pt of this.placedTiles) {
-        // Only shift tiles that were inside the old selection
-        if (
-          pt.x >= oldSX &&
-          pt.x < oldSX + this.dragSnapshot.w &&
-          pt.y >= oldSY &&
-          pt.y < oldSY + this.dragSnapshot.h
-        ) {
-          pt.x += dx;
-          pt.y += dy;
-        }
-      }
-    }
+
+    //! idk what this code what doing but it was breaking things I hate it here I hate it here I hate it here
+    // // 3) Update bookkeeping for tiles associated with this box 
+    // if (this.placedTiles?.length) {
+    //   for (const pt of this.placedTiles) {
+    //     // // Only shift tiles that were inside the old selection
+    //     // if (
+    //     //   pt.x >= oldSX &&
+    //     //   pt.x < oldSX + this.dragSnapshot.w &&
+    //     //   pt.y >= oldSY &&
+    //     //   pt.y < oldSY + this.dragSnapshot.h
+    //     // ) {
+    //     // pt.x += dx;
+    //     // pt.y += dy;
+    //     // }
+    //   }
+    // }
 
     // Cleanup
     this.destroyPreviewLayer();

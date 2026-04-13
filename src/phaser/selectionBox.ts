@@ -431,6 +431,7 @@ export class SelectionBox {
   setZLevel(zLevel: number) {
     this.zLevel = zLevel;
     this.redraw();
+    replaceAllBoxes();
   }
 
   private redraw() {

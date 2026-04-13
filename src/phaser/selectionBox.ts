@@ -35,7 +35,8 @@ function replaceAllBoxes() {
   })
   for (let sb of allSelectionBoxes) {
     for (let tile of sb.placedTiles) {
-      sb.getLayer().putTileAt(tile.tileIndex, tile.x, tile.y);
+      if (tile.tileIndex > 1)
+        sb.getLayer().putTileAt(tile.tileIndex, tile.x, tile.y);
     }
   }
 }
@@ -145,6 +146,11 @@ export class SelectionBox {
     // create tab after initial draw
     this.createTab();
     allSelectionBoxes.push(this);
+  }
+
+  public delete() {
+    allSelectionBoxes.splice(allSelectionBoxes.indexOf(this), 1);
+    replaceAllBoxes();
   }
 
   // STEP 2: Collaborative Context Merging - Basic data management methods
@@ -1409,7 +1415,14 @@ export class SelectionBox {
     y: number,
     layerName: string,
   ) {
-    this.placedTiles.push({ tileIndex, x, y, layerName });
+    // this.placedTiles = this.placedTiles.filter((tile) => {tile.x != x || tile.y != y})
+    let replace = this.placedTiles.find((tile) => tile.x == x && tile.y == y && tile.layerName == layerName);
+    if (replace != undefined) {
+      replace.tileIndex = tileIndex;
+    }
+    else {
+      this.placedTiles.push({ tileIndex, x, y, layerName });
+    }
     console.log("Added placed tile:", { tileIndex, x, y, layerName });
   }
 

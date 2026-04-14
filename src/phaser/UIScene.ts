@@ -198,16 +198,16 @@ export class UIScene extends Phaser.Scene {
               <span class="control-desc">Delete selected box</span>
             </div>
             <div class="control-item">
+              <span class="control-key">N</span>
+              <span class="control-desc">Confirm new selection box</span>
+            </div>
+            <div class="control-item">
               <span class="control-key">O</span>
               <span class="control-desc">Decrease Z-Level</span>
             </div>
             <div class="control-item">
               <span class="control-key">P</span>
               <span class="control-desc">Increase Z-Level</span>
-            </div>
-            <div class="control-item">
-              <span class="control-key">N</span>
-              <span class="control-desc">Confirm new selection box</span>
             </div>
           </div>
         </div>

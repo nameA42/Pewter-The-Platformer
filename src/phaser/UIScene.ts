@@ -647,8 +647,12 @@ export class UIScene extends Phaser.Scene {
     container.innerHTML = "";
     for (const block of blocks) {
       const b = document.createElement("button");
-      // Use the block name for the label and emit selection so other scenes can react
-      b.textContent = block;
+      if (block === "Eraser") {
+        b.textContent = "Eraser 🗑️";
+      } else {
+        b.textContent = block;
+      }
+
       b.addEventListener("click", () => {
         // Remove 'selected' class from all block buttons in the Blocks tab
         const allBlockButtons = (

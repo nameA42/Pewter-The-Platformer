@@ -271,9 +271,20 @@ export class UIScene extends Phaser.Scene {
         if (!userMsg) return;
 
         input.value = "";
+        const activeBox = (window as any).getActiveSelectionBox?.();
+        console.log("[UIScene] activeBox at send time:", activeBox, "pendingMove:", activeBox?._pendingMoveNotify);
+        const moveContext: string | null = activeBox?.consumePendingMoveContext?.() ?? null;
+        if (moveContext) {
+          console.log("[MoveContext] Sending move info to AI:", moveContext);
+        } else {
+          console.log("[MoveContext] No move context (moveContext is null/undefined)");
+        }
+        const hiddenContext = [this.latestSelectionContext, moveContext]
+          .filter(Boolean)
+          .join("\n");
         const sendPromise = sendUserPromptWithContext(
           userMsg,
-          this.latestSelectionContext,
+          hiddenContext || undefined,
         );
         // Render the user's message immediately (sendUserPrompt pushes it sync).
         log.innerHTML = getDisplayChatHistory();

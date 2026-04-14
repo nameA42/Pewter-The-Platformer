@@ -307,7 +307,9 @@ export class EditorScene extends Phaser.Scene {
 
   create() {
     // Setup global access for collaborative context
-    // this.setupGlobalActiveBoxAccess(); // Temporarily commented out to fix loading issue
+    if (typeof window !== "undefined") {
+      (window as any).getActiveSelectionBox = () => this.activeBox;
+    }
 
     this.map = this.make.tilemap({ key: "defaultMap" });
     this.worldFacts = new WorldFacts(this);

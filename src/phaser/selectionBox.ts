@@ -107,6 +107,11 @@ export class SelectionBox {
   ) => void;
   private _pointerMoveHandler?: (pointer: Phaser.Input.Pointer) => void;
   private _pointerUpHandler?: (pointer: Phaser.Input.Pointer) => void;
+
+  // Coordinate tracking for AI context
+  public currentCoords: { start: { x: number; y: number }; end: { x: number; y: number } } = { start: { x: 0, y: 0 }, end: { x: 0, y: 0 } };
+  public coordHistory: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; timestamp: number }> = [];
+  private _pendingMoveNotify: boolean = false;
   //Drag and Drop support - Jason Cho
   private dragSnapshot?: {
     w: number;
@@ -134,6 +139,10 @@ export class SelectionBox {
     this.graphics = scene.add.graphics();
     this.graphics.setDepth(100);
     this.redraw();
+
+    // Initialize coordinate tracking
+    this.currentCoords = { start: { x: start.x, y: start.y }, end: { x: end.x, y: end.y } };
+    this.coordHistory = [{ start: { x: start.x, y: start.y }, end: { x: end.x, y: end.y }, timestamp: Date.now() }];
 
     // Initialize localContext with its own chatHistory
     this.localContext = {
@@ -829,6 +838,25 @@ export class SelectionBox {
           this._dragOriginalPlacedTiles = undefined;
         } catch (e) { }
 
+        // Record the new position in coord history and flag for AI notification
+        const newEntry = {
+          start: { x: this.start.x, y: this.start.y },
+          end: { x: this.end.x, y: this.end.y },
+          timestamp: Date.now(),
+        };
+        const lastEntry = this.coordHistory[this.coordHistory.length - 1];
+        if (
+          !lastEntry ||
+          lastEntry.start.x !== newEntry.start.x ||
+          lastEntry.start.y !== newEntry.start.y ||
+          lastEntry.end.x !== newEntry.end.x ||
+          lastEntry.end.y !== newEntry.end.y
+        ) {
+          this.coordHistory.push(newEntry);
+          this._pendingMoveNotify = true;
+          console.log("[SelectionBox] Move recorded, pending AI notification:", newEntry);
+        }
+
         // Only commit if we actually started a drag snapshot - Drag and Drop
         if (this.dragSnapshot) {
           console.log("drop finished");
@@ -1098,6 +1126,14 @@ export class SelectionBox {
   // prevents further resizing via updateStart/updateEnd.
   public finalize() {
     this.isFinalized = true;
+    // Snapshot the true final coords now that the user has finished drawing the box
+    const finalEntry = {
+      start: { x: this.start.x, y: this.start.y },
+      end: { x: this.end.x, y: this.end.y },
+      timestamp: Date.now(),
+    };
+    this.coordHistory = [finalEntry];
+    this.currentCoords = { start: { ...finalEntry.start }, end: { ...finalEntry.end } };
     // Update visuals immediately so dashed -> solid border swap happens
     this.redraw();
     // Update tab visuals to a finalized (gray) style
@@ -1399,6 +1435,41 @@ export class SelectionBox {
         );
       }
     }
+  }
+
+  /**
+   * If the box was moved since the last user message, returns a hidden context
+   * string describing the move and updates currentCoords. Returns null otherwise.
+   * Call this just before sending the user's message to the AI.
+   */
+  public consumePendingMoveContext(): string | null {
+    if (!this._pendingMoveNotify) return null;
+    const latest = this.coordHistory[this.coordHistory.length - 1];
+    if (!latest) return null;
+    const prev = this.currentCoords;
+    this._pendingMoveNotify = false;
+    this.currentCoords = { start: { ...latest.start }, end: { ...latest.end } };
+
+    let msg =
+      `[BOX MOVED]: This selection box was moved from tile ` +
+      `(${prev.start.x}, ${prev.start.y})-(${prev.end.x}, ${prev.end.y}) ` +
+      `to (${latest.start.x}, ${latest.start.y})-(${latest.end.x}, ${latest.end.y}). ` +
+      `All tiles and objects previously placed inside this box moved with it.`;
+
+    if (this.placedTiles.length > 0) {
+      const tileList = this.placedTiles
+        .map((p) => `tile ID ${p.tileIndex} at (${p.x}, ${p.y}) on ${p.layerName}`)
+        .join("; ");
+      msg += ` Current placed tile positions: ${tileList}.`;
+    }
+    if (this.placedEnemies.length > 0) {
+      const enemyList = this.placedEnemies
+        .map((e) => `${e.enemyType} at (${e.x}, ${e.y})`)
+        .join("; ");
+      msg += ` Current placed enemy positions: ${enemyList}.`;
+    }
+
+    return msg;
   }
 
   // Chat history management for this selection box

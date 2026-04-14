@@ -645,10 +645,24 @@ export class UIScene extends Phaser.Scene {
 
   private populateBlockGroup(container: HTMLDivElement, blocks: string[]) {
     container.innerHTML = "";
+    const blockToIconClass: { [key: string]: string } = {
+      Coin: "pt-block-icon-coin",
+      Fruit: "pt-block-icon-fruit",
+      "Grass-Half Block": "pt-block-icon-grass-half",
+      "Dirt Block": "pt-block-icon-dirt",
+      "Question Block": "pt-block-icon-question",
+      "Ultra Slime": "pt-block-icon-ultra-slime",
+      "Slime Enemy": "pt-block-icon-slime",
+    };
+
     for (const block of blocks) {
       const b = document.createElement("button");
       if (block === "Eraser") {
         b.textContent = "Eraser 🗑️";
+      } else if (blockToIconClass[block]) {
+        b.innerHTML = `<span class="pt-block-icon ${blockToIconClass[block]}" aria-hidden="true"></span>`;
+        b.setAttribute("aria-label", block);
+        b.title = block;
       } else {
         b.textContent = block;
       }

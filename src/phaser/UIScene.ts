@@ -431,14 +431,30 @@ export class UIScene extends Phaser.Scene {
 
         // Update button text and color
         const txt = this.apiSpriteToggle.list[1] as Phaser.GameObjects.Text;
+        const statusTxt = this.apiSpriteToggle
+          .list[2] as Phaser.GameObjects.Text;
         const bg = this.apiSpriteToggle
           .list[0] as Phaser.GameObjects.GameObject;
 
+        const stateLabel = isEnabled ? "ON" : "OFF";
+        const fullLabel = `API Sprites: ${stateLabel}`;
+
+        txt.setText(fullLabel);
+        txt.setColor("#ffffff");
+
+        // Place the colored ON/OFF token at the end of the white prefix.
+        txt.setText("API Sprites: ");
+        const prefixWidth = txt.width;
+        txt.setText(fullLabel);
+
+        const fullWidth = txt.width;
+        statusTxt.setText(stateLabel);
+        statusTxt.setColor(isEnabled ? "#22c55e" : "#ef4444");
+        statusTxt.setPosition(-fullWidth / 2 + prefixWidth, 0);
+
         if (isEnabled) {
-          txt.setText("API Sprites: ON");
           this.updateRoundedButtonColors(bg, 0x222222, 0xffffff);
         } else {
-          txt.setText("API Sprites: OFF");
           this.updateRoundedButtonColors(bg, 0x222222, 0x444444);
         }
 
@@ -460,6 +476,26 @@ export class UIScene extends Phaser.Scene {
         minHeight: toolbarButtonHeight,
       },
     );
+
+    // Overlay just the ON/OFF token in color while keeping the base label white.
+    const apiLabel = this.apiSpriteToggle.list[1] as Phaser.GameObjects.Text;
+    const apiStatus = this.add
+      .text(0, 0, "OFF", {
+        fontFamily: "sans-serif",
+        fontSize: `${toolbarButtonFontSize}px`,
+        color: "#ef4444",
+      })
+      .setOrigin(0, 0.5);
+
+    apiLabel.setText("API Sprites: OFF");
+    apiLabel.setColor("#ffffff");
+    apiLabel.setText("API Sprites: ");
+    const initialPrefixWidth = apiLabel.width;
+    apiLabel.setText("API Sprites: OFF");
+    const initialFullWidth = apiLabel.width;
+    apiStatus.setPosition(-initialFullWidth / 2 + initialPrefixWidth, 0);
+    this.apiSpriteToggle.add(apiStatus);
+
     this.apiSpriteToggle.setDepth(1001);
 
     // Layout toolbar buttons based on measured text width with consistent spacing.

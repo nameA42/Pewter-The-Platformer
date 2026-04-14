@@ -22,7 +22,7 @@ interface BoxContext {
 const allSelectionBoxes: SelectionBox[] = [];
 
 
-function replaceAllBoxes() {
+export function replaceAllBoxes() {
   // ! because I am lazy will just be regeneing all of everything ever place, not efficient but computer are fast
   allSelectionBoxes.sort((a: SelectionBox, b: SelectionBox) => {
     if (a.getZLevel() < b.getZLevel()) {
@@ -146,11 +146,6 @@ export class SelectionBox {
     // create tab after initial draw
     this.createTab();
     allSelectionBoxes.push(this);
-  }
-
-  public delete() {
-    allSelectionBoxes.splice(allSelectionBoxes.indexOf(this), 1);
-    replaceAllBoxes();
   }
 
   // STEP 2: Collaborative Context Merging - Basic data management methods
@@ -956,6 +951,7 @@ export class SelectionBox {
         this.tabBg.setFillStyle(0x2b2b2b);
         this.tabBg.setStrokeStyle(1, 0x111111);
       }
+      console.log(this.tabText);
       this.tabText.setStyle({ color: "#ffffff" });
     }
     this.updateTabWithNewInfo()
@@ -1071,14 +1067,31 @@ export class SelectionBox {
 
   destroy() {
     this.graphics.destroy();
+    if (this.tabText) {
+      this.tabText.destroy();
+      this.tabText = null;
+    }
+
     if (this.tabContainer) {
       this.tabContainer.destroy();
       this.tabContainer = null;
     }
+
+
     // Remove drag listeners
     if (this._dragStartHandler)
       this.scene.input.off("dragstart", this._dragStartHandler);
     if (this._dragHandler) this.scene.input.off("drag", this._dragHandler);
+
+    // clean up actual stuff
+
+    allSelectionBoxes.splice(allSelectionBoxes.indexOf(this), 1);
+    // delete owned tiles
+    for (let tile of this.placedTiles) {
+      this.getLayer().putTileAt(1, tile.x, tile.y);
+    }
+
+    replaceAllBoxes();
   }
 
   // Mark this selection as finalized (permanent). Keeps a tab for dragging but

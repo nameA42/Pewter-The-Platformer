@@ -12,7 +12,7 @@ import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
 import { DynamicEnemy } from "../enemySystem/runtime/DynamicEnemy.ts";
 import { UIScene } from "./UIScene.ts";
 import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
-import { SelectionBox } from "./selectionBox.ts";
+import { replaceAllBoxes, SelectionBox } from "./selectionBox.ts";
 import { regenerate } from "./ExternalClasses/RegenerationTools.ts";
 import { Z_LEVEL_COLORS } from "./colors";
 
@@ -555,6 +555,9 @@ export class EditorScene extends Phaser.Scene {
           // Keep the box active/selected so the UI and chat context remain tied to it.
           // Do NOT clear this.activeBox or call setActiveSelectionBox(null) here.
           this.activeBox.setActive?.(true);
+
+          // ! idk how things work so I am going to rerender here, someone find where this should actually go if there is a better spot
+          replaceAllBoxes();
         }
       });
     }
@@ -601,7 +604,7 @@ export class EditorScene extends Phaser.Scene {
     this.input.on("pointerup", this.endSelection, this);
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-      if (pointer.middleButtonDown()) {
+      if (pointer.middleButtonDown()) { // ! might need to change this to chain of ifs instead of if else
         isDragging = true;
         dragStartPoint.set(pointer.x, pointer.y);
       } else if (pointer.leftButtonDown()) {
@@ -718,7 +721,9 @@ export class EditorScene extends Phaser.Scene {
       // remove from permanent list if present
       const idx = this.selectionBoxes.indexOf(this.activeBox);
       if (idx !== -1) {
-        this.selectionBoxes.splice(idx, 1);
+        // console.log(`try del a box, old: ${this.selectionBoxes}`);
+        let temp = this.selectionBoxes.splice(idx, 1);
+        // console.log(`Deleted a box, new: ${this.selectionBoxes}, rem: ${temp}`);
       }
       // destroy visuals and resources
       this.activeBox.destroy?.();
@@ -1816,7 +1821,8 @@ export class EditorScene extends Phaser.Scene {
     if (!this.activeBox) return;
 
     // Push it to the array
-    this.selectionBoxes.push(this.activeBox);
+    if (!this.selectionBoxes.includes(this.activeBox))
+      this.selectionBoxes.push(this.activeBox);
     // mark it as finalized (permanent) so it can't be redrawn; it can still be dragged via its tab
     this.activeBox.finalize?.();
 
@@ -1829,6 +1835,7 @@ export class EditorScene extends Phaser.Scene {
   selectBox(box: SelectionBox | null) {
     if (!box) return;
     // Deactivate all boxes we know about (selectionBoxes and any current activeBox)
+    console.log(`Boxes: ${this.selectionBoxes}`);
     for (const b of this.selectionBoxes) {
       b.setActive?.(false);
     }

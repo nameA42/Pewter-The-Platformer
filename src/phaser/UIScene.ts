@@ -129,12 +129,12 @@ export class UIScene extends Phaser.Scene {
     //Working Code - Manvir
 
     // Create hidden chatbox
-    this.chatBox = this.add.dom(1100, 350).createFromHTML(`
+    this.chatBox = this.add.dom(1090, 350).createFromHTML(`
       <div id="chatbox" class="pt-chatbox">
         <div id="tabs" class="pt-tabs">
-          <button id="tab-chat" class="pt-tab active">Chat</button>
-          <button id="tab-blocks" class="pt-tab">Manual Edit</button>
-          <button id="tab-controls" class="pt-tab">Controls</button>
+          <button id="tab-chat" class="pt-tab active">💬 Chat</button>
+          <button id="tab-blocks" class="pt-tab">🧱 Manual Edit</button>
+          <button id="tab-controls" class="pt-tab">🎮 Controls</button>
         </div>
         <div id="tab-contents" class="pt-tab-contents">
           <div id="chat-content" class="pt-chat-content">
@@ -332,7 +332,7 @@ export class UIScene extends Phaser.Scene {
     });
 
     const toolbarButtonHeight = 52;
-    const toolbarButtonFontSize = 20;
+    const toolbarButtonFontSize = 17;
     const toolbarButtonPaddingX = 16;
     const toolbarButtonPaddingY = 11;
     const toolbarButtonGap = 14;
@@ -346,7 +346,7 @@ export class UIScene extends Phaser.Scene {
       this,
       220,
       toolbarY,
-      "Deselect Box",
+      "🧹 Deselect Box",
       () => {
         // Emit an event the EditorScene can listen to; per request this will deselect all boxes
         this.game.events.emit("ui:deselectAllBoxes");
@@ -372,7 +372,7 @@ export class UIScene extends Phaser.Scene {
       this,
       380,
       toolbarY,
-      "Linear Regen",
+      "♻️ Linear Regen",
       () => {
         this.game.events.emit("ui:regenerateSelection");
       },
@@ -397,7 +397,7 @@ export class UIScene extends Phaser.Scene {
       this,
       550,
       toolbarY,
-      "Event Queue Regen",
+      "🗂️ Event Queue Regen",
       () => {
         this.game.events.emit("ui:eventQueueRegen");
       },
@@ -423,7 +423,7 @@ export class UIScene extends Phaser.Scene {
       this,
       740,
       toolbarY,
-      "API Sprites: OFF",
+      "👾 API Sprites: OFF",
       () => {
         // Toggle the API sprite generation
         SpriteGenerator.useExternalApi = !SpriteGenerator.useExternalApi;
@@ -437,13 +437,13 @@ export class UIScene extends Phaser.Scene {
           .list[0] as Phaser.GameObjects.GameObject;
 
         const stateLabel = isEnabled ? "ON" : "OFF";
-        const fullLabel = `API Sprites: ${stateLabel}`;
+        const fullLabel = `👾 API Sprites: ${stateLabel}`;
 
         txt.setText(fullLabel);
         txt.setColor("#ffffff");
 
         // Place the colored ON/OFF token at the end of the white prefix.
-        txt.setText("API Sprites: ");
+        txt.setText("👾 API Sprites: ");
         const prefixWidth = txt.width;
         txt.setText(fullLabel);
 
@@ -487,11 +487,11 @@ export class UIScene extends Phaser.Scene {
       })
       .setOrigin(0, 0.5);
 
-    apiLabel.setText("API Sprites: OFF");
+    apiLabel.setText("👾 API Sprites: OFF");
     apiLabel.setColor("#ffffff");
-    apiLabel.setText("API Sprites: ");
+    apiLabel.setText("👾 API Sprites: ");
     const initialPrefixWidth = apiLabel.width;
-    apiLabel.setText("API Sprites: OFF");
+    apiLabel.setText("👾 API Sprites: OFF");
     const initialFullWidth = apiLabel.width;
     apiStatus.setPosition(-initialFullWidth / 2 + initialPrefixWidth, 0);
     this.apiSpriteToggle.add(apiStatus);
@@ -524,7 +524,7 @@ export class UIScene extends Phaser.Scene {
           bg.disableInteractive();
         } catch (e) {}
         try {
-          txt.setText("Regenerating...");
+          txt.setText("🗂️ Regenerating...");
         } catch (e) {}
       } catch (e) {
         // ignore
@@ -540,7 +540,7 @@ export class UIScene extends Phaser.Scene {
           bg.setInteractive({ useHandCursor: true });
         } catch (e) {}
         try {
-          txt.setText("Event Queue Regen");
+          txt.setText("🗂️ Event Queue Regen");
         } catch (e) {}
       } catch (e) {
         // ignore
@@ -558,7 +558,7 @@ export class UIScene extends Phaser.Scene {
           bg.disableInteractive();
         } catch (e) {}
         try {
-          txt.setText("Regenerating...");
+          txt.setText("♻️ Regenerating...");
         } catch (e) {}
       } catch (e) {
         // ignore
@@ -574,7 +574,7 @@ export class UIScene extends Phaser.Scene {
           bg.setInteractive({ useHandCursor: true });
         } catch (e) {}
         try {
-          txt.setText("Linear Regen");
+          txt.setText("♻️ Linear Regen");
         } catch (e) {}
       } catch (e) {
         // ignore
@@ -954,7 +954,7 @@ export class UIScene extends Phaser.Scene {
       this,
       100,
       this.cameras.main.height - 50, // 100 pixels from bottom of screen
-      "Play",
+      "▶️ Play",
       () => {
         this.startGame();
       },
@@ -966,7 +966,7 @@ export class UIScene extends Phaser.Scene {
         hoverStroke: 0xb3b3b3,
         downStroke: 0xd9d9d9,
         textColor: "#ffffff", // White text
-        fontSize: 20,
+        fontSize: 17,
         paddingX: 16,
         paddingY: 11,
         minHeight: 52,

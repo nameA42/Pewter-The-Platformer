@@ -56,20 +56,58 @@ export class ClearTile {
       }
 
       try {
+        const selectionBoxes = scene.selectionBoxes;
+
+        type Coord = [number, number];
+        type Selection = [Coord, Coord];
+
+        let affectedSelections: Selection[] = [];
+
+        for (let i = 0; i < selectionBoxes.length; i++) {
+          const sel = selectionBoxes[i];
+          if (sel.getActive() == true) {
+            continue;
+          }
+
+          const sx = sel.getStart().x;
+          const sy = sel.getStart().y;
+          const ex = sel.getEnd().x;
+          const ey = sel.getEnd().y;
+
+          const overlaps = ex >= xMin && sx <= xMax && ey >= yMin && sy <= yMax;
+
+          if (overlaps) {
+            affectedSelections.push([
+              [Math.max(sx, xMin), Math.max(sy, yMin)],
+              [Math.min(ex, xMax), Math.min(ey, yMax)],
+            ]);
+          }
+        }
+
         for (let x = xMin; x < xMax; x++) {
           for (let y = yMin; y < yMax; y++) {
             const regenGate = OverlapChecker.checkRegenProtection(scene, x, y);
             if (!regenGate.canPlace) {
               return `❌ Cannot clear tiles: ${regenGate.reason}`;
             }
-            map.removeTileAt(x, y, false, false, layer);
-            if (scene.activeBox) {
-              scene.activeBox.addPlacedTile(1, x, y, layerName);
+            let insideSelection = false;
+
+            for (const sel of affectedSelections) {
+              const [[sx, sy], [ex, ey]] = sel;
+
+              if (x >= sx && x <= ex && y >= sy && y <= ey) {
+                insideSelection = true;
+                break;
+              }
+            }
+
+            if (!insideSelection) {
+              layer.removeTileAt(x, y);
             }
           }
         }
 
-        // Remove any enemies whose tile position falls within the cleared region
+        // Remove enemies in the cleared region (respects same selection-box exclusions as tiles)
         const tileW = scene.map.tileWidth;
         const tileH = scene.map.tileHeight;
         const toRemove = scene.enemies.filter((enemy) => {
@@ -81,7 +119,14 @@ export class ClearTile {
             tileY,
           );
           if (!regenGate.canPlace) return false;
-          return tileX >= xMin && tileX < xMax && tileY >= yMin && tileY < yMax;
+          if (tileX < xMin || tileX >= xMax || tileY < yMin || tileY >= yMax)
+            return false;
+          for (const sel of affectedSelections) {
+            const [[sx, sy], [ex, ey]] = sel;
+            if (tileX >= sx && tileX <= ex && tileY >= sy && tileY <= ey)
+              return false;
+          }
+          return true;
         });
         for (const enemy of toRemove) {
           const idx = scene.enemies.indexOf(enemy);
@@ -156,11 +201,11 @@ export class ClearTile {
       name: "clearTiles",
       schema: ClearTile.argsSchema,
       description: `
-Clears a rectangular section of the map by removing tiles from the specified layer. Also removes any enemies whose position falls within the cleared region.
+Clears a rectangular section of the map by removing tiles from the specified layer.
 
 - (xMin, yMin): top-left inclusive coordinates.
-- (xMax, yMax): bottom-right inclusive coordinates.
-- layerName: the name of the target map layer. Choose between 'Ground_Layer' and 'Collectables_Layer'
+- (xMax, yMax): bottom-right exclusive coordinates.
+- layerName: the name of the target map layer. Choose between 'Ground_Layer' and 'Collectables_Layer' 
 `,
     },
   );

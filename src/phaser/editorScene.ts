@@ -491,8 +491,29 @@ export class EditorScene extends Phaser.Scene {
       this.game.events.emit("regenerate:started");
 
       try {
-        // Use linear regeneration (single active box)
-        await this.regenerateSelection(this.activeBox);
+        // Use the event-queue regeneration architecture for consistency.
+        // Scope: active selection + any selections that overlap it (different z-levels).
+        const activeBounds = this.activeBox.getBounds();
+        const scoped = this.selectionBoxes.filter((b) => {
+          try {
+            return Phaser.Geom.Intersects.RectangleToRectangle(
+              activeBounds,
+              b.getBounds(),
+            );
+          } catch (e) {
+            return false;
+          }
+        });
+
+        // Ensure active box is included.
+        if (!scoped.includes(this.activeBox)) scoped.push(this.activeBox);
+
+        await regenerate(
+          scoped,
+          this.computeDependencyMap(scoped),
+          this.worldFacts,
+          this,
+        );
         this.game.events.emit("regenerate:finished", { success: true });
       } catch (err) {
         console.error("Regeneration failed:", err);

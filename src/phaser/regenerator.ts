@@ -28,19 +28,65 @@ export async function regenerateSelection(
     scene.bindMapHistory?.();
   } catch (e) {}
 
-  // Helper to regenerate a single box
-  const singleRegen = async (targetBox: SelectionBox, ctxSuffix: string) => {
-    const start = targetBox.getStart();
-    const end = targetBox.getEnd();
+  const rectFromBox = (b: SelectionBox) => {
+    const start = b.getStart();
+    const end = b.getEnd();
     const sX = Math.min(start.x, end.x);
     const sY = Math.min(start.y, end.y);
     const eX = Math.max(start.x, end.x);
     const eY = Math.max(start.y, end.y);
+    return { sX, sY, eX, eY };
+  };
+
+  const getLayerName = (b: SelectionBox): string => {
+    try {
+      const l = b.getLayer();
+      return l?.layer?.name ?? "";
+    } catch (e) {
+      return "";
+    }
+  };
+
+  const getChatHumanSummary = (
+    b: SelectionBox,
+    maxMessages: number = 4,
+  ): string => {
+    try {
+      const chatHistory = (b as any).getChatHistory
+        ? (b as any).getChatHistory()
+        : [];
+      const humanMessages: string[] = [];
+      for (let i = 0; i < chatHistory.length; i++) {
+        const msg: any = chatHistory[i];
+        if (!msg || typeof msg._getType !== "function") continue;
+        const t = String(msg._getType()).toLowerCase();
+        if (t !== "human" && t !== "user") continue;
+        const content =
+          typeof msg.content === "string"
+            ? msg.content
+            : JSON.stringify(msg.content);
+        if (content) humanMessages.push(content);
+      }
+      return humanMessages.slice(-maxMessages).join("\n");
+    } catch (e) {
+      return "";
+    }
+  };
+
+  // Helper to regenerate a single box
+  const singleRegen = async (
+    targetBox: SelectionBox,
+    ctxSuffix: string,
+    protectedRects: Phaser.Geom.Rectangle[] = [],
+  ) => {
+    const { sX, sY, eX, eY } = rectFromBox(targetBox);
 
     const layer = targetBox.getLayer();
+    const layerName: string = layer?.layer?.name ?? "";
 
-    // parse HIGHER_BOUNDS from ctxSuffix (bounds-only protection)
-    const higherRects: Phaser.Geom.Rectangle[] = [];
+    // Parse optional HIGHER_BOUNDS from ctxSuffix (legacy) and treat them as protected.
+    // Tiles inside protected rects must not be cleared or overwritten.
+    const parsedProtected: Phaser.Geom.Rectangle[] = [];
     try {
       if (ctxSuffix && ctxSuffix.startsWith("HIGHER_BOUNDS:")) {
         const jsonPart = ctxSuffix.substring("HIGHER_BOUNDS:".length);
@@ -48,7 +94,7 @@ export async function regenerateSelection(
         if (Array.isArray(parsed)) {
           for (const h of parsed) {
             try {
-              higherRects.push(
+              parsedProtected.push(
                 new Phaser.Geom.Rectangle(h.x, h.y, h.width, h.height),
               );
             } catch (e) {
@@ -59,8 +105,10 @@ export async function regenerateSelection(
       }
     } catch (e) {}
 
-    const isInsideAnyHigher = (tx: number, ty: number) => {
-      for (const r of higherRects) {
+    const allProtectedRects = [...protectedRects, ...parsedProtected];
+
+    const isInsideAnyProtected = (tx: number, ty: number) => {
+      for (const r of allProtectedRects) {
         const x0 = r.x;
         const x1 = r.x + r.width;
         const y0 = r.y;
@@ -70,56 +118,39 @@ export async function regenerateSelection(
       return false;
     };
 
-    // Clear area, preserve tiles inside higher boxes
-    if (higherRects.length === 0) {
+    // Clear area on ONLY the SelectionBox's layer.
+    // If we have protected rects (e.g. regenerated lower-z selections), do not
+    // clear inside them.
+    if (allProtectedRects.length === 0) {
       try {
-        // Clear both Ground and Collectables layers via the tool
+        if (!layerName) throw new Error("SelectionBox has no layer name");
         await invokeTool("clearTiles", {
           xMin: sX,
           xMax: eX + 1,
           yMin: sY,
           yMax: eY + 1,
-          layerName: "Ground_Layer",
+          layerName,
         });
-        console.log("Cleared Ground_Layer via tool");
-        await invokeTool("clearTiles", {
-          xMin: sX,
-          xMax: eX + 1,
-          yMin: sY,
-          yMax: eY + 1,
-          layerName: "Collectables_Layer",
-        });
-        console.log("Cleared Collectables_Layer via tool");
+        console.log(`Cleared ${layerName} via tool`);
       } catch (toolErr) {
-        // fallback manual clear: clear both layers
         for (let y = sY; y <= eY; y++) {
           for (let x = sX; x <= eX; x++) {
             if (x < 0 || y < 0 || x >= scene.map.width || y >= scene.map.height)
               continue;
             try {
-              if (scene.groundLayer)
-                scene.placeTile(scene.groundLayer, x, y, -1);
-            } catch (e) {}
-            try {
-              if (scene.collectablesLayer)
-                scene.placeTile(scene.collectablesLayer, x, y, -1);
+              if (layer) scene.placeTile(layer, x, y, -1);
             } catch (e) {}
           }
         }
       }
     } else {
-      // manual per-tile clear outside higher boxes - clear both layers where allowed
       for (let y = sY; y <= eY; y++) {
         for (let x = sX; x <= eX; x++) {
           if (x < 0 || y < 0 || x >= scene.map.width || y >= scene.map.height)
             continue;
-          if (isInsideAnyHigher(x, y)) continue;
+          if (isInsideAnyProtected(x, y)) continue;
           try {
-            if (scene.groundLayer) scene.placeTile(scene.groundLayer, x, y, -1);
-          } catch (e) {}
-          try {
-            if (scene.collectablesLayer)
-              scene.placeTile(scene.collectablesLayer, x, y, -1);
+            if (layer) scene.placeTile(layer, x, y, -1);
           } catch (e) {}
         }
       }
@@ -139,7 +170,7 @@ export async function regenerateSelection(
     }
 
     // Build hidden context (only bounds + layer; no cross-box chat/theme/tiles)
-    const baseHidden = `SELECTION_BOUNDS:${sX},${sY},${eX},${eY};LAYER:${layer.layer.name}`;
+    const baseHidden = `SELECTION_BOUNDS:${sX},${sY},${eX},${eY};LAYER:${layerName}`;
     const suffix = relativeGenContext
       ? `;${relativeGenContext}`
       : ctxSuffix
@@ -209,7 +240,7 @@ export async function regenerateSelection(
             worldY >= scene.map.height
           )
             continue;
-          if (isInsideAnyHigher(worldX, worldY)) continue;
+          if (isInsideAnyProtected(worldX, worldY)) continue;
           scene.placeTile(layer, worldX, worldY, tileIdx);
           try {
             targetBox.addPlacedTile(tileIdx, worldX, worldY, layer.layer.name);
@@ -250,17 +281,79 @@ export async function regenerateSelection(
           (a.getZLevel ? a.getZLevel() : 0) - (b.getZLevel ? b.getZLevel() : 0),
       );
 
-      const regeneratedBounds: any[] = [];
+      const alreadyRegenerated: SelectionBox[] = [];
+
       for (const b of intersecting) {
-        const higherContext = regeneratedBounds.length
-          ? `HIGHER_BOUNDS:${JSON.stringify(regeneratedBounds)}`
-          : "";
+        const bz = b.getZLevel ? b.getZLevel() : 0;
+
+        // Protect overlaps with any LOWER selections that have already run.
+        const protectedRects: Phaser.Geom.Rectangle[] = [];
+        for (const low of alreadyRegenerated) {
+          const lz = low.getZLevel ? low.getZLevel() : 0;
+          if (lz >= bz) continue;
+          try {
+            const ib = Phaser.Geom.Rectangle.Intersection(
+              b.getBounds(),
+              low.getBounds(),
+            );
+            if (ib && ib.width > 0 && ib.height > 0) protectedRects.push(ib);
+          } catch (e) {}
+        }
+
+        // For LOWER selections, include context about overlapping HIGHER selections.
+        // This is read-only intent context to help S1 preserve areas that will
+        // be regenerated by S2/S3 (e.g., "grid of coins").
+        let overlapHigherContext = "";
         try {
-          const info = await singleRegen(b, higherContext);
-          regeneratedBounds.push(info);
+          const higherOverlaps = intersecting.filter((o) => {
+            if (!o || o === b) return false;
+            const oz = o.getZLevel ? o.getZLevel() : 0;
+            if (oz <= bz) return false;
+            try {
+              return Phaser.Geom.Intersects.RectangleToRectangle(
+                b.getBounds(),
+                o.getBounds(),
+              );
+            } catch (e) {
+              return false;
+            }
+          });
+
+          if (higherOverlaps.length) {
+            const list = higherOverlaps.map((o) => {
+              const r = rectFromBox(o);
+              return {
+                z: o.getZLevel ? o.getZLevel() : 0,
+                layer: getLayerName(o),
+                bounds: { x1: r.sX, y1: r.sY, x2: r.eX, y2: r.eY },
+                intent: getChatHumanSummary(o, 4),
+              };
+            });
+            overlapHigherContext = `OVERLAPPING_HIGHER_SELECTIONS:${JSON.stringify(list)}`;
+          }
+        } catch (e) {
+          overlapHigherContext = "";
+        }
+
+        const ctxParts: string[] = [];
+        if (overlapHigherContext) ctxParts.push(overlapHigherContext);
+        if (extraHiddenContext) ctxParts.push(extraHiddenContext);
+        const ctxSuffix = ctxParts.join(";");
+
+        try {
+          if (overlapHigherContext) {
+            console.log(
+              "Regen overlap context for box",
+              (b as any).localContext?.id ?? "?",
+              overlapHigherContext,
+            );
+          }
+          await singleRegen(b, ctxSuffix, protectedRects);
         } catch (e) {
           // ignore per-box failures
         }
+
+        alreadyRegenerated.push(b);
       }
 
       // After finishing propagation, invoke relativeGeneration with the
@@ -281,7 +374,7 @@ export async function regenerateSelection(
   }
 
   try {
-    await singleRegen(box, extraHiddenContext);
+    await singleRegen(box, extraHiddenContext, []);
 
     // After single-box regeneration, update chatbot with current scene
     try {

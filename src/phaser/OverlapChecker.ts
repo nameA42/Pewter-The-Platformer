@@ -9,6 +9,37 @@ export interface OverlapResult {
 
 export class OverlapChecker {
   /**
+   * Regeneration protection: blocks edits inside currently-protected rectangles.
+   * This is set by the regeneration scheduler per-step to prevent higher-z jobs
+   * from overwriting lower-z overlap regions.
+   */
+  static checkRegenProtection(
+    scene: EditorScene,
+    tileX: number,
+    tileY: number,
+  ): OverlapResult {
+    const anyScene: any = scene as any;
+    const rects = anyScene?.regenProtectedRects;
+    if (!Array.isArray(rects) || rects.length === 0) return { canPlace: true };
+
+    for (const r of rects) {
+      if (!r) continue;
+      const x0 = r.x;
+      const y0 = r.y;
+      const x1 = r.x + r.width;
+      const y1 = r.y + r.height;
+      if (tileX >= x0 && tileX < x1 && tileY >= y0 && tileY < y1) {
+        return {
+          canPlace: false,
+          reason: `Blocked by regeneration protected overlap region at (${tileX}, ${tileY})`,
+        };
+      }
+    }
+
+    return { canPlace: true };
+  }
+
+  /**
    * Check if a tile position is available for placement
    * @param scene - The editor scene
    * @param tileX - Tile X coordinate
@@ -22,6 +53,10 @@ export class OverlapChecker {
     tileY: number,
     placingType: PlacementType,
   ): OverlapResult {
+    // Regeneration protection gate (applies to any placement type)
+    const regenGate = OverlapChecker.checkRegenProtection(scene, tileX, tileY);
+    if (!regenGate.canPlace) return regenGate;
+
     // Bounds checking
     if (tileX < 0 || tileY < 0) {
       return {
@@ -32,7 +67,6 @@ export class OverlapChecker {
 
     const groundLayer = scene.groundLayer;
     const collectablesLayer = scene.collectablesLayer;
-    const tileSize = scene.map.tileWidth;
 
     // Check ground layer (only if NOT placing a ground tile)
     if (placingType !== "ground") {
@@ -58,8 +92,8 @@ export class OverlapChecker {
 
     // Check enemies - enemies cannot overlap each other or with other objects
     for (const enemy of scene.enemies) {
-      const enemyTileX = Math.floor(enemy.x / tileSize);
-      const enemyTileY = Math.floor(enemy.y / tileSize);
+      const enemyTileX = Math.floor(enemy.x / scene.map.tileWidth);
+      const enemyTileY = Math.floor(enemy.y / scene.map.tileWidth);
       if (enemyTileX === tileX && enemyTileY === tileY) {
         return {
           canPlace: false,

@@ -3,6 +3,7 @@ import { WorldFacts } from "./worldFacts.ts";
 import { BaseMessage, SystemMessage } from "@langchain/core/messages";
 import { getChatResponse } from "../../languageModel/modelConnector.ts";
 import type { EditorScene } from "../editorScene.ts";
+import { scheduleRegenerationSteps } from "../regeneration/RegenScheduler.ts";
 
 class SelectionInfo {
   worldFacts: WorldFacts;
@@ -50,119 +51,7 @@ export interface MapSnapshot {
   bounds: { x: number; y: number; width: number; height: number };
 }
 
-export class RegenerationRequest {
-  private selection: SelectionBox;
-  private priority: number;
-  private info: SelectionInfo;
-  private contextCollaboration: string;
-
-  constructor(
-    selection: SelectionBox,
-    priority: number,
-    worldFacts: WorldFacts,
-    contextCollaboration: string,
-  ) {
-    this.selection = selection;
-    this.priority = priority;
-    this.info = new SelectionInfo(
-      worldFacts,
-      selection.getPlacedTiles(),
-      selection.getChatHistory(),
-      selection.getZLevel(),
-      selection.getStart().x,
-      selection.getStart().y,
-      selection.getEnd().x,
-      selection.getEnd().y,
-    );
-    this.contextCollaboration = contextCollaboration;
-  }
-
-  getSelection(): SelectionBox {
-    return this.selection;
-  }
-
-  getPriority(): number {
-    return this.priority;
-  }
-
-  getInfo(): SelectionInfo {
-    return this.info;
-  }
-
-  getContextCollaboration(): string {
-    return this.contextCollaboration;
-  }
-
-  setSelection(selection: SelectionBox): void {
-    this.selection = selection;
-  }
-
-  setPriority(priority: number): void {
-    this.priority = priority;
-  }
-
-  setInfo(info: SelectionInfo): void {
-    this.info = info;
-  }
-
-  setContextCollaboration(contextCollaboration: string): void {
-    this.contextCollaboration = contextCollaboration;
-  }
-}
-
-export class RegenerationQueue<SelectionBox = any> {
-  private queue: RegenerationRequest[] = [];
-  push(request: RegenerationRequest) {
-    this.queue.push(request);
-    this.sortQueue();
-  }
-
-  pop(): RegenerationRequest | undefined {
-    return this.queue.shift();
-  }
-
-  isEmpty(): boolean {
-    return this.queue.length === 0;
-  }
-
-  override(layer: SelectionBox, newPriority: number, newInfo: any) {
-    const reqIndex = this.queue.findIndex((r) => r.getSelection() === layer);
-    if (reqIndex >= 0) {
-      const req = this.queue[reqIndex];
-      req.setPriority(newPriority);
-      req.setInfo(newInfo);
-      this.sortQueue();
-    } else {
-      console.warn(
-        "[RegenerationQueue] Layer not found in queue for override.",
-      );
-    }
-  }
-
-  contains(layer: SelectionBox): boolean {
-    return this.queue.some((r) => r.getSelection() === layer);
-  }
-
-  private sortQueue() {
-    this.queue.sort((a, b) => a.getPriority() - b.getPriority());
-  }
-}
-
-/* ---------------- Priority Computation ---------------- */
-
-function computePriority(
-  selection: SelectionBox,
-  zMin: number,
-  zMax: number,
-  dependencies: Map<SelectionBox, number>,
-  Z_WEIGHT = 0.4,
-  DEP_WEIGHT = 0.6,
-): number {
-  const z = selection.getZLevel();
-  const dep = dependencies.get(selection) ?? 0;
-  const normZ = Math.max(1, zMax - zMin) / (z - zMin);
-  return Z_WEIGHT * normZ + DEP_WEIGHT * (1 - dep); // Lower = higher priority
-}
+/* ---------------- Snapshot Capture ---------------- */
 
 function captureSnapshot(
   scene: EditorScene,
@@ -358,79 +247,6 @@ Use this information to guide your regeneration. Simply do the regeneration by d
   `;
 }
 
-/* ---------------- Dependency Graph Construction ---------------- */
-
-export interface DependencyGraph {
-  deps: Map<SelectionBox, Set<SelectionBox>>;
-  revDeps: Map<SelectionBox, Set<SelectionBox>>;
-}
-
-function buildDependencyMap(allSelections: SelectionBox[]): DependencyGraph {
-  const deps = new Map<SelectionBox, Set<SelectionBox>>();
-  const revDeps = new Map<SelectionBox, Set<SelectionBox>>();
-
-  // Initialize empty sets
-  for (const sel of allSelections) {
-    deps.set(sel, new Set());
-    revDeps.set(sel, new Set());
-  }
-
-  // Basic dependency rule:
-  // A depends on B if they overlap/touch and A.z >= B.z
-  for (const a of allSelections) {
-    for (const b of allSelections) {
-      if (a === b) continue;
-
-      const aStart = a.getStart();
-      const aEnd = a.getEnd();
-      const bStart = b.getStart();
-      const bEnd = b.getEnd();
-
-      const overlap =
-        aStart.x <= bEnd.x &&
-        aEnd.x >= bStart.x &&
-        aStart.y <= bEnd.y &&
-        aEnd.y >= bStart.y;
-
-      if (overlap && a.getZLevel() >= b.getZLevel()) {
-        deps.get(a)!.add(b);
-        revDeps.get(b)!.add(a);
-      }
-    }
-  }
-
-  return { deps, revDeps };
-}
-
-function topologicalSort<T>(deps: Map<T, Set<T>>): T[] {
-  const visited = new Set<T>();
-  const temp = new Set<T>();
-  const result: T[] = [];
-
-  function visit(node: T) {
-    if (temp.has(node)) {
-      console.warn("[DependencyMap] Cycle detected involving", node);
-      return;
-    }
-    if (visited.has(node)) return;
-    temp.add(node);
-
-    for (const dep of deps.get(node) || []) {
-      visit(dep);
-    }
-
-    temp.delete(node);
-    visited.add(node);
-    result.push(node);
-  }
-
-  for (const node of deps.keys()) {
-    visit(node);
-  }
-
-  return result.reverse(); // topological order
-}
-
 /* ---------------- Main Regeneration Function ---------------- */
 
 export async function regenerate(
@@ -439,60 +255,58 @@ export async function regenerate(
   worldFacts: WorldFacts,
   scene: EditorScene,
 ) {
-  // Step 0: Build dependency map
-  const { deps } = buildDependencyMap(allSelections);
-  const topoOrder = topologicalSort(deps);
+  // Queue all selections into a priority/dependency schedule.
+  // Priority: higher z first (within ready set)
+  // Dependency: if two selections overlap and have different z, lower-z MUST run before higher-z.
+  const steps = scheduleRegenerationSteps(scene, allSelections);
   console.log(
-    "[DependencyMap] Topological order:",
-    topoOrder.map((sel) => sel.getZLevel()),
+    "[RegenerationScheduler] Execution order (z):",
+    steps.map((s) => s.job.z),
   );
 
-  const queue = new RegenerationQueue();
-  let zMin = Infinity;
-  let zMax = -Infinity;
-
-  // Step 1: Compute z range and enqueue following topo order
-  for (const selection of topoOrder) {
-    const z = selection.getZLevel();
-    zMin = Math.min(zMin, z);
-    zMax = Math.max(zMax, z);
-
-    // Use dependency count as “depth”
-    const depCount = deps.get(selection)?.size ?? 0;
-    const fakeDepMap = new Map<SelectionBox, number>([[selection, depCount]]);
-    const priority = computePriority(selection, zMin, zMax, fakeDepMap);
-
-    const contextCollaboration = selection.getCollaborativeContextForChat();
-
-    const request = new RegenerationRequest(
-      selection,
-      priority,
-      worldFacts,
-      contextCollaboration,
-    );
-    queue.push(request);
-  }
-
-  // Step 2: Process the queue (unchanged from your code)
-  while (!queue.isEmpty()) {
-    const req = queue.pop();
-    if (!req) continue;
-    const selection = req.getSelection();
+  for (const step of steps) {
+    const selection = step.job.selection;
     selection.setActive(true);
-    const info = req.getInfo();
+
+    // Expose protected overlap rectangles to tools during this regeneration step.
+    // Tools consult OverlapChecker.checkRegenProtection(scene, x, y).
+    (scene as any).regenProtectedRects = step.protectedRects.map((r) => ({
+      x: r.x,
+      y: r.y,
+      width: r.width,
+      height: r.height,
+    }));
+
+    // Recompute info at time-of-execution so context passes smoothly between steps
+    // (previous steps may have placed tiles/enemies).
+    const contextCollaboration =
+      selection.getCollaborativeContextForChat() +
+      (step.overlapContextText
+        ? `\n\n=== Overlap Context ===\n${step.overlapContextText}`
+        : "");
+
+    const info = new SelectionInfo(
+      worldFacts,
+      selection.getPlacedTiles(),
+      selection.getChatHistory(),
+      selection.getZLevel(),
+      selection.getStart().x,
+      selection.getStart().y,
+      selection.getEnd().x,
+      selection.getEnd().y,
+    );
+
     const bounds = {
-      x: info.selectionStartX,
-      y: info.selectionStartY,
-      width: info.selectionEndX - info.selectionStartX,
-      height: info.selectionEndY - info.selectionStartY,
+      x: Math.min(info.selectionStartX, info.selectionEndX),
+      y: Math.min(info.selectionStartY, info.selectionEndY),
+      width: Math.abs(info.selectionEndX - info.selectionStartX),
+      height: Math.abs(info.selectionEndY - info.selectionStartY),
     };
 
-    const contextCollaboration = req.getContextCollaboration();
-
     const snapshot = captureSnapshot(scene, bounds);
-    let neighbors = [];
-    for (let i = 0; i < selection.getNeighbors().length; i++) {
-      let neighbor = selection.getNeighbors()[i];
+
+    const neighbors: number[][] = [];
+    for (const neighbor of selection.getNeighbors()) {
       neighbors.push([
         neighbor.getStart().x,
         neighbor.getStart().y,
@@ -500,6 +314,7 @@ export async function regenerate(
         neighbor.getEnd().y,
       ]);
     }
+
     const guidePrompt = createGuidePrompt(
       info,
       snapshot,
@@ -507,98 +322,32 @@ export async function regenerate(
       neighbors,
     );
 
-    console.log(guidePrompt);
-
     const chatMessageHistory: BaseMessage[] = [];
     chatMessageHistory.push(
       new SystemMessage({ content: String(guidePrompt) }),
     );
-    for (let i = 1; i < selection.getChatHistory().length; i++) {
-      if (selection.getChatHistory()[i].getType() === "human") {
-        chatMessageHistory.push(selection.getChatHistory()[i]);
+
+    // HARD RESET behavior: only replay human prompts.
+    // (We intentionally do not include any previous assistant/tool messages.)
+    for (const msg of selection.getChatHistory()) {
+      try {
+        if (msg?.getType?.() === "human") chatMessageHistory.push(msg);
+      } catch (e) {
+        // ignore
       }
     }
 
     const llmResult = await getChatResponse(chatMessageHistory);
-    console.log(`[Regeneration] Completed selection`);
+    console.log(
+      `[Regeneration] Completed selection z=${selection.getZLevel()}`,
+    );
     console.log("[LLM Output Text]:", llmResult.text.join("\n"));
     console.log("[Tool Calls]:", llmResult.toolCalls);
+
+    // Clear regen protection so normal editing is unaffected.
+    (scene as any).regenProtectedRects = [];
     selection.setActive(false);
   }
 
   console.log("[Regeneration] Scene regeneration complete.");
 }
-
-// export async function regenerate(
-//   allSelections: SelectionBox[],
-//   dependencies: Map<SelectionBox, number>,
-//   worldFacts: WorldFacts,
-//   scene: EditorScene,
-// ) {
-//   const queue = new RegenerationQueue();
-//   let zMin = Infinity;
-//   let zMax = -Infinity;
-
-//   // Step 1: Compute z range & enqueue regeneration requests
-//   for (const selection of allSelections) {
-//     const z = selection.getZLevel();
-//     zMin = Math.min(zMin, z);
-//     zMax = Math.max(zMax, z);
-
-//     const priority = computePriority(selection, zMin, zMax, dependencies);
-//     const request = new RegenerationRequest(selection, priority, worldFacts);
-//     console.log(selection.getStart(), selection.getEnd());
-//     queue.push(request);
-//   }
-
-//   // Step 2: Process the priority queue
-//   while (!queue.isEmpty()) {
-//     const req = queue.pop();
-//     if (!req) continue;
-
-//     const selection = req.getSelection();
-//     const info = req.getInfo();
-//     let bounds = {x: info.selectionStartX, y: info.selectionStartY, width: (info.selectionEndX - info.selectionStartX), height: (info.selectionEndY - info.selectionStartY) }
-
-//     const snapshot = captureSnapshot(scene, bounds)
-
-//     // Step 2a: Create the guide prompt for the selection
-//     const guidePrompt = createGuidePrompt(info, snapshot);
-//     console.log(guidePrompt);
-
-//     // Step 2b: Prepare chat history for LangChain
-//     const chatMessageHistory: BaseMessage[] = [];
-
-//     // Inject your system prompt properly
-//     //await initializeLLM(chatMessageHistory); // assumes this pushes a SystemMessage
-
-//     // Add conversation history
-//     chatMessageHistory.push(
-//       new SystemMessage({ content: String(guidePrompt) }),
-//     );
-//     for (let i = 1; i < selection.getChatHistory().length; i++) {
-//       if (selection.getChatHistory()[i].getType() == "human") {
-//         chatMessageHistory.push(selection.getChatHistory()[i]);
-//       }
-//     }
-
-//     // Debug output to verify structure
-//     console.log(
-//       "chatMessageHistory before LLM call:",
-//       chatMessageHistory.map((msg) => ({
-//         role: msg._getType?.() ?? msg.constructor.name,
-//         content: msg.content,
-//       })),
-//     );
-
-//     // Step 2c: Call LLM with tools
-//     const llmResult = await getChatResponse(chatMessageHistory);
-
-//     console.log(`[Regeneration] Completed selection`);
-//     console.log("[LLM Output Text]:", llmResult.text.join("\n"));
-//     console.log("[Tool Calls]:", llmResult.toolCalls);
-//     console.log("[Errors]:", llmResult.errors);
-//   }
-
-//   console.log("[Regeneration] Scene regeneration complete.");
-// }

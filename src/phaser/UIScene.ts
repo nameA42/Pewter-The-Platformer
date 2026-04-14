@@ -194,6 +194,10 @@ export class UIScene extends Phaser.Scene {
               <span class="control-desc">Undo last action</span>
             </div>
             <div class="control-item">
+              <span class="control-key">Del</span>
+              <span class="control-desc">Delete selected box</span>
+            </div>
+            <div class="control-item">
               <span class="control-key">O</span>
               <span class="control-desc">Decrease Z-Level</span>
             </div>

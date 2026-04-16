@@ -55,9 +55,12 @@ export class ClearTile {
       }
 
       try {
-        for (let x = xMin; x < xMax; x++) {
-          for (let y = yMin; y < yMax; y++) {
+        for (let x = xMin; x <= xMax; x++) {
+          for (let y = yMin; y <= yMax; y++) {
             map.removeTileAt(x, y, false, false, layer);
+            if (scene.activeBox) {
+              scene.activeBox.addPlacedTile(1, x, y, layerName);
+            }
           }
         }
 
@@ -145,7 +148,7 @@ export class ClearTile {
 Clears a rectangular section of the map by removing tiles from the specified layer. Also removes any enemies whose position falls within the cleared region.
 
 - (xMin, yMin): top-left inclusive coordinates.
-- (xMax, yMax): bottom-right exclusive coordinates.
+- (xMax, yMax): bottom-right inclusive coordinates.
 - layerName: the name of the target map layer. Choose between 'Ground_Layer' and 'Collectables_Layer'
 `,
     },

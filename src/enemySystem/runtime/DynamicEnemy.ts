@@ -46,6 +46,10 @@ export class DynamicEnemy extends Phaser.Physics.Arcade.Sprite {
   // Type property for WorldFacts compatibility
   public type: string;
 
+  public getDefinition(): EnemyDefinition {
+    return this.definition;
+  }
+
   constructor(
     scene: Phaser.Scene,
     x: number,
@@ -154,17 +158,33 @@ export class DynamicEnemy extends Phaser.Physics.Arcade.Sprite {
     const activeProjectiles = this.projectileManager.getActiveProjectiles();
     for (const proj of activeProjectiles) {
       if (proj && proj.active && this.scene.physics.overlap(player, proj)) {
-        const projDef = this.findProjectileByFrame(proj.frame.name);
-        if (projDef) {
-          playerHealth -= projDef.damage;
+        const damage = proj.getData("damage") as number | undefined;
+        if (damage !== undefined) {
+          playerHealth -= damage;
         }
         proj.destroy();
       }
     }
     this.projectileManager.updateActiveProjectiles();
 
+    // Handle stomp - head hitbox only (won't trigger from side)
+    {
+      const playerBody = (player as Phaser.Physics.Arcade.Sprite).body as Phaser.Physics.Arcade.Body;
+      const thisBody = this.body as Phaser.Physics.Arcade.Body;
+      if (playerBody && thisBody) {
+        const hOverlap = playerBody.right > thisBody.left && playerBody.left < thisBody.right;
+        const headBottom = thisBody.top + thisBody.height * 0.4;
+        const onHead = playerBody.bottom >= thisBody.top - 4 && playerBody.bottom <= headBottom;
+        if (hOverlap && onHead && playerBody.velocity.y > 100) {
+          playerBody.setVelocityY(-450);
+          this.causeDamage(this.health);
+          return playerHealth;
+        }
+      }
+    }
+
     // Handle contact damage
-    if (this.damageOnContact > 0 && this.scene.physics.overlap(player, this)) {
+    if (this.active && this.damageOnContact > 0 && this.scene.physics.overlap(player, this)) {
       playerHealth -= this.damageOnContact;
     }
 
@@ -745,8 +765,23 @@ export class DynamicEnemy extends Phaser.Physics.Arcade.Sprite {
     this.health -= damage;
     if (this.health <= 0) {
       this.effectsManager.triggerDeath(this);
-      this.destroy();
+      this.projectileManager.clearAll();
+      this.hideDebugOverlay();
+      if (this.overlayGraphics) this.overlayGraphics.setVisible(false);
+      this.disableBody(true, true);
     }
+  }
+
+  respawn(x: number, y: number) {
+    this.health = this.maxHealth;
+    this.enableBody(true, x, y, true, true);
+    this.body.velocity.x = 0;
+    this.body.velocity.y = 0;
+    if (this.overlayGraphics) this.overlayGraphics.setVisible(true);
+  }
+
+  clearProjectiles() {
+    this.projectileManager.clearAll();
   }
 
   getHealth(): number {

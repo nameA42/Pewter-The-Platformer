@@ -3,7 +3,6 @@ import {
   BaseMessage,
   ToolMessage,
   SystemMessage,
-  AIMessageChunk,
 } from "@langchain/core/messages";
 
 const apiKey: string | undefined = import.meta.env.VITE_LLM_API_KEY;
@@ -24,6 +23,9 @@ const sysPrompt =
   "This initialization MUST happen before making any placements or edits. " +
   // Handling multiple instructions
   "The player may sometimes ask you to perform multiple actions at once. In such cases, you must use the tools as needed to complete ALL parts of the request. " +
+  "When you have a multi-step plan, execute ALL steps immediately in sequence without waiting for additional confirmation. Do not pause between steps or ask the player to proceed. " +
+  // Default map layout
+  "The default map is 20 tiles tall. The bottom 5 rows are ground tiles (solid). The top 15 rows are empty sky. Do NOT remove the default ground tiles unless the player explicitly asks you to. Preserve the ground unless instructed otherwise. " +
   // Layer and tile info
   "Layers available: Collectables_Layer and Ground_Layer. " +
   "Tile ID mapping: 1 = empty tile, 2 = coin, 4 = fruit, 5 = platform block, 6 = dirt block, 7 = item (question mark) block. " +
@@ -47,7 +49,9 @@ const sysPrompt =
   "Place Grid of Tiles: Use this tool to place a grid of tiles with a given index or term on a layer when told. Use the tile information and map each tile to the index. " +
   "Get Placed Tiles: Use this tool to retrieve all tiles placed within a selection box. " +
   "PLEASE USE THE WORLD FACTS TOOL TO RECEIVE INFORMATION ABOUT THE LAYER YOU MIGHT NEED TO WORK ON. For example, if the player asks you to place an enemy within a selection, first check where the top of the ground is before placing making sure not to place it within the ground. Same applies to collectables or anything else. The world facts tool is your best guide as to what is within the game world. Use it to your advantage PLEASE. " +
-  "Always be friendly and helpful. Make the level playable and visually consistent. You may offer suggestions occasionally, but you must always follow these rules.";
+  "Player size and movement: the player character is 2 tiles wide and 2 tiles tall, and can jump approximately 6 tiles high. Account for this when placing platforms, enemies, and obstacles to ensure the level is navigable and completable. " +
+  "Always be friendly and helpful. Make the level playable and visually consistent. You may offer suggestions occasionally, but you must always follow these rules. " +
+  "Undo/Redo: Use the undoRedo tool to revert or re-apply map changes. 'undo' steps back through saved snapshots (each player click and each AI send is a snapshot); 'redo' moves forward. Use 'times' to jump multiple steps.";
 
 let tools: any = []; //tool functions and their schemas
 let toolsByName: Record<string, any> = {}; //Backwards references to tool functions by name
@@ -210,7 +214,6 @@ export async function getChatResponse(
     console.log("Invoking LLM with message history:", chatMessageHistory);
     let response = await llmWithTools.invoke(chatMessageHistory);
     console.log("Raw LLM response:", response);
-    chatMessageHistory.push(response);
 
     // Extract any text content
     if (typeof response.content === "string") {
@@ -289,6 +292,14 @@ export async function getChatResponse(
       }
     }
 
+    // Only push AI response to history if there are tool calls — required so the
+    // LLM can see its own tool-call requests when processing ToolMessages.
+    // For plain responses the caller pushes its own AIMessage, so we skip this
+    // to avoid duplicate AI entries in the chat display.
+    if ((response.tool_calls?.length ?? 0) > 0) {
+      chatMessageHistory.push(response);
+    }
+
     await handleToolCall();
 
     // Step 4: Re-invoke LLM if tools were used
@@ -309,6 +320,17 @@ export async function getChatResponse(
           }
         }
       }
+    }
+
+    // Save a world snapshot after every AI response that used tools,
+    // so each message is independently undoable regardless of which
+    // send function was used.
+    if (output.toolCalls.length > 0) {
+      try {
+        if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+          window.dispatchEvent(new CustomEvent("saveWorldSnapshot"));
+        }
+      } catch (_) { /* ignore */ }
     }
 
     return output;

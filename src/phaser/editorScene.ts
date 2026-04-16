@@ -7,14 +7,36 @@ type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
 import { regenerateSelection as regenerateSelectionModule } from "./regenerator";
 import { sendUserPrompt } from "../languageModel/chatBox";
 import { setActiveSelectionBox } from "../languageModel/chatBox";
+import { HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
 import { Slime } from "./ExternalClasses/Slime.ts";
 import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
 import { DynamicEnemy } from "../enemySystem/runtime/DynamicEnemy.ts";
 import { UIScene } from "./UIScene.ts";
 import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
-import { SelectionBox } from "./selectionBox.ts";
+import { replaceAllBoxes, SelectionBox } from "./selectionBox.ts";
 import { regenerate } from "./ExternalClasses/RegenerationTools.ts";
 import { Z_LEVEL_COLORS } from "./colors";
+
+type EnemySnapshotEntry =
+  | { kind: "Slime"; spawnX: number; spawnY: number }
+  | { kind: "UltraSlime"; spawnX: number; spawnY: number }
+  | { kind: "Dynamic"; spawnX: number; spawnY: number; definition: any };
+
+interface BoxSnapshot {
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  zLevel: number;
+  placedTiles: { tileIndex: number; x: number; y: number; layerName: string }[];
+  placedEnemies: { enemyType: string; x: number; y: number }[];
+  chatHistory: { type: string; content: string }[];
+}
+
+interface WorldSnapshot {
+  groundTiles: { x: number; y: number; index: number }[];
+  collectablesTiles: { x: number; y: number; index: number }[];
+  enemies: EnemySnapshotEntry[];
+  selectionBoxes: BoxSnapshot[];
+}
 
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
@@ -25,8 +47,8 @@ export class EditorScene extends Phaser.Scene {
   private backgroundLayer!: Phaser.Tilemaps.TilemapLayer;
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private playButton!: Phaser.GameObjects.Text;
-  private mapHistory: Phaser.Tilemaps.Tilemap[] = [];
-  private currentMapIteration: number = 0;
+  private mapHistory: WorldSnapshot[] = [];
+  private currentMapIteration: number = -1;
 
   private minZoomLevel = 2.25;
   private maxZoomLevel = 10;
@@ -83,10 +105,9 @@ export class EditorScene extends Phaser.Scene {
   private keyC!: Phaser.Input.Keyboard.Key;
   private keyX!: Phaser.Input.Keyboard.Key;
   private keyV!: Phaser.Input.Keyboard.Key;
-  private keyU!: Phaser.Input.Keyboard.Key;
-  private keyR!: Phaser.Input.Keyboard.Key;
   private keyN!: Phaser.Input.Keyboard.Key;
   private keyZ!: Phaser.Input.Keyboard.Key;
+  private keyY!: Phaser.Input.Keyboard.Key;
   private keyO!: Phaser.Input.Keyboard.Key;
   private keyP!: Phaser.Input.Keyboard.Key;
   private keyB!: Phaser.Input.Keyboard.Key;
@@ -107,6 +128,15 @@ export class EditorScene extends Phaser.Scene {
 
   private damageKey!: Phaser.Input.Keyboard.Key;
   private flipKey!: Phaser.Input.Keyboard.Key;
+
+  // Play mode: player stats and HUD
+  private playerHealth = 5;
+  private readonly maxPlayerHealth = 5;
+  private coinCount = 0;
+  private healthText: Phaser.GameObjects.Text | null = null;
+  private coinText: Phaser.GameObjects.Text | null = null;
+  private collectablesSnapshot: { x: number; y: number; index: number }[] = [];
+  private isDead = false;
 
   private currentZLevel: number = 1;
   private useEventQueueRegen: boolean = false; // Toggle between linear and event queue regen
@@ -147,9 +177,20 @@ export class EditorScene extends Phaser.Scene {
 
   startGame() {
     this.gameActive = true;
+    this.isDead = false;
+    this.playerHealth = this.maxPlayerHealth;
+    this.coinCount = 0;
     this.removeMinimap();
     this.createEditorButton();
     this.setupPlayer();
+
+    // Snapshot all collectable tiles so we can restore them on death/exit
+    this.collectablesSnapshot = [];
+    this.collectablesLayer.forEachTile((tile) => {
+      if (tile.index > 0) {
+        this.collectablesSnapshot.push({ x: tile.x, y: tile.y, index: tile.index });
+      }
+    });
 
     // Enable physics and gravity for play mode
     this.physics.world.gravity.y = 1500;
@@ -160,6 +201,29 @@ export class EditorScene extends Phaser.Scene {
     }
     // Add collider between player and ground layer
     this.physics.add.collider(this.player, this.groundLayer);
+
+    // Add physical colliders between player and all enemies
+    for (const enemy of this.enemies) {
+      this.physics.add.collider(this.player, enemy as any);
+    }
+
+    // Enable overlap detection for collectables (coin = 2, fruit = 3)
+    this.collectablesLayer.setCollision([2, 3]);
+    this.physics.add.overlap(
+      this.player,
+      this.collectablesLayer,
+      (_player, tile) => {
+        const t = tile as Phaser.Tilemaps.Tile;
+        if (t.index === 2) {
+          // Coin collected
+          this.coinCount++;
+        } else if (t.index === 3) {
+          // Fruit collected — restore 1 HP
+          this.playerHealth = Math.min(this.playerHealth + 1, this.maxPlayerHealth);
+        }
+        this.collectablesLayer.putTileAt(-1, t.x, t.y);
+      },
+    );
 
     // Camera follows player in play mode
     this.cameras.main
@@ -184,6 +248,33 @@ export class EditorScene extends Phaser.Scene {
         this.toggleDebugOverlay();
       });
     }
+
+    // Create play-mode HUD (world-space, manually repositioned each frame)
+    const cam = this.cameras.main;
+    const baseFontSize = 18;
+    const scaledFontSize = Math.max(8, baseFontSize / cam.zoom);
+    const hudTopLeft = cam.getWorldPoint(16, 16);
+
+    const initHearts = "♥".repeat(this.playerHealth) + "♡".repeat(this.maxPlayerHealth - this.playerHealth);
+    this.healthText = this.add
+      .text(hudTopLeft.x, hudTopLeft.y, `HP: ${initHearts}`, {
+        fontSize: `${scaledFontSize}px`,
+        color: "#ff4444",
+        stroke: "#000000",
+        strokeThickness: 4,
+      })
+      .setScrollFactor(1)
+      .setDepth(1000);
+
+    this.coinText = this.add
+      .text(hudTopLeft.x, hudTopLeft.y + scaledFontSize + 4, `Coins: ${this.coinCount}`, {
+        fontSize: `${scaledFontSize}px`,
+        color: "#FFD700",
+        stroke: "#000000",
+        strokeThickness: 4,
+      })
+      .setScrollFactor(1)
+      .setDepth(1000);
   }
 
   // Toggle debug overlay for all enemies
@@ -227,7 +318,12 @@ export class EditorScene extends Phaser.Scene {
 
   create() {
     // Setup global access for collaborative context
-    // this.setupGlobalActiveBoxAccess(); // Temporarily commented out to fix loading issue
+    if (typeof window !== "undefined") {
+      (window as any).getActiveSelectionBox = () => this.activeBox;
+    }
+
+    this.game.events.on("ui:save", () => this.saveToFile());
+    this.game.events.on("ui:load", () => this.loadFromFile());
 
     this.map = this.make.tilemap({ key: "defaultMap" });
     this.worldFacts = new WorldFacts(this);
@@ -277,6 +373,12 @@ export class EditorScene extends Phaser.Scene {
 
     this.worldFacts = new WorldFacts(this);
     this.worldFacts.refresh();
+
+    // Save initial map state so undo has a baseline
+    this.saveSnapshot();
+
+    // Listen for requests to save a snapshot (e.g. before AI sends a message)
+    window.addEventListener("saveWorldSnapshot", () => this.saveSnapshot());
 
     // zoom in & zoom out
     this.input.on(
@@ -469,6 +571,9 @@ export class EditorScene extends Phaser.Scene {
           // Keep the box active/selected so the UI and chat context remain tied to it.
           // Do NOT clear this.activeBox or call setActiveSelectionBox(null) here.
           this.activeBox.setActive?.(true);
+
+          // ! idk how things work so I am going to rerender here, someone find where this should actually go if there is a better spot
+          replaceAllBoxes();
         }
       });
     }
@@ -485,8 +590,6 @@ export class EditorScene extends Phaser.Scene {
       this.keyC = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.C);
       this.keyX = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
       this.keyV = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.V);
-      this.keyU = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.U);
-      this.keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
       this.keyN = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.N);
       this.keyO = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.O);
       this.keyP = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.P);
@@ -498,6 +601,8 @@ export class EditorScene extends Phaser.Scene {
         Phaser.Input.Keyboard.KeyCodes.CTRL,
       );
       this.keyQ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+      this.keyZ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
+      this.keyY = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Y);
     }
 
     // scrolling
@@ -515,7 +620,7 @@ export class EditorScene extends Phaser.Scene {
     this.input.on("pointerup", this.endSelection, this);
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-      if (pointer.middleButtonDown()) {
+      if (pointer.middleButtonDown()) { // ! might need to change this to chain of ifs instead of if else
         isDragging = true;
         dragStartPoint.set(pointer.x, pointer.y);
       } else if (pointer.leftButtonDown()) {
@@ -529,18 +634,32 @@ export class EditorScene extends Phaser.Scene {
         const tileY = Math.floor(worldPoint.y / (16 * this.SCALE));
 
         // Place the currently selected brush tile
-        // Use collectables layer for coins and fruits
         if (this.selectedBlockName === "Eraser") {
           // Eraser should clear from both layers
           this.placeTile(this.groundLayer, tileX, tileY, -1);
           this.placeTile(this.collectablesLayer, tileX, tileY, -1);
+        } else if (this.selectedBlockName === "Slime Enemy") {
+          // Spawn actual Slime object (not a tile)
+          const spawnX = tileX * this.map.tileWidth + this.map.tileWidth / 2;
+          const spawnY = tileY * this.map.tileHeight + this.map.tileHeight / 2;
+          const slime = new Slime(this, spawnX, spawnY, this.map, this.groundLayer);
+          slime.setData("spawnX", spawnX);
+          slime.setData("spawnY", spawnY);
+          this.enemies.push(slime);
+        } else if (this.selectedBlockName === "Ultra Slime") {
+          // Spawn actual UltraSlime object (not a tile)
+          const spawnX = tileX * this.map.tileWidth + this.map.tileWidth / 2;
+          const spawnY = tileY * this.map.tileHeight + this.map.tileHeight / 2;
+          const ultraSlime = new UltraSlime(this, spawnX, spawnY, this.map, this.groundLayer);
+          ultraSlime.setData("spawnX", spawnX);
+          ultraSlime.setData("spawnY", spawnY);
+          this.enemies.push(ultraSlime);
+        } else if (this.selectedBlockName === "Coin" || this.selectedBlockName === "Fruit") {
+          // Place collectable in the dedicated collectables layer
+          this.placeTile(this.collectablesLayer, tileX, tileY, this.selectedTileIndex);
         } else {
-          const targetLayer =
-            this.selectedBlockName === "Coin" ||
-            this.selectedBlockName === "Fruit"
-              ? this.collectablesLayer
-              : this.groundLayer;
-          this.placeTile(targetLayer, tileX, tileY, this.selectedTileIndex);
+          // All terrain tiles go in the ground layer
+          this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
         }
       } else if (pointer.rightButtonDown()) {
         // Setup selection box
@@ -555,6 +674,9 @@ export class EditorScene extends Phaser.Scene {
 
     this.input.on("pointerup", () => {
       isDragging = false;
+      if (this.isPlacing) {
+        this.saveSnapshot(); // save after the paint stroke completes
+      }
       this.isPlacing = false;
     });
 
@@ -615,7 +737,9 @@ export class EditorScene extends Phaser.Scene {
       // remove from permanent list if present
       const idx = this.selectionBoxes.indexOf(this.activeBox);
       if (idx !== -1) {
-        this.selectionBoxes.splice(idx, 1);
+        // console.log(`try del a box, old: ${this.selectionBoxes}`);
+        let temp = this.selectionBoxes.splice(idx, 1);
+        // console.log(`Deleted a box, new: ${this.selectionBoxes}, rem: ${temp}`);
       }
       // destroy visuals and resources
       this.activeBox.destroy?.();
@@ -748,17 +872,45 @@ export class EditorScene extends Phaser.Scene {
     if (this.gameActive && this.player) {
       // Play mode: player movement and camera follow
       // Hide grid and red outline
-      let playerHealth = 100; // Track actual health
 
-      // Iterate backwards to safely remove elements
-      for (let i = this.enemies.length - 1; i >= 0; i--) {
-        const enemy = this.enemies[i];
-        if (!enemy || !enemy.active) {
-          enemy?.destroy();
-          this.enemies.splice(i, 1);
-          continue;
+      // Apply enemy damage to persistent health (only when alive)
+      if (!this.isDead) {
+        for (let i = this.enemies.length - 1; i >= 0; i--) {
+          const enemy = this.enemies[i];
+          if (!enemy || !enemy.active) continue; // skip disabled enemies (dead, waiting to respawn)
+          this.playerHealth = enemy.update(this.player, this.playerHealth, this.gameActive);
         }
-        playerHealth = enemy.update(this.player, playerHealth, this.gameActive);
+      }
+
+      // Update HUD (reposition and resize to stay fixed to camera top-left)
+      if (this.healthText || this.coinText) {
+        const hudCam = this.cameras.main;
+        const baseFontSize = 18;
+        const scaledFontSize = Math.max(8, baseFontSize / hudCam.zoom);
+        const hudTopLeft = hudCam.getWorldPoint(16, 16);
+
+        if (this.healthText) {
+          const hearts =
+            "♥".repeat(Math.max(0, this.playerHealth)) +
+            "♡".repeat(Math.max(0, this.maxPlayerHealth - this.playerHealth));
+          this.healthText.setText(`HP: ${hearts}`);
+          this.healthText.setFontSize(scaledFontSize);
+          this.healthText.setPosition(hudTopLeft.x, hudTopLeft.y);
+        }
+        if (this.coinText) {
+          this.coinText.setText(`Coins: ${this.coinCount}`);
+          this.coinText.setFontSize(scaledFontSize);
+          this.coinText.setPosition(hudTopLeft.x, hudTopLeft.y + scaledFontSize + 4);
+        }
+      }
+
+      // Death checks — health depleted or fell off the map
+      if (!this.isDead) {
+        const fellOff = this.player.y > this.map.heightInPixels + 100;
+        if (this.playerHealth <= 0 || fellOff) {
+          this.isDead = true;
+          this.resetPlayLevel();
+        }
       }
 
       if (this.gridGraphics) this.gridGraphics.clear();
@@ -836,12 +988,6 @@ export class EditorScene extends Phaser.Scene {
         }
 
         player.setVelocity(velocityX, velocityY);
-
-        // Reset if fallen off world
-        if (player.y > this.map.heightInPixels + 100) {
-          player.setPosition(100, 150);
-          player.setVelocity(0, 0);
-        }
       }
       // update the play button's position to the camera
       if (this.playButton) {
@@ -862,23 +1008,18 @@ export class EditorScene extends Phaser.Scene {
       this.playButton.y = cam.worldView.y + 250;
     }
 
-    // Continuous Block Placement
-    if (this.isPlacing) {
+    // Continuous Block Placement (enemies are placed once on click, not continuously)
+    if (this.isPlacing && this.selectedBlockName !== "Slime Enemy" && this.selectedBlockName !== "Ultra Slime") {
       const pointer = this.input.activePointer;
       const tileX = Math.floor(pointer.worldX / this.TILE_SIZE);
       const tileY = Math.floor(pointer.worldY / this.TILE_SIZE);
-      // Use collectables layer for coins and fruits
       if (this.selectedBlockName === "Eraser") {
-        // Eraser should clear from both layers
         this.placeTile(this.groundLayer, tileX, tileY, -1);
         this.placeTile(this.collectablesLayer, tileX, tileY, -1);
+      } else if (this.selectedBlockName === "Coin" || this.selectedBlockName === "Fruit") {
+        this.placeTile(this.collectablesLayer, tileX, tileY, this.selectedTileIndex);
       } else {
-        const targetLayer =
-          this.selectedBlockName === "Coin" ||
-          this.selectedBlockName === "Fruit"
-            ? this.collectablesLayer
-            : this.groundLayer;
-        this.placeTile(targetLayer, tileX, tileY, this.selectedTileIndex);
+        this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
       }
     }
 
@@ -920,18 +1061,14 @@ export class EditorScene extends Phaser.Scene {
       const pointer = this.input.activePointer;
       this.pasteSelection(pointer);
       console.log("Pasted selection");
-    } else if (
-      Phaser.Input.Keyboard.JustDown(this.keyU) &&
-      this.keyCtrl.isDown
-    ) {
-      this.undoLastAction();
-      console.log("Undid last action");
-    } else if (
-      Phaser.Input.Keyboard.JustDown(this.keyR) &&
-      this.keyCtrl.isDown
-    ) {
-      this.redoLastAction();
-      console.log("Redid last action");
+    } else if (this.keyCtrl.isDown) {
+      const zJustDown = Phaser.Input.Keyboard.JustDown(this.keyZ);
+      const yJustDown = Phaser.Input.Keyboard.JustDown(this.keyY);
+      if (zJustDown && !this.keyShift.isDown) {
+        this.undoLastAction();
+      } else if (yJustDown || (zJustDown && this.keyShift.isDown)) {
+        this.redoLastAction();
+      }
     } else if (Phaser.Input.Keyboard.JustDown(this.keyP)) {
       this.increaseZLevel();
     } else if (Phaser.Input.Keyboard.JustDown(this.keyO)) {
@@ -949,31 +1086,210 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
-  undoLastAction(): void {
-    if (this.currentMapIteration > 0) {
-      this.currentMapIteration--;
-      this.map = this.mapHistory[this.currentMapIteration];
-      console.log("Undid last action");
-    } else {
-      console.log("No action to undo");
+  public captureSnapshot(): WorldSnapshot {
+    const groundTiles: { x: number; y: number; index: number }[] = [];
+    const collectablesTiles: { x: number; y: number; index: number }[] = [];
+    const gData = this.groundLayer.layer.data;
+    for (let y = 0; y < gData.length; y++) {
+      for (let x = 0; x < gData[y].length; x++) {
+        const idx = gData[y][x].index;
+        if (idx !== -1) groundTiles.push({ x, y, index: idx });
+      }
     }
+    const cData = this.collectablesLayer.layer.data;
+    for (let y = 0; y < cData.length; y++) {
+      for (let x = 0; x < cData[y].length; x++) {
+        const idx = cData[y][x].index;
+        if (idx !== -1) collectablesTiles.push({ x, y, index: idx });
+      }
+    }
+    // Capture enemies
+    const enemies: EnemySnapshotEntry[] = this.enemies.map((e) => {
+      const spawnX = e.getData("spawnX") ?? e.x;
+      const spawnY = e.getData("spawnY") ?? e.y;
+      if (e instanceof DynamicEnemy) {
+        return { kind: "Dynamic", spawnX, spawnY, definition: e.getDefinition() };
+      } else if (e instanceof UltraSlime) {
+        return { kind: "UltraSlime", spawnX, spawnY };
+      } else {
+        return { kind: "Slime", spawnX, spawnY };
+      }
+    });
+
+    // Capture selection boxes — serialize chat messages to plain objects so
+    // they survive both JSON save/load and in-memory undo/redo correctly.
+    const selectionBoxes: BoxSnapshot[] = this.selectionBoxes.map((b) => ({
+      start: { x: b.getStart().x, y: b.getStart().y },
+      end: { x: b.getEnd().x, y: b.getEnd().y },
+      zLevel: b.getZLevel(),
+      placedTiles: b.placedTiles.slice(),
+      placedEnemies: b.placedEnemies.slice(),
+      chatHistory: b.localContext.chatHistory
+        .filter((m) => m._getType?.() !== "system") // don't snapshot the system prompt
+        .map((m) => ({
+          type: m._getType?.() ?? "human",
+          content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+        })),
+    }));
+
+    return { groundTiles, collectablesTiles, enemies, selectionBoxes };
   }
 
-  redoLastAction(): void {
+  public restoreSnapshot(snapshot: WorldSnapshot): void {
+    const w = this.groundLayer.layer.width;
+    const h = this.groundLayer.layer.height;
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) this.groundLayer.putTileAt(-1, x, y);
+    snapshot.groundTiles.forEach(({ x, y, index }) =>
+      this.groundLayer.putTileAt(index, x, y),
+    );
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) this.collectablesLayer.putTileAt(-1, x, y);
+    snapshot.collectablesTiles.forEach(({ x, y, index }) =>
+      this.collectablesLayer.putTileAt(index, x, y),
+    );
+
+    // Restore enemies
+    this.enemies.forEach((e) => e.destroy());
+    this.enemies = [];
+    for (const entry of snapshot.enemies) {
+      if (entry.kind === "Slime") {
+        const s = new Slime(this, entry.spawnX, entry.spawnY, this.map, this.groundLayer);
+        s.setData("spawnX", entry.spawnX);
+        s.setData("spawnY", entry.spawnY);
+        this.enemies.push(s);
+      } else if (entry.kind === "UltraSlime") {
+        const u = new UltraSlime(this, entry.spawnX, entry.spawnY, this.map, this.groundLayer);
+        u.setData("spawnX", entry.spawnX);
+        u.setData("spawnY", entry.spawnY);
+        this.enemies.push(u);
+      } else {
+        const d = new DynamicEnemy(this, entry.spawnX, entry.spawnY, entry.definition, this.map, this.groundLayer);
+        d.setData("spawnX", entry.spawnX);
+        d.setData("spawnY", entry.spawnY);
+        this.enemies.push(d);
+      }
+    }
+
+    // Restore selection boxes
+    for (const b of this.selectionBoxes) b.destroy?.();
+    if (this.activeBox) { this.activeBox.destroy?.(); this.activeBox = null; }
+    this.selectionBoxes = [];
+    setActiveSelectionBox(null); // clear the chat pane so it doesn't show stale history
+
+    for (const sd of snapshot.selectionBoxes) {
+      const box = new SelectionBox(
+        this,
+        new Phaser.Math.Vector2(sd.start.x, sd.start.y),
+        new Phaser.Math.Vector2(sd.end.x, sd.end.y),
+        sd.zLevel,
+        this.groundLayer,
+        (b) => this.selectBox(b),
+      );
+      box.placedTiles = sd.placedTiles.slice();
+      box.placedEnemies = sd.placedEnemies.slice();
+      // Reconstruct proper LangChain message instances from the serialized format
+      box.localContext.chatHistory = sd.chatHistory.map((m) => {
+        if (m.type === "ai") return new AIMessage(m.content);
+        if (m.type === "system") return new SystemMessage(m.content);
+        return new HumanMessage(m.content);
+      });
+      box.finalize();
+      this.selectionBoxes.push(box);
+    }
+
+    this.worldFacts.refresh();
+  }
+
+  public saveSnapshot(): void {
+    this.mapHistory = this.mapHistory.slice(0, this.currentMapIteration + 1);
+    this.mapHistory.push(this.captureSnapshot());
+    this.currentMapIteration = this.mapHistory.length - 1;
+  }
+
+  undoLastAction(): boolean {
+    if (this.currentMapIteration > 0) {
+      this.currentMapIteration--;
+      this.restoreSnapshot(this.mapHistory[this.currentMapIteration]);
+      console.log("Undid last action");
+      return true;
+    }
+    console.log("No action to undo");
+    return false;
+  }
+
+  redoLastAction(): boolean {
     if (this.currentMapIteration < this.mapHistory.length - 1) {
       this.currentMapIteration++;
-      this.map = this.mapHistory[this.currentMapIteration];
+      this.restoreSnapshot(this.mapHistory[this.currentMapIteration]);
       console.log("Redid last action");
-    } else {
-      console.log("No action to redo");
+      return true;
     }
+    console.log("No action to redo");
+    return false;
+  }
+
+  public saveToFile(): void {
+    // captureSnapshot already serializes everything including chat history correctly
+    const snap = this.captureSnapshot();
+    const payload = JSON.stringify({ version: 1, ...snap }, null, 2);
+    const blob = new Blob([payload], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "pewter-map.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  public loadFromFile(): void {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = JSON.parse(ev.target!.result as string);
+
+          // Normalise chat history entries — old saves used raw LangChain
+          // serialisation ({ lc, type: "constructor", id, kwargs }); new saves
+          // use plain { type, content } objects. Convert old format on the fly.
+          const normBoxes = (data.selectionBoxes ?? []).map((sd: any) => ({
+            ...sd,
+            chatHistory: (sd.chatHistory ?? []).map((m: any) => {
+              if (m.type === "constructor" && Array.isArray(m.id)) {
+                const kind = m.id[m.id.length - 1] ?? "HumanMessage";
+                const content = m.kwargs?.content ?? "";
+                if (kind === "AIMessage")    return { type: "ai",     content };
+                if (kind === "SystemMessage") return { type: "system", content };
+                return { type: "human", content };
+              }
+              return m; // already in new { type, content } format
+            }),
+          }));
+
+          this.restoreSnapshot({
+            groundTiles:       data.groundTiles       ?? [],
+            collectablesTiles: data.collectablesTiles ?? [],
+            enemies:           data.enemies           ?? [],
+            selectionBoxes:    normBoxes,
+          });
+
+          this.saveSnapshot();
+        } catch (err) {
+          console.error("Failed to load save file:", err);
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
   }
 
   bindMapHistory(): void {
-    // Only keep history up to the current iteration
-    this.mapHistory = this.mapHistory.slice(0, this.currentMapIteration + 1);
-    this.mapHistory.push(this.map);
-    this.currentMapIteration = this.mapHistory.length - 1;
+    this.saveSnapshot();
   }
 
   highlightTile(pointer: Phaser.Input.Pointer): void {
@@ -1219,6 +1535,7 @@ export class EditorScene extends Phaser.Scene {
     if (uiScene && typeof uiScene.handleSelectionInfo === "function") {
       uiScene.handleSelectionInfo(msg);
     }
+
   }
 
   // Copy selection of tiles function
@@ -1402,21 +1719,14 @@ export class EditorScene extends Phaser.Scene {
       this.player = undefined as any;
     }
 
-    // Reset enemies to their spawn positions
+    // Respawn all enemies (including ones killed during play) back to editor positions
     this.enemies.forEach((enemy) => {
-      if (enemy && enemy.active) {
-        // Reset to spawn position (stored in getData)
-        const spawnX = enemy.getData("spawnX");
-        const spawnY = enemy.getData("spawnY");
-        if (spawnX !== undefined && spawnY !== undefined) {
-          enemy.setPosition(spawnX, spawnY);
-        }
-        // Stop all movement
-        if (enemy.body) {
-          enemy.body.velocity.x = 0;
-          enemy.body.velocity.y = 0;
-        }
+      const spawnX = enemy.getData("spawnX");
+      const spawnY = enemy.getData("spawnY");
+      if (spawnX !== undefined && spawnY !== undefined) {
+        (enemy as any).respawn(spawnX, spawnY);
       }
+      (enemy as any).clearProjectiles?.();
     });
 
     // Reset gravity
@@ -1426,6 +1736,21 @@ export class EditorScene extends Phaser.Scene {
     this.cursors = undefined as any;
     this.wasd = undefined as any;
     this.isJumpPressed = false;
+
+    // Destroy play-mode HUD
+    if (this.healthText) { this.healthText.destroy(); this.healthText = null; }
+    if (this.coinText) { this.coinText.destroy(); this.coinText = null; }
+
+    // Restore collected tiles so the editor shows the original map
+    for (const t of this.collectablesSnapshot) {
+      this.collectablesLayer.putTileAt(t.index, t.x, t.y);
+    }
+    this.collectablesSnapshot = [];
+
+    // Reset play-mode state
+    this.playerHealth = this.maxPlayerHealth;
+    this.coinCount = 0;
+    this.isDead = false;
 
     // Redraw grid and highlight
     if (this.gridGraphics) this.gridGraphics.clear();
@@ -1437,6 +1762,40 @@ export class EditorScene extends Phaser.Scene {
     this.cameras.main.centerOn(0, 0);
 
     // also remove the editor button
+  }
+
+  private resetPlayLevel() {
+    // Brief pause so the player notices the death before the level resets
+    this.time.delayedCall(600, () => {
+      if (!this.gameActive) return; // aborted to editor before delay finished
+
+      // Restore all collectable tiles from the snapshot
+      for (const t of this.collectablesSnapshot) {
+        this.collectablesLayer.putTileAt(t.index, t.x, t.y);
+      }
+
+      // Respawn player
+      if (this.player) {
+        this.player.setPosition(100, 150);
+        this.player.setVelocity(0, 0);
+      }
+
+      // Reset stats
+      this.playerHealth = this.maxPlayerHealth;
+      this.coinCount = 0;
+      this.isDead = false;
+
+      // Respawn all enemies (including ones killed during play)
+      this.enemies.forEach((enemy) => {
+        const spawnX = enemy.getData("spawnX");
+        const spawnY = enemy.getData("spawnY");
+        if (spawnX !== undefined && spawnY !== undefined) {
+          (enemy as any).respawn(spawnX, spawnY);
+        }
+        // Clear any lingering projectiles
+        (enemy as any).clearProjectiles?.();
+      });
+    });
   }
 
   private createMinimap() {
@@ -1580,7 +1939,8 @@ export class EditorScene extends Phaser.Scene {
     if (!this.activeBox) return;
 
     // Push it to the array
-    this.selectionBoxes.push(this.activeBox);
+    if (!this.selectionBoxes.includes(this.activeBox))
+      this.selectionBoxes.push(this.activeBox);
     // mark it as finalized (permanent) so it can't be redrawn; it can still be dragged via its tab
     this.activeBox.finalize?.();
 
@@ -1593,6 +1953,7 @@ export class EditorScene extends Phaser.Scene {
   selectBox(box: SelectionBox | null) {
     if (!box) return;
     // Deactivate all boxes we know about (selectionBoxes and any current activeBox)
+    console.log(`Boxes: ${this.selectionBoxes}`);
     for (const b of this.selectionBoxes) {
       b.setActive?.(false);
     }

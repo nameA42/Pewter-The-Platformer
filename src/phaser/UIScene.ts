@@ -6,6 +6,7 @@ import {
 import { EditorScene } from "./editorScene.ts";
 import { SpriteGenerator } from "../enemySystem/sprite/SpriteGenerator.ts";
 import "./chatbox.css";
+import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
 
 export class UIScene extends Phaser.Scene {
   constructor() {
@@ -37,7 +38,6 @@ export class UIScene extends Phaser.Scene {
   private playButton!: Phaser.GameObjects.Container;
   private regenerateButton!: Phaser.GameObjects.Container;
   private deselectBoxBtn!: Phaser.GameObjects.Container;
-  private regenAlgoToggle!: Phaser.GameObjects.Container;
   private apiSpriteToggle!: Phaser.GameObjects.Container;
 
   //Inputs
@@ -236,7 +236,6 @@ export class UIScene extends Phaser.Scene {
         this.playButton.setVisible(isChatVisible);
         this.deselectBoxBtn.setVisible(isChatVisible);
         this.regenerateButton.setVisible(isChatVisible);
-        this.regenAlgoToggle.setVisible(isChatVisible);
         this.apiSpriteToggle.setVisible(isChatVisible);
         try {
           this.game.events.emit("ui:toggleMinimap", isChatVisible);
@@ -262,8 +261,7 @@ export class UIScene extends Phaser.Scene {
           this.playButton.setVisible(isChatVisible);
           this.deselectBoxBtn.setVisible(isChatVisible);
           this.regenerateButton.setVisible(isChatVisible);
-          this.regenAlgoToggle.setVisible(isChatVisible);
-          this.apiSpriteToggle.setVisible(isChatVisible);
+            this.apiSpriteToggle.setVisible(isChatVisible);
           try {
             this.game.events.emit("ui:toggleMinimap", isChatVisible);
           } catch (err) {}
@@ -328,17 +326,60 @@ export class UIScene extends Phaser.Scene {
         if (!userMsg) return;
 
         input.value = "";
+        const activeBox = (window as any).getActiveSelectionBox?.();
+        console.log("[UIScene] activeBox at send time:", activeBox, "pendingMove:", activeBox?._pendingMoveNotify);
+        const moveContext: string | null = activeBox?.consumePendingMoveContext?.() ?? null;
+        if (moveContext) {
+          console.log("[MoveContext] Sending move info to AI:", moveContext);
+        } else {
+          console.log("[MoveContext] No move context (moveContext is null/undefined)");
+        }
+        // Refresh and gather world facts localized to the active selection box
+        let worldFactsContext: string | null = null;
+        if (activeBox) {
+          try {
+            const editorScene = this.scene.get("editorScene") as EditorScene;
+            editorScene.worldFacts.refresh();
+            const bounds = activeBox.getBounds();
+            const xMin = bounds.x;
+            const xMax = bounds.x + bounds.width - 1;
+            const yMin = bounds.y;
+            const yMax = bounds.y + bounds.height - 1;
+            const factLines: string[] = [];
+            for (const cat of ["Structure", "Collectable", "Enemy"] as const) {
+              const facts = editorScene.worldFacts.getFact(cat, xMin, xMax, yMin, yMax);
+              if (facts.length > 0) {
+                factLines.push(...facts.map((f) => f.toString()));
+              }
+            }
+            if (factLines.length > 0) {
+              worldFactsContext = `World facts for this selection:\n${factLines.join("\n")}`;
+            }
+          } catch (e) {
+            console.warn("[WorldFacts] Failed to gather localized facts:", e);
+          }
+        }
+
+        const hiddenContext = [this.latestSelectionContext, moveContext, worldFactsContext]
+          .filter(Boolean)
+          .join("\n");
         const sendPromise = sendUserPromptWithContext(
           userMsg,
-          this.latestSelectionContext,
+          hiddenContext || undefined,
         );
         // Render the user's message immediately (sendUserPrompt pushes it sync).
         log.innerHTML = getDisplayChatHistory();
+
+        // Show animated typing indicator while waiting for AI
+        const typingEl = document.createElement("p");
+        typingEl.id = "pt-typing-indicator";
+        typingEl.innerHTML =
+          '<strong>AI:</strong> <span class="pt-typing-dots"></span>';
+        log.appendChild(typingEl);
         log.scrollTop = log.scrollHeight;
 
         // Wait for the reply to complete; the activeSelectionChanged listener
-        // will re-render the full history (including AI reply), so we don't
-        // render again here to avoid double-render or double-push issues.
+        // will re-render the full history (including AI reply), removing the indicator.
         await sendPromise;
       }
     });
@@ -403,31 +444,6 @@ export class UIScene extends Phaser.Scene {
       },
     );
     this.regenerateButton.setDepth(1001);
-
-    // Event Queue Regen button
-    this.regenAlgoToggle = this.createButton(
-      this,
-      550,
-      toolbarY,
-      "🗂️ Event Queue Regen",
-      () => {
-        this.game.events.emit("ui:eventQueueRegen");
-      },
-      {
-        fill: 0x222222,
-        hoverFill: 0x222222,
-        downFill: 0x1a1a1a,
-        stroke: 0x444444,
-        hoverStroke: 0xb3b3b3,
-        downStroke: 0xd9d9d9,
-        textColor: "#ffffff",
-        fontSize: toolbarButtonFontSize,
-        paddingX: toolbarButtonPaddingX,
-        paddingY: toolbarButtonPaddingY,
-        minHeight: toolbarButtonHeight,
-      },
-    );
-    this.regenAlgoToggle.setDepth(1001);
 
     // API Sprite Generation toggle button
     // Starts OFF to prevent accidental API credit usage
@@ -510,13 +526,62 @@ export class UIScene extends Phaser.Scene {
 
     this.apiSpriteToggle.setDepth(1001);
 
+    const saveButton = this.createButton(
+      this,
+      0,
+      toolbarY,
+      "Save",
+      () => {
+        this.game.events.emit("ui:save");
+      },
+      {
+        fill: 0x1a3a1a,
+        hoverFill: 0x1a3a1a,
+        downFill: 0x112611,
+        stroke: 0x44aa44,
+        hoverStroke: 0x88dd88,
+        downStroke: 0xaaffaa,
+        textColor: "#88dd88",
+        fontSize: toolbarButtonFontSize,
+        paddingX: toolbarButtonPaddingX,
+        paddingY: toolbarButtonPaddingY,
+        minHeight: toolbarButtonHeight,
+      },
+    );
+    saveButton.setDepth(1001);
+
+    const loadButton = this.createButton(
+      this,
+      0,
+      toolbarY,
+      "Load",
+      () => {
+        this.game.events.emit("ui:load");
+      },
+      {
+        fill: 0x1a2a3a,
+        hoverFill: 0x1a2a3a,
+        downFill: 0x111a26,
+        stroke: 0x4488cc,
+        hoverStroke: 0x88bbee,
+        downStroke: 0xaaddff,
+        textColor: "#88bbee",
+        fontSize: toolbarButtonFontSize,
+        paddingX: toolbarButtonPaddingX,
+        paddingY: toolbarButtonPaddingY,
+        minHeight: toolbarButtonHeight,
+      },
+    );
+    loadButton.setDepth(1001);
+
     // Layout toolbar buttons based on measured text width with consistent spacing.
     const toolbarButtons = [
       this.playButton,
       this.deselectBoxBtn,
       this.regenerateButton,
-      this.regenAlgoToggle,
       this.apiSpriteToggle,
+      saveButton,
+      loadButton,
     ];
     let toolbarX = 20;
     for (const btn of toolbarButtons) {
@@ -525,39 +590,6 @@ export class UIScene extends Phaser.Scene {
       toolbarX += w + toolbarButtonGap;
     }
 
-    // Listen for event queue regeneration lifecycle events
-    this.game.events.on("eventQueueRegen:started", () => {
-      try {
-        const bg = this.regenAlgoToggle
-          .list[0] as Phaser.GameObjects.GameObject;
-        const txt = this.regenAlgoToggle.list[1] as Phaser.GameObjects.Text;
-        // Visual feedback: disable interaction and change text
-        try {
-          bg.disableInteractive();
-        } catch (e) {}
-        try {
-          txt.setText("🗂️ Regenerating...");
-        } catch (e) {}
-      } catch (e) {
-        // ignore
-      }
-    });
-
-    this.game.events.on("eventQueueRegen:finished", (_payload?: any) => {
-      try {
-        const bg = this.regenAlgoToggle
-          .list[0] as Phaser.GameObjects.GameObject;
-        const txt = this.regenAlgoToggle.list[1] as Phaser.GameObjects.Text;
-        try {
-          bg.setInteractive({ useHandCursor: true });
-        } catch (e) {}
-        try {
-          txt.setText("🗂️ Event Queue Regen");
-        } catch (e) {}
-      } catch (e) {
-        // ignore
-      }
-    });
 
     // Listen for regeneration lifecycle events so the button can show feedback
     this.game.events.on("regenerate:started", () => {

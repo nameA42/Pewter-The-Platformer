@@ -19,6 +19,28 @@ interface BoxContext {
   version: number;
 }
 
+const allSelectionBoxes: SelectionBox[] = [];
+
+
+export function replaceAllBoxes() {
+  // ! because I am lazy will just be regeneing all of everything ever place, not efficient but computer are fast
+  allSelectionBoxes.sort((a: SelectionBox, b: SelectionBox) => {
+    if (a.getZLevel() < b.getZLevel()) {
+      return -1;
+    }
+    if (a.getZLevel() > b.getZLevel()) {
+      return 1;
+    }
+    return 0;
+  })
+  for (let sb of allSelectionBoxes) {
+    for (let tile of sb.placedTiles) {
+      if (tile.tileIndex > 1)
+        sb.getLayer().putTileAt(tile.tileIndex, tile.x, tile.y);
+    }
+  }
+}
+
 export class SelectionBox {
   private graphics: Phaser.GameObjects.Graphics;
   private start: Phaser.Math.Vector2;
@@ -85,6 +107,11 @@ export class SelectionBox {
   ) => void;
   private _pointerMoveHandler?: (pointer: Phaser.Input.Pointer) => void;
   private _pointerUpHandler?: (pointer: Phaser.Input.Pointer) => void;
+
+  // Coordinate tracking for AI context
+  public currentCoords: { start: { x: number; y: number }; end: { x: number; y: number } } = { start: { x: 0, y: 0 }, end: { x: 0, y: 0 } };
+  public coordHistory: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; timestamp: number }> = [];
+  private _pendingMoveNotify: boolean = false;
   //Drag and Drop support - Jason Cho
   private dragSnapshot?: {
     w: number;
@@ -113,6 +140,10 @@ export class SelectionBox {
     this.graphics.setDepth(100);
     this.redraw();
 
+    // Initialize coordinate tracking
+    this.currentCoords = { start: { x: start.x, y: start.y }, end: { x: end.x, y: end.y } };
+    this.coordHistory = [{ start: { x: start.x, y: start.y }, end: { x: end.x, y: end.y }, timestamp: Date.now() }];
+
     // Initialize localContext with its own chatHistory
     this.localContext = {
       id: `box_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -123,6 +154,7 @@ export class SelectionBox {
     this.onSelect = onSelect;
     // create tab after initial draw
     this.createTab();
+    allSelectionBoxes.push(this);
   }
 
   // STEP 2: Collaborative Context Merging - Basic data management methods
@@ -269,7 +301,7 @@ export class SelectionBox {
 
     // If intersections changed, update visuals
     if (this.intersections.size !== previous.size) {
-      this.updateTabWithNetworkInfo();
+      this.updateTabWithNewInfo();
     }
   }
 
@@ -283,7 +315,7 @@ export class SelectionBox {
     // Share our shareable data with the new neighbor
     this.shareDataWithNeighbor(neighbor);
     // Update visual indicator
-    this.updateTabWithNetworkInfo();
+    this.updateTabWithNewInfo();
   }
 
   /**
@@ -294,7 +326,7 @@ export class SelectionBox {
       `Box ${this.localContext.id} lost neighbor ${neighbor.localContext.id}`,
     );
     // Update visual indicator
-    this.updateTabWithNetworkInfo();
+    this.updateTabWithNewInfo();
   }
 
   /**
@@ -403,6 +435,7 @@ export class SelectionBox {
   setZLevel(zLevel: number) {
     this.zLevel = zLevel;
     this.redraw();
+    replaceAllBoxes();
   }
 
   private redraw() {
@@ -651,12 +684,13 @@ export class SelectionBox {
                   layerName: p.layerName,
                 }));
               }
-            } catch (e) {}
+            } catch (e) { }
 
             this.start = candidateStart;
             this.end = candidateEnd;
             this.redraw();
             this.updatePreviewLayerPosition(); //Drag and Drop
+            this.updateTabWithNewInfo();
           }
         } catch (e) {
           this.start = candidateStart;
@@ -672,11 +706,12 @@ export class SelectionBox {
         try {
           if (this._pointerMoveHandler)
             this.scene.input.off("pointermove", this._pointerMoveHandler);
-        } catch (e) {}
+        } catch (e) { }
         try {
           if (this._pointerUpHandler)
             this.scene.input.off("pointerup", this._pointerUpHandler);
-        } catch (e) {}
+        } catch (e) { }
+
         // If we had a snapshot of placed tiles, commit a move of those tiles on the map
         try {
           const orig = this._dragOriginalPlacedTiles;
@@ -735,6 +770,9 @@ export class SelectionBox {
                 console.error("SelectionBox: moveObjects failed", e);
               }
             }
+
+            // console.log(`Things be thinging: ${movements}`);
+            this.printPlacedTiles();
           }
         } catch (e) {
           // swallow
@@ -784,6 +822,7 @@ export class SelectionBox {
               typeof rg.moveObjects === "function"
             ) {
               try {
+                // console.log("Things be thinging"); // NOTE: This be not being happening
                 rg.moveObjects(eMoves);
               } catch (er) {
                 // eslint-disable-next-line no-console
@@ -797,10 +836,31 @@ export class SelectionBox {
         // clear drag snapshot
         try {
           this._dragOriginalPlacedTiles = undefined;
-        } catch (e) {}
+        } catch (e) { }
+
+        // Record the new position in coord history and flag for AI notification
+        const newEntry = {
+          start: { x: this.start.x, y: this.start.y },
+          end: { x: this.end.x, y: this.end.y },
+          timestamp: Date.now(),
+        };
+        const lastEntry = this.coordHistory[this.coordHistory.length - 1];
+        if (
+          !lastEntry ||
+          lastEntry.start.x !== newEntry.start.x ||
+          lastEntry.start.y !== newEntry.start.y ||
+          lastEntry.end.x !== newEntry.end.x ||
+          lastEntry.end.y !== newEntry.end.y
+        ) {
+          this.coordHistory.push(newEntry);
+          this._pendingMoveNotify = true;
+          console.log("[SelectionBox] Move recorded, pending AI notification:", newEntry);
+        }
 
         // Only commit if we actually started a drag snapshot - Drag and Drop
         if (this.dragSnapshot) {
+          console.log("drop finished");
+
           this.commitMoveToCurrentPosition();
         } else {
           // No snapshot -> just ensure ghost is gone
@@ -820,7 +880,7 @@ export class SelectionBox {
           try {
             if (event && typeof event.stopPropagation === "function")
               event.stopPropagation();
-          } catch (e) {}
+          } catch (e) { }
           if (this.onSelect) this.onSelect(this);
           if (!this.isFinalized) return;
           // prepare drag
@@ -919,8 +979,10 @@ export class SelectionBox {
         this.tabBg.setFillStyle(0x2b2b2b);
         this.tabBg.setStrokeStyle(1, 0x111111);
       }
+      console.log(this.tabText);
       this.tabText.setStyle({ color: "#ffffff" });
     }
+    this.updateTabWithNewInfo()
   }
 
   copyTiles() {
@@ -941,7 +1003,7 @@ export class SelectionBox {
   }
 
   private getColorForZLevel(zLevel: number): number {
-  // Clamp Z-Level
+    // Clamp Z-Level
     if (zLevel < 1) return Z_LEVEL_COLORS[0];
     if (zLevel > Z_LEVEL_COLORS.length)
       return Z_LEVEL_COLORS[Z_LEVEL_COLORS.length - 1];
@@ -989,7 +1051,7 @@ export class SelectionBox {
     return this.layer;
   }
 
-   // Check if this box overlaps with another box in tile-space
+  // Check if this box overlaps with another box in tile-space
   // Returns true only if they share actual tiles (not just edges)
   overlapsWith(otherBox: SelectionBox): boolean {
     const thisBounds = this.getBounds();
@@ -1033,20 +1095,45 @@ export class SelectionBox {
 
   destroy() {
     this.graphics.destroy();
+    if (this.tabText) {
+      this.tabText.destroy();
+      this.tabText = null;
+    }
+
     if (this.tabContainer) {
       this.tabContainer.destroy();
       this.tabContainer = null;
     }
+
+
     // Remove drag listeners
     if (this._dragStartHandler)
       this.scene.input.off("dragstart", this._dragStartHandler);
     if (this._dragHandler) this.scene.input.off("drag", this._dragHandler);
+
+    // clean up actual stuff
+
+    allSelectionBoxes.splice(allSelectionBoxes.indexOf(this), 1);
+    // delete owned tiles
+    for (let tile of this.placedTiles) {
+      this.getLayer().putTileAt(1, tile.x, tile.y);
+    }
+
+    replaceAllBoxes();
   }
 
   // Mark this selection as finalized (permanent). Keeps a tab for dragging but
   // prevents further resizing via updateStart/updateEnd.
   public finalize() {
     this.isFinalized = true;
+    // Snapshot the true final coords now that the user has finished drawing the box
+    const finalEntry = {
+      start: { x: this.start.x, y: this.start.y },
+      end: { x: this.end.x, y: this.end.y },
+      timestamp: Date.now(),
+    };
+    this.coordHistory = [finalEntry];
+    this.currentCoords = { start: { ...finalEntry.start }, end: { ...finalEntry.end } };
     // Update visuals immediately so dashed -> solid border swap happens
     this.redraw();
     // Update tab visuals to a finalized (gray) style
@@ -1285,7 +1372,7 @@ export class SelectionBox {
   /**
    * Visual indicator: Change tab color based on neighbor count
    */
-  public updateTabWithNetworkInfo(): void {
+  public updateTabWithNewInfo(): void {
     if (!this.tabText) return;
 
     const neighborCount = this.neighbors.size;
@@ -1297,7 +1384,8 @@ export class SelectionBox {
     if (neighborCount > 0) parts.push(`${neighborCount}n`);
     if (dataCount > 0) parts.push(`${dataCount}d`);
     if (intersectionCount > 0) parts.push(`${intersectionCount}z`);
-    const text = parts.length > 0 ? `Box (${parts.join(", ")})` : `Box`;
+    let text = `Box${this.isActive ? `[(${this.start.x},${this.start.y}),(${this.end.x},${this.end.y})]` : ''}${parts.length > 0 ? ` (${parts.join(", ")})` : ''}`;
+
     this.tabText.setText(text);
 
     // Make the tab wider when visual indicators are added: add 20px per indicator
@@ -1328,7 +1416,7 @@ export class SelectionBox {
       // Keep text positioned with left padding
       try {
         this.tabText.x = padding;
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // Change color based on connectivity
@@ -1347,6 +1435,41 @@ export class SelectionBox {
         );
       }
     }
+  }
+
+  /**
+   * If the box was moved since the last user message, returns a hidden context
+   * string describing the move and updates currentCoords. Returns null otherwise.
+   * Call this just before sending the user's message to the AI.
+   */
+  public consumePendingMoveContext(): string | null {
+    if (!this._pendingMoveNotify) return null;
+    const latest = this.coordHistory[this.coordHistory.length - 1];
+    if (!latest) return null;
+    const prev = this.currentCoords;
+    this._pendingMoveNotify = false;
+    this.currentCoords = { start: { ...latest.start }, end: { ...latest.end } };
+
+    let msg =
+      `[BOX MOVED]: This selection box was moved from tile ` +
+      `(${prev.start.x}, ${prev.start.y})-(${prev.end.x}, ${prev.end.y}) ` +
+      `to (${latest.start.x}, ${latest.start.y})-(${latest.end.x}, ${latest.end.y}). ` +
+      `All tiles and objects previously placed inside this box moved with it.`;
+
+    if (this.placedTiles.length > 0) {
+      const tileList = this.placedTiles
+        .map((p) => `tile ID ${p.tileIndex} at (${p.x}, ${p.y}) on ${p.layerName}`)
+        .join("; ");
+      msg += ` Current placed tile positions: ${tileList}.`;
+    }
+    if (this.placedEnemies.length > 0) {
+      const enemyList = this.placedEnemies
+        .map((e) => `${e.enemyType} at (${e.x}, ${e.y})`)
+        .join("; ");
+      msg += ` Current placed enemy positions: ${enemyList}.`;
+    }
+
+    return msg;
   }
 
   // Chat history management for this selection box
@@ -1377,7 +1500,14 @@ export class SelectionBox {
     y: number,
     layerName: string,
   ) {
-    this.placedTiles.push({ tileIndex, x, y, layerName });
+    // this.placedTiles = this.placedTiles.filter((tile) => {tile.x != x || tile.y != y})
+    let replace = this.placedTiles.find((tile) => tile.x == x && tile.y == y && tile.layerName == layerName);
+    if (replace != undefined) {
+      replace.tileIndex = tileIndex;
+    }
+    else {
+      this.placedTiles.push({ tileIndex, x, y, layerName });
+    }
     console.log("Added placed tile:", { tileIndex, x, y, layerName });
   }
 
@@ -1487,14 +1617,20 @@ export class SelectionBox {
     const h = eY - sY + 1;
 
     const tiles: { dx: number; dy: number; index: number }[] = [];
-    for (let ty = 0; ty < h; ty++) {
-      for (let tx = 0; tx < w; tx++) {
-        const tile = this.layer.getTileAt(sX + tx, sY + ty);
-        if (tile && tile.index !== -1) {
-          tiles.push({ dx: tx, dy: ty, index: tile.index });
-        }
-      }
+
+    for (let t of this.placedTiles) {
+      console.log(`tiles: (tx: ${t.x}, ty: ${t.y}), (sx: ${sX}, sy: ${sY}), (dx: ${t.x - sX}, dy: ${t.y - sY}), index: ${t.tileIndex} }}`);
+      tiles.push({ dx: t.x - sX, dy: t.y - sY, index: t.tileIndex });
     }
+
+    // for (let ty = 0; ty < h; ty++) {
+    //   for (let tx = 0; tx < w; tx++) {
+    //     const tile = this.layer.getTileAt(sX + tx, sY + ty);
+    //     if (tile && tile.index !== -1) {
+    //       tiles.push({ dx: tx, dy: ty, index: tile.index });
+    //     }
+    //   }
+    // }
 
     this.dragSnapshot = { w, h, tiles };
     this.dragOriginStart = new Phaser.Math.Vector2(sX, sY);
@@ -1580,21 +1716,21 @@ export class SelectionBox {
     const dx = newSX - oldSX;
     const dy = newSY - oldSY;
 
-    // OPTIONAL: prevent overlapping paste
-    if (!this.targetAreaIsClear(newSX, newSY)) {
-      console.log("Overlapped!");
-      // cleanup + snap back to original
-      this.destroyPreviewLayer();
-      this.dragSnapshot = undefined;
-      this.dragOriginStart = undefined;
-      this.start.set(oldSX, oldSY);
-      this.end.set(
-        oldSX + this.dragSnapshot!.w - 1,
-        oldSY + this.dragSnapshot!.h - 1,
-      );
-      this.redraw();
-      return;
-    }
+    // OPTIONAL: prevent overlapping paste // ! think this is bad, layers viewed as filters this dont make sense, also prevents 1 tile moves if tile in over self
+    // if (!this.targetAreaIsClear(newSX, newSY)) {
+    //   console.log("Overlapped!");
+    //   // cleanup + snap back to original
+    //   this.destroyPreviewLayer();
+    //   this.start.set(oldSX, oldSY);
+    //   this.end.set(
+    //     oldSX + this.dragSnapshot!.w - 1,
+    //     oldSY + this.dragSnapshot!.h - 1,
+    //   );
+    //   this.dragSnapshot = undefined;
+    //   this.dragOriginStart = undefined;
+    //   this.redraw();
+    //   return;
+    // }
 
     // 1) Clear original snapshot footprint (only cells that had tiles)
     for (let ty = 0; ty < this.dragSnapshot.h; ty++) {
@@ -1606,28 +1742,31 @@ export class SelectionBox {
       }
     }
 
-    // 2) Paste at new location
-    for (const t of this.dragSnapshot.tiles) {
-      const nx = newSX + t.dx;
-      const ny = newSY + t.dy;
-      this.layer.putTileAt(t.index, nx, ny);
-    }
+    // // 2) Paste at new location
+    // for (const t of this.dragSnapshot.tiles) {
+    //   const nx = newSX + t.dx;
+    //   const ny = newSY + t.dy;
+    //   this.layer.putTileAt(t.index, nx, ny);
+    // }
+    replaceAllBoxes(); // Todo: this is evil but works :thumbsup:
 
-    // 3) Update bookkeeping for tiles associated with this box
-    if (this.placedTiles?.length) {
-      for (const pt of this.placedTiles) {
-        // Only shift tiles that were inside the old selection
-        if (
-          pt.x >= oldSX &&
-          pt.x < oldSX + this.dragSnapshot.w &&
-          pt.y >= oldSY &&
-          pt.y < oldSY + this.dragSnapshot.h
-        ) {
-          pt.x += dx;
-          pt.y += dy;
-        }
-      }
-    }
+
+    //! idk what this code what doing but it was breaking things I hate it here I hate it here I hate it here
+    // // 3) Update bookkeeping for tiles associated with this box 
+    // if (this.placedTiles?.length) {
+    //   for (const pt of this.placedTiles) {
+    //     // // Only shift tiles that were inside the old selection
+    //     // if (
+    //     //   pt.x >= oldSX &&
+    //     //   pt.x < oldSX + this.dragSnapshot.w &&
+    //     //   pt.y >= oldSY &&
+    //     //   pt.y < oldSY + this.dragSnapshot.h
+    //     // ) {
+    //     // pt.x += dx;
+    //     // pt.y += dy;
+    //     // }
+    //   }
+    // }
 
     // Cleanup
     this.destroyPreviewLayer();

@@ -288,11 +288,17 @@ export class UIScene extends Phaser.Scene {
         );
         // Render the user's message immediately (sendUserPrompt pushes it sync).
         log.innerHTML = getDisplayChatHistory();
+
+        // Show animated typing indicator while waiting for AI
+        const typingEl = document.createElement("p");
+        typingEl.id = "pt-typing-indicator";
+        typingEl.innerHTML =
+          '<strong>AI:</strong> <span class="pt-typing-dots"></span>';
+        log.appendChild(typingEl);
         log.scrollTop = log.scrollHeight;
 
         // Wait for the reply to complete; the activeSelectionChanged listener
-        // will re-render the full history (including AI reply), so we don't
-        // render again here to avoid double-render or double-push issues.
+        // will re-render the full history (including AI reply), removing the indicator.
         await sendPromise;
       }
     });

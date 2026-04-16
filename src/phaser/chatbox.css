@@ -195,3 +195,23 @@
   color: #ddd;
   font-size: 14px;
 }
+
+.pt-typing-dots::after {
+  content: "";
+  animation: pt-dots 1.5s steps(4, end) infinite;
+}
+
+@keyframes pt-dots {
+  0% {
+    content: "";
+  }
+  25% {
+    content: ".";
+  }
+  50% {
+    content: "..";
+  }
+  75% {
+    content: "...";
+  }
+}

@@ -50,6 +50,51 @@ export class UIScene extends Phaser.Scene {
   // Latest selection context
   private latestSelectionContext: string = "";
 
+  private drawRoundedButtonBackground(
+    bg: Phaser.GameObjects.Graphics,
+    width: number,
+    height: number,
+    fill: number,
+    strokeWidth: number,
+    stroke: number,
+    cornerRadius: number,
+  ): void {
+    bg.clear();
+    bg.fillStyle(fill, 1);
+    bg.fillRoundedRect(-width / 2, -height / 2, width, height, cornerRadius);
+    if (strokeWidth > 0) {
+      bg.lineStyle(strokeWidth, stroke, 1);
+      bg.strokeRoundedRect(
+        -width / 2,
+        -height / 2,
+        width,
+        height,
+        cornerRadius,
+      );
+    }
+  }
+
+  private updateRoundedButtonColors(
+    bgObj: Phaser.GameObjects.GameObject,
+    fill: number,
+    stroke: number,
+  ): void {
+    if (!(bgObj instanceof Phaser.GameObjects.Graphics)) return;
+    const width = (bgObj.getData("buttonWidth") as number) ?? 0;
+    const height = (bgObj.getData("buttonHeight") as number) ?? 0;
+    const strokeWidth = (bgObj.getData("buttonStrokeWidth") as number) ?? 2;
+    const cornerRadius = (bgObj.getData("buttonCornerRadius") as number) ?? 10;
+    this.drawRoundedButtonBackground(
+      bgObj,
+      width,
+      height,
+      fill,
+      strokeWidth,
+      stroke,
+      cornerRadius,
+    );
+  }
+
   create() {
     // Transparent background
     //this.cameras.main.setBackgroundColor("rgba(0,0,0,0.3)");
@@ -84,12 +129,12 @@ export class UIScene extends Phaser.Scene {
     //Working Code - Manvir
 
     // Create hidden chatbox
-    this.chatBox = this.add.dom(1100, 350).createFromHTML(`
+    this.chatBox = this.add.dom(1090, 350).createFromHTML(`
       <div id="chatbox" class="pt-chatbox">
         <div id="tabs" class="pt-tabs">
-          <button id="tab-chat" class="pt-tab active">Chat</button>
-          <button id="tab-blocks" class="pt-tab">Manual Edit</button>
-          <button id="tab-controls" class="pt-tab">Controls</button>
+          <button id="tab-chat" class="pt-tab active">💬 Chat</button>
+          <button id="tab-blocks" class="pt-tab">🧱 Manual Edit</button>
+          <button id="tab-controls" class="pt-tab">🎮 Controls</button>
         </div>
         <div id="tab-contents" class="pt-tab-contents">
           <div id="chat-content" class="pt-chat-content">
@@ -125,7 +170,7 @@ export class UIScene extends Phaser.Scene {
             </div>
             <div class="control-item">
               <span class="control-key">WASD</span>
-              <span class="control-desc">Move camera & character (Press <strong>Shift</strong> to move slower)</span>
+              <span class="control-desc">Move camera & character (Press <strong>Shift</strong> to move faster)</span>
             </div>
             <div class="control-item">
               <span class="control-key">U</span>
@@ -145,16 +190,28 @@ export class UIScene extends Phaser.Scene {
               <span class="control-desc">Paste selection</span>
             </div>
             <div class="control-item">
+              <span class="control-key">Ctrl + Z</span>
+              <span class="control-desc">Undo last action</span>
+            </div>
+            <div class="control-item">
+              <span class="control-key">Ctrl + Y / Ctrl + Shift + Z</span>
+              <span class="control-desc">Redo last action</span>
+            </div>
+            <div class="control-item">
+              <span class="control-key">Del</span>
+              <span class="control-desc">Delete selected box</span>
+            </div>
+            <div class="control-item">
+              <span class="control-key">N</span>
+              <span class="control-desc">Confirm new selection box</span>
+            </div>
+            <div class="control-item">
               <span class="control-key">O</span>
               <span class="control-desc">Decrease Z-Level</span>
             </div>
             <div class="control-item">
               <span class="control-key">P</span>
               <span class="control-desc">Increase Z-Level</span>
-            </div>
-            <div class="control-item">
-              <span class="control-key">N</span>
-              <span class="control-desc">Confirm new selection box</span>
             </div>
           </div>
         </div>
@@ -328,7 +385,7 @@ export class UIScene extends Phaser.Scene {
     });
 
     const toolbarButtonHeight = 52;
-    const toolbarButtonFontSize = 14;
+    const toolbarButtonFontSize = 17;
     const toolbarButtonPaddingX = 16;
     const toolbarButtonPaddingY = 11;
     const toolbarButtonGap = 14;
@@ -342,7 +399,7 @@ export class UIScene extends Phaser.Scene {
       this,
       220,
       toolbarY,
-      "Deselect Box",
+      "🧹 Deselect Box",
       () => {
         // Emit an event the EditorScene can listen to; per request this will deselect all boxes
         this.game.events.emit("ui:deselectAllBoxes");
@@ -368,7 +425,7 @@ export class UIScene extends Phaser.Scene {
       this,
       380,
       toolbarY,
-      "Linear Regen",
+      "♻️ Linear Regen",
       () => {
         this.game.events.emit("ui:regenerateSelection");
       },
@@ -394,7 +451,7 @@ export class UIScene extends Phaser.Scene {
       this,
       740,
       toolbarY,
-      "API Sprites: OFF",
+      "👾 API Sprites: OFF",
       () => {
         // Toggle the API sprite generation
         SpriteGenerator.useExternalApi = !SpriteGenerator.useExternalApi;
@@ -402,16 +459,31 @@ export class UIScene extends Phaser.Scene {
 
         // Update button text and color
         const txt = this.apiSpriteToggle.list[1] as Phaser.GameObjects.Text;
-        const bg = this.apiSpriteToggle.list[0] as Phaser.GameObjects.Rectangle;
+        const statusTxt = this.apiSpriteToggle
+          .list[2] as Phaser.GameObjects.Text;
+        const bg = this.apiSpriteToggle
+          .list[0] as Phaser.GameObjects.GameObject;
+
+        const stateLabel = isEnabled ? "ON" : "OFF";
+        const fullLabel = `👾 API Sprites: ${stateLabel}`;
+
+        txt.setText(fullLabel);
+        txt.setColor("#ffffff");
+
+        // Place the colored ON/OFF token at the end of the white prefix.
+        txt.setText("👾 API Sprites: ");
+        const prefixWidth = txt.width;
+        txt.setText(fullLabel);
+
+        const fullWidth = txt.width;
+        statusTxt.setText(stateLabel);
+        statusTxt.setColor(isEnabled ? "#22c55e" : "#ef4444");
+        statusTxt.setPosition(-fullWidth / 2 + prefixWidth, 0);
 
         if (isEnabled) {
-          txt.setText("API Sprites: ON");
-          bg.setFillStyle(0x222222);
-          bg.setStrokeStyle(2, 0xffffff);
+          this.updateRoundedButtonColors(bg, 0x222222, 0xffffff);
         } else {
-          txt.setText("API Sprites: OFF");
-          bg.setFillStyle(0x222222);
-          bg.setStrokeStyle(2, 0x444444);
+          this.updateRoundedButtonColors(bg, 0x222222, 0x444444);
         }
 
         console.log(
@@ -432,6 +504,26 @@ export class UIScene extends Phaser.Scene {
         minHeight: toolbarButtonHeight,
       },
     );
+
+    // Overlay just the ON/OFF token in color while keeping the base label white.
+    const apiLabel = this.apiSpriteToggle.list[1] as Phaser.GameObjects.Text;
+    const apiStatus = this.add
+      .text(0, 0, "OFF", {
+        fontFamily: "sans-serif",
+        fontSize: `${toolbarButtonFontSize}px`,
+        color: "#ef4444",
+      })
+      .setOrigin(0, 0.5);
+
+    apiLabel.setText("👾 API Sprites: OFF");
+    apiLabel.setColor("#ffffff");
+    apiLabel.setText("👾 API Sprites: ");
+    const initialPrefixWidth = apiLabel.width;
+    apiLabel.setText("👾 API Sprites: OFF");
+    const initialFullWidth = apiLabel.width;
+    apiStatus.setPosition(-initialFullWidth / 2 + initialPrefixWidth, 0);
+    this.apiSpriteToggle.add(apiStatus);
+
     this.apiSpriteToggle.setDepth(1001);
 
     const saveButton = this.createButton(
@@ -503,14 +595,14 @@ export class UIScene extends Phaser.Scene {
     this.game.events.on("regenerate:started", () => {
       try {
         const bg = this.regenerateButton
-          .list[0] as Phaser.GameObjects.Rectangle;
+          .list[0] as Phaser.GameObjects.GameObject;
         const txt = this.regenerateButton.list[1] as Phaser.GameObjects.Text;
         // Visual feedback: disable interaction and change text
         try {
           bg.disableInteractive();
         } catch (e) {}
         try {
-          txt.setText("Regenerating...");
+          txt.setText("♻️ Regenerating...");
         } catch (e) {}
       } catch (e) {
         // ignore
@@ -520,13 +612,13 @@ export class UIScene extends Phaser.Scene {
     this.game.events.on("regenerate:finished", (_payload?: any) => {
       try {
         const bg = this.regenerateButton
-          .list[0] as Phaser.GameObjects.Rectangle;
+          .list[0] as Phaser.GameObjects.GameObject;
         const txt = this.regenerateButton.list[1] as Phaser.GameObjects.Text;
         try {
           bg.setInteractive({ useHandCursor: true });
         } catch (e) {}
         try {
-          txt.setText("Linear Regen");
+          txt.setText("♻️ Linear Regen");
         } catch (e) {}
       } catch (e) {
         // ignore
@@ -589,10 +681,28 @@ export class UIScene extends Phaser.Scene {
 
   private populateBlockGroup(container: HTMLDivElement, blocks: string[]) {
     container.innerHTML = "";
+    const blockToIconClass: { [key: string]: string } = {
+      Coin: "pt-block-icon-coin",
+      Fruit: "pt-block-icon-fruit",
+      "Grass-Half Block": "pt-block-icon-grass-half",
+      "Dirt Block": "pt-block-icon-dirt",
+      "Question Block": "pt-block-icon-question",
+      "Ultra Slime": "pt-block-icon-ultra-slime",
+      "Slime Enemy": "pt-block-icon-slime",
+    };
+
     for (const block of blocks) {
       const b = document.createElement("button");
-      // Use the block name for the label and emit selection so other scenes can react
-      b.textContent = block;
+      if (block === "Eraser") {
+        b.textContent = "Eraser 🗑️";
+      } else if (blockToIconClass[block]) {
+        b.innerHTML = `<span class="pt-block-icon ${blockToIconClass[block]}" aria-hidden="true"></span>`;
+        b.setAttribute("aria-label", block);
+        b.title = block;
+      } else {
+        b.textContent = block;
+      }
+
       b.addEventListener("click", () => {
         // Remove 'selected' class from all block buttons in the Blocks tab
         const allBlockButtons = (
@@ -726,6 +836,9 @@ export class UIScene extends Phaser.Scene {
     opts?: {
       paddingX?: number;
       paddingY?: number;
+      cornerRadius?: number;
+      fontFamily?: string;
+      minWidth?: number;
       strokeWidth?: number;
       stroke?: number;
       fill?: number;
@@ -749,23 +862,29 @@ export class UIScene extends Phaser.Scene {
     const hoverStroke = opts?.hoverStroke ?? stroke;
     const downStroke = opts?.downStroke ?? stroke;
     const fontSize = opts?.fontSize ?? 25;
+    const fontFamily = opts?.fontFamily ?? "sans-serif";
     const textColor = opts?.textColor ?? "#111111";
+    const cornerRadius = opts?.cornerRadius ?? 10;
 
     // Label
     const txt = scene.add
       .text(0, 0, label, {
+        fontFamily,
         fontSize: `${fontSize}px`,
         color: textColor,
       })
       .setOrigin(0.5);
 
-    // Size
+    // Size from rendered text bounds plus padding.
+    const effectiveTextWidth = Math.ceil(txt.width);
+    const effectiveTextHeight = Math.ceil(txt.height);
     const w = Math.max(
-      opts?.fixedWidth ?? Math.ceil(txt.width) + paddingX * 2,
+      opts?.fixedWidth ?? effectiveTextWidth + paddingX * 2,
+      opts?.minWidth ?? 48,
       48,
     );
     const h = Math.max(
-      opts?.minHeight ?? Math.ceil(txt.height) + paddingY * 2,
+      opts?.minHeight ?? effectiveTextHeight + paddingY * 2,
       28,
     );
 
@@ -775,45 +894,94 @@ export class UIScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
       */
 
-    // Background with real border — make THIS the interactive thing
-    const bg = scene.add
-      .rectangle(0, 0, w, h, fill)
-      .setOrigin(0.5)
-      .setStrokeStyle(strokeW, stroke)
-      .setInteractive({ useHandCursor: true }); // attach events to bg
+    // Rounded background with real border — make THIS the interactive thing
+    const bg = scene.add.graphics();
+    this.drawRoundedButtonBackground(
+      bg,
+      w,
+      h,
+      fill,
+      strokeW,
+      stroke,
+      cornerRadius,
+    );
+    bg.setData("buttonWidth", w);
+    bg.setData("buttonHeight", h);
+    bg.setData("buttonStrokeWidth", strokeW);
+    bg.setData("buttonCornerRadius", cornerRadius);
+    bg.setInteractive(
+      new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    bg.input!.cursor = "pointer";
 
     // Container groups them (so you can add to panel)
     const btn = scene.add.container(x, y, [bg, txt]).setSize(w, h);
 
     // ----- States -----
     bg.on("pointerover", () => {
-      bg.setFillStyle(hoverFill);
-      bg.setStrokeStyle(strokeW, hoverStroke);
+      this.drawRoundedButtonBackground(
+        bg,
+        w,
+        h,
+        hoverFill,
+        strokeW,
+        hoverStroke,
+        cornerRadius,
+      );
       (scene as UIScene).setPointerOverUI?.(true);
     });
 
     bg.on("pointerout", () => {
-      bg.setFillStyle(fill);
-      bg.setStrokeStyle(strokeW, stroke);
+      this.drawRoundedButtonBackground(
+        bg,
+        w,
+        h,
+        fill,
+        strokeW,
+        stroke,
+        cornerRadius,
+      );
       (scene as UIScene).setPointerOverUI?.(false);
     });
 
     bg.on("pointerdown", () => {
-      bg.setFillStyle(downFill);
-      bg.setStrokeStyle(strokeW, downStroke);
+      this.drawRoundedButtonBackground(
+        bg,
+        w,
+        h,
+        downFill,
+        strokeW,
+        downStroke,
+        cornerRadius,
+      );
     });
 
     // Fire only on release *inside*; also handle outside release to reset color
     bg.on("pointerup", () => {
-      bg.setFillStyle(hoverFill);
-      bg.setStrokeStyle(strokeW, hoverStroke);
+      this.drawRoundedButtonBackground(
+        bg,
+        w,
+        h,
+        hoverFill,
+        strokeW,
+        hoverStroke,
+        cornerRadius,
+      );
       onClick();
     });
 
     bg.on("pointerupoutside", () => {
       // released outside: revert to normal, don't click
-      bg.setFillStyle(fill);
-      bg.setStrokeStyle(strokeW, stroke);
+      this.drawRoundedButtonBackground(
+        bg,
+        w,
+        h,
+        fill,
+        strokeW,
+        stroke,
+        cornerRadius,
+      );
     });
 
     return btn;
@@ -848,7 +1016,7 @@ export class UIScene extends Phaser.Scene {
       this,
       100,
       this.cameras.main.height - 50, // 100 pixels from bottom of screen
-      "Play",
+      "▶️ Play",
       () => {
         this.startGame();
       },
@@ -860,7 +1028,7 @@ export class UIScene extends Phaser.Scene {
         hoverStroke: 0xb3b3b3,
         downStroke: 0xd9d9d9,
         textColor: "#ffffff", // White text
-        fontSize: 14,
+        fontSize: 17,
         paddingX: 16,
         paddingY: 11,
         minHeight: 52,

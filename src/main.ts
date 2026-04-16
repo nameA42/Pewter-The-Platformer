@@ -50,9 +50,12 @@ sendSystemMessage("Introduce yourself and explain what you can do briefly.");
 
 ////****Phaser Game Setup****////
 
+const renderResolution = Math.min(window.devicePixelRatio || 1, 2);
+
 //Create Phaser game instance
-const gameInstance = new Phaser.Game({
+const gameConfig: Phaser.Types.Core.GameConfig & { resolution?: number } = {
   type: Phaser.CANVAS,
+  resolution: renderResolution,
   render: {
     pixelArt: true,
   },
@@ -73,7 +76,9 @@ const gameInstance = new Phaser.Game({
   dom: {
     createContainer: true, //This line enables DOM support for chatbox
   },
-});
+};
+
+const gameInstance = new Phaser.Game(gameConfig);
 
 export function getScene(): EditorScene {
   if (!gameInstance) throw Error("Scene does not exist >:(");

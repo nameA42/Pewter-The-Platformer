@@ -321,10 +321,10 @@ export class GameScene extends Phaser.Scene {
 
     if (this.cursors.left.isDown || this.wasd.A.isDown) {
       moveInput = -1;
-      player.setFlipX(true);
+      player.setFlipX(false);
     } else if (this.cursors.right.isDown || this.wasd.D.isDown) {
       moveInput = 1;
-      player.setFlipX(false);
+      player.setFlipX(true);
     }
 
     if (moveInput !== 0) {

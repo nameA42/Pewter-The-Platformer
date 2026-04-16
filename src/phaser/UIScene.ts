@@ -170,7 +170,7 @@ export class UIScene extends Phaser.Scene {
             </div>
             <div class="control-item">
               <span class="control-key">WASD</span>
-              <span class="control-desc">Move camera & character (Press <strong>Shift</strong> to move slower)</span>
+              <span class="control-desc">Move camera & character (Press <strong>Shift</strong> to move faster)</span>
             </div>
             <div class="control-item">
               <span class="control-key">U</span>
@@ -192,6 +192,10 @@ export class UIScene extends Phaser.Scene {
             <div class="control-item">
               <span class="control-key">Ctrl + Z</span>
               <span class="control-desc">Undo last action</span>
+            </div>
+            <div class="control-item">
+              <span class="control-key">Ctrl + Y / Ctrl + Shift + Z</span>
+              <span class="control-desc">Redo last action</span>
             </div>
             <div class="control-item">
               <span class="control-key">Del</span>

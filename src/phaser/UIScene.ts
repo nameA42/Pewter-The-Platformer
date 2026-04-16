@@ -38,7 +38,6 @@ export class UIScene extends Phaser.Scene {
   private playButton!: Phaser.GameObjects.Container;
   private regenerateButton!: Phaser.GameObjects.Container;
   private deselectBoxBtn!: Phaser.GameObjects.Container;
-  private regenAlgoToggle!: Phaser.GameObjects.Container;
   private apiSpriteToggle!: Phaser.GameObjects.Container;
 
   //Inputs
@@ -180,7 +179,6 @@ export class UIScene extends Phaser.Scene {
         this.playButton.setVisible(isChatVisible);
         this.deselectBoxBtn.setVisible(isChatVisible);
         this.regenerateButton.setVisible(isChatVisible);
-        this.regenAlgoToggle.setVisible(isChatVisible);
         this.apiSpriteToggle.setVisible(isChatVisible);
         try {
           this.game.events.emit("ui:toggleMinimap", isChatVisible);
@@ -206,8 +204,7 @@ export class UIScene extends Phaser.Scene {
           this.playButton.setVisible(isChatVisible);
           this.deselectBoxBtn.setVisible(isChatVisible);
           this.regenerateButton.setVisible(isChatVisible);
-          this.regenAlgoToggle.setVisible(isChatVisible);
-          this.apiSpriteToggle.setVisible(isChatVisible);
+            this.apiSpriteToggle.setVisible(isChatVisible);
           try {
             this.game.events.emit("ui:toggleMinimap", isChatVisible);
           } catch (err) {}
@@ -391,31 +388,6 @@ export class UIScene extends Phaser.Scene {
     );
     this.regenerateButton.setDepth(1001);
 
-    // Event Queue Regen button
-    this.regenAlgoToggle = this.createButton(
-      this,
-      550,
-      toolbarY,
-      "Event Queue Regen",
-      () => {
-        this.game.events.emit("ui:eventQueueRegen");
-      },
-      {
-        fill: 0x222222,
-        hoverFill: 0x222222,
-        downFill: 0x1a1a1a,
-        stroke: 0x444444,
-        hoverStroke: 0xb3b3b3,
-        downStroke: 0xd9d9d9,
-        textColor: "#ffffff",
-        fontSize: toolbarButtonFontSize,
-        paddingX: toolbarButtonPaddingX,
-        paddingY: toolbarButtonPaddingY,
-        minHeight: toolbarButtonHeight,
-      },
-    );
-    this.regenAlgoToggle.setDepth(1001);
-
     // API Sprite Generation toggle button
     // Starts OFF to prevent accidental API credit usage
     this.apiSpriteToggle = this.createButton(
@@ -462,10 +434,9 @@ export class UIScene extends Phaser.Scene {
     );
     this.apiSpriteToggle.setDepth(1001);
 
-    // Save button
-    this.createButton(
+    const saveButton = this.createButton(
       this,
-      880,
+      0,
       toolbarY,
       "Save",
       () => {
@@ -484,12 +455,12 @@ export class UIScene extends Phaser.Scene {
         paddingY: toolbarButtonPaddingY,
         minHeight: toolbarButtonHeight,
       },
-    ).setDepth(1001);
+    );
+    saveButton.setDepth(1001);
 
-    // Load button
-    this.createButton(
+    const loadButton = this.createButton(
       this,
-      980,
+      0,
       toolbarY,
       "Load",
       () => {
@@ -508,15 +479,17 @@ export class UIScene extends Phaser.Scene {
         paddingY: toolbarButtonPaddingY,
         minHeight: toolbarButtonHeight,
       },
-    ).setDepth(1001);
+    );
+    loadButton.setDepth(1001);
 
     // Layout toolbar buttons based on measured text width with consistent spacing.
     const toolbarButtons = [
       this.playButton,
       this.deselectBoxBtn,
       this.regenerateButton,
-      this.regenAlgoToggle,
       this.apiSpriteToggle,
+      saveButton,
+      loadButton,
     ];
     let toolbarX = 20;
     for (const btn of toolbarButtons) {
@@ -525,37 +498,6 @@ export class UIScene extends Phaser.Scene {
       toolbarX += w + toolbarButtonGap;
     }
 
-    // Listen for event queue regeneration lifecycle events
-    this.game.events.on("eventQueueRegen:started", () => {
-      try {
-        const bg = this.regenAlgoToggle.list[0] as Phaser.GameObjects.Rectangle;
-        const txt = this.regenAlgoToggle.list[1] as Phaser.GameObjects.Text;
-        // Visual feedback: disable interaction and change text
-        try {
-          bg.disableInteractive();
-        } catch (e) {}
-        try {
-          txt.setText("Regenerating...");
-        } catch (e) {}
-      } catch (e) {
-        // ignore
-      }
-    });
-
-    this.game.events.on("eventQueueRegen:finished", (_payload?: any) => {
-      try {
-        const bg = this.regenAlgoToggle.list[0] as Phaser.GameObjects.Rectangle;
-        const txt = this.regenAlgoToggle.list[1] as Phaser.GameObjects.Text;
-        try {
-          bg.setInteractive({ useHandCursor: true });
-        } catch (e) {}
-        try {
-          txt.setText("Event Queue Regen");
-        } catch (e) {}
-      } catch (e) {
-        // ignore
-      }
-    });
 
     // Listen for regeneration lifecycle events so the button can show feedback
     this.game.events.on("regenerate:started", () => {

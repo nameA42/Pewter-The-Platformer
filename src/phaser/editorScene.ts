@@ -311,6 +311,9 @@ export class EditorScene extends Phaser.Scene {
       (window as any).getActiveSelectionBox = () => this.activeBox;
     }
 
+    this.game.events.on("ui:save", () => this.saveToFile());
+    this.game.events.on("ui:load", () => this.loadFromFile());
+
     this.map = this.make.tilemap({ key: "defaultMap" });
     this.worldFacts = new WorldFacts(this);
 
@@ -1170,6 +1173,86 @@ export class EditorScene extends Phaser.Scene {
     }
     console.log("No action to redo");
     return false;
+  }
+
+  public saveToFile(): void {
+    const snap = this.captureSnapshot();
+    const boxes = this.selectionBoxes.map((b) => ({
+      start: { x: b.getStart().x, y: b.getStart().y },
+      end: { x: b.getEnd().x, y: b.getEnd().y },
+      zLevel: b.getZLevel(),
+      placedTiles: b.placedTiles,
+      placedEnemies: b.placedEnemies,
+      chatHistory: b.localContext.chatHistory,
+    }));
+
+    const payload = JSON.stringify(
+      { version: 1, ...snap, selectionBoxes: boxes },
+      null,
+      2,
+    );
+    const blob = new Blob([payload], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "pewter-map.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  public loadFromFile(): void {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = JSON.parse(ev.target!.result as string);
+
+          // 1. Restore tiles + enemies
+          this.restoreSnapshot({
+            groundTiles: data.groundTiles ?? [],
+            collectablesTiles: data.collectablesTiles ?? [],
+            enemies: data.enemies ?? [],
+          });
+
+          // 2. Destroy all existing selection boxes
+          for (const b of this.selectionBoxes) b.destroy?.();
+          if (this.activeBox) {
+            this.activeBox.destroy?.();
+            this.activeBox = null;
+          }
+          this.selectionBoxes = [];
+
+          // 3. Recreate selection boxes
+          for (const sd of data.selectionBoxes ?? []) {
+            const box = new SelectionBox(
+              this,
+              new Phaser.Math.Vector2(sd.start.x, sd.start.y),
+              new Phaser.Math.Vector2(sd.end.x, sd.end.y),
+              sd.zLevel ?? 1,
+              this.groundLayer,
+              (b) => this.selectBox(b),
+            );
+            box.placedTiles = sd.placedTiles ?? [];
+            box.placedEnemies = sd.placedEnemies ?? [];
+            box.localContext.chatHistory = sd.chatHistory ?? [];
+            box.finalize();
+            this.selectionBoxes.push(box);
+          }
+
+          // 4. Push loaded state onto undo stack
+          this.saveSnapshot();
+        } catch (err) {
+          console.error("Failed to load save file:", err);
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
   }
 
   bindMapHistory(): void {

@@ -6,6 +6,7 @@ import {
 import { EditorScene } from "./editorScene.ts";
 import { SpriteGenerator } from "../enemySystem/sprite/SpriteGenerator.ts";
 import "./chatbox.css";
+import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
 
 export class UIScene extends Phaser.Scene {
   constructor() {
@@ -279,7 +280,33 @@ export class UIScene extends Phaser.Scene {
         } else {
           console.log("[MoveContext] No move context (moveContext is null/undefined)");
         }
-        const hiddenContext = [this.latestSelectionContext, moveContext]
+        // Refresh and gather world facts localized to the active selection box
+        let worldFactsContext: string | null = null;
+        if (activeBox) {
+          try {
+            const editorScene = this.scene.get("editorScene") as EditorScene;
+            editorScene.worldFacts.refresh();
+            const bounds = activeBox.getBounds();
+            const xMin = bounds.x;
+            const xMax = bounds.x + bounds.width - 1;
+            const yMin = bounds.y;
+            const yMax = bounds.y + bounds.height - 1;
+            const factLines: string[] = [];
+            for (const cat of ["Structure", "Collectable", "Enemy"] as const) {
+              const facts = editorScene.worldFacts.getFact(cat, xMin, xMax, yMin, yMax);
+              if (facts.length > 0) {
+                factLines.push(...facts.map((f) => f.toString()));
+              }
+            }
+            if (factLines.length > 0) {
+              worldFactsContext = `World facts for this selection:\n${factLines.join("\n")}`;
+            }
+          } catch (e) {
+            console.warn("[WorldFacts] Failed to gather localized facts:", e);
+          }
+        }
+
+        const hiddenContext = [this.latestSelectionContext, moveContext, worldFactsContext]
           .filter(Boolean)
           .join("\n");
         const sendPromise = sendUserPromptWithContext(
@@ -434,6 +461,54 @@ export class UIScene extends Phaser.Scene {
       },
     );
     this.apiSpriteToggle.setDepth(1001);
+
+    // Save button
+    this.createButton(
+      this,
+      880,
+      toolbarY,
+      "Save",
+      () => {
+        this.game.events.emit("ui:save");
+      },
+      {
+        fill: 0x1a3a1a,
+        hoverFill: 0x1a3a1a,
+        downFill: 0x112611,
+        stroke: 0x44aa44,
+        hoverStroke: 0x88dd88,
+        downStroke: 0xaaffaa,
+        textColor: "#88dd88",
+        fontSize: toolbarButtonFontSize,
+        paddingX: toolbarButtonPaddingX,
+        paddingY: toolbarButtonPaddingY,
+        minHeight: toolbarButtonHeight,
+      },
+    ).setDepth(1001);
+
+    // Load button
+    this.createButton(
+      this,
+      980,
+      toolbarY,
+      "Load",
+      () => {
+        this.game.events.emit("ui:load");
+      },
+      {
+        fill: 0x1a2a3a,
+        hoverFill: 0x1a2a3a,
+        downFill: 0x111a26,
+        stroke: 0x4488cc,
+        hoverStroke: 0x88bbee,
+        downStroke: 0xaaddff,
+        textColor: "#88bbee",
+        fontSize: toolbarButtonFontSize,
+        paddingX: toolbarButtonPaddingX,
+        paddingY: toolbarButtonPaddingY,
+        minHeight: toolbarButtonHeight,
+      },
+    ).setDepth(1001);
 
     // Layout toolbar buttons based on measured text width with consistent spacing.
     const toolbarButtons = [

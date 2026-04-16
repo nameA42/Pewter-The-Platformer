@@ -7,6 +7,7 @@ type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
 import { regenerateSelection as regenerateSelectionModule } from "./regenerator";
 import { sendUserPrompt } from "../languageModel/chatBox";
 import { setActiveSelectionBox } from "../languageModel/chatBox";
+import { HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
 import { Slime } from "./ExternalClasses/Slime.ts";
 import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
 import { DynamicEnemy } from "../enemySystem/runtime/DynamicEnemy.ts";
@@ -21,10 +22,20 @@ type EnemySnapshotEntry =
   | { kind: "UltraSlime"; spawnX: number; spawnY: number }
   | { kind: "Dynamic"; spawnX: number; spawnY: number; definition: any };
 
+interface BoxSnapshot {
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  zLevel: number;
+  placedTiles: { tileIndex: number; x: number; y: number; layerName: string }[];
+  placedEnemies: { enemyType: string; x: number; y: number }[];
+  chatHistory: { type: string; content: string }[];
+}
+
 interface WorldSnapshot {
   groundTiles: { x: number; y: number; index: number }[];
   collectablesTiles: { x: number; y: number; index: number }[];
   enemies: EnemySnapshotEntry[];
+  selectionBoxes: BoxSnapshot[];
 }
 
 export class EditorScene extends Phaser.Scene {
@@ -310,6 +321,9 @@ export class EditorScene extends Phaser.Scene {
     if (typeof window !== "undefined") {
       (window as any).getActiveSelectionBox = () => this.activeBox;
     }
+
+    this.game.events.on("ui:save", () => this.saveToFile());
+    this.game.events.on("ui:load", () => this.loadFromFile());
 
     this.map = this.make.tilemap({ key: "defaultMap" });
     this.worldFacts = new WorldFacts(this);
@@ -1102,7 +1116,23 @@ export class EditorScene extends Phaser.Scene {
       }
     });
 
-    return { groundTiles, collectablesTiles, enemies };
+    // Capture selection boxes — serialize chat messages to plain objects so
+    // they survive both JSON save/load and in-memory undo/redo correctly.
+    const selectionBoxes: BoxSnapshot[] = this.selectionBoxes.map((b) => ({
+      start: { x: b.getStart().x, y: b.getStart().y },
+      end: { x: b.getEnd().x, y: b.getEnd().y },
+      zLevel: b.getZLevel(),
+      placedTiles: b.placedTiles.slice(),
+      placedEnemies: b.placedEnemies.slice(),
+      chatHistory: b.localContext.chatHistory
+        .filter((m) => m._getType?.() !== "system") // don't snapshot the system prompt
+        .map((m) => ({
+          type: m._getType?.() ?? "human",
+          content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+        })),
+    }));
+
+    return { groundTiles, collectablesTiles, enemies, selectionBoxes };
   }
 
   public restoreSnapshot(snapshot: WorldSnapshot): void {
@@ -1141,6 +1171,33 @@ export class EditorScene extends Phaser.Scene {
       }
     }
 
+    // Restore selection boxes
+    for (const b of this.selectionBoxes) b.destroy?.();
+    if (this.activeBox) { this.activeBox.destroy?.(); this.activeBox = null; }
+    this.selectionBoxes = [];
+    setActiveSelectionBox(null); // clear the chat pane so it doesn't show stale history
+
+    for (const sd of snapshot.selectionBoxes) {
+      const box = new SelectionBox(
+        this,
+        new Phaser.Math.Vector2(sd.start.x, sd.start.y),
+        new Phaser.Math.Vector2(sd.end.x, sd.end.y),
+        sd.zLevel,
+        this.groundLayer,
+        (b) => this.selectBox(b),
+      );
+      box.placedTiles = sd.placedTiles.slice();
+      box.placedEnemies = sd.placedEnemies.slice();
+      // Reconstruct proper LangChain message instances from the serialized format
+      box.localContext.chatHistory = sd.chatHistory.map((m) => {
+        if (m.type === "ai") return new AIMessage(m.content);
+        if (m.type === "system") return new SystemMessage(m.content);
+        return new HumanMessage(m.content);
+      });
+      box.finalize();
+      this.selectionBoxes.push(box);
+    }
+
     this.worldFacts.refresh();
   }
 
@@ -1170,6 +1227,65 @@ export class EditorScene extends Phaser.Scene {
     }
     console.log("No action to redo");
     return false;
+  }
+
+  public saveToFile(): void {
+    // captureSnapshot already serializes everything including chat history correctly
+    const snap = this.captureSnapshot();
+    const payload = JSON.stringify({ version: 1, ...snap }, null, 2);
+    const blob = new Blob([payload], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "pewter-map.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  public loadFromFile(): void {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = JSON.parse(ev.target!.result as string);
+
+          // Normalise chat history entries — old saves used raw LangChain
+          // serialisation ({ lc, type: "constructor", id, kwargs }); new saves
+          // use plain { type, content } objects. Convert old format on the fly.
+          const normBoxes = (data.selectionBoxes ?? []).map((sd: any) => ({
+            ...sd,
+            chatHistory: (sd.chatHistory ?? []).map((m: any) => {
+              if (m.type === "constructor" && Array.isArray(m.id)) {
+                const kind = m.id[m.id.length - 1] ?? "HumanMessage";
+                const content = m.kwargs?.content ?? "";
+                if (kind === "AIMessage")    return { type: "ai",     content };
+                if (kind === "SystemMessage") return { type: "system", content };
+                return { type: "human", content };
+              }
+              return m; // already in new { type, content } format
+            }),
+          }));
+
+          this.restoreSnapshot({
+            groundTiles:       data.groundTiles       ?? [],
+            collectablesTiles: data.collectablesTiles ?? [],
+            enemies:           data.enemies           ?? [],
+            selectionBoxes:    normBoxes,
+          });
+
+          this.saveSnapshot();
+        } catch (err) {
+          console.error("Failed to load save file:", err);
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
   }
 
   bindMapHistory(): void {

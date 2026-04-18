@@ -52,6 +52,103 @@ export interface MapSnapshot {
 }
 
 /* ---------------- Snapshot Capture ---------------- */
+export class RegenerationRequest {
+  private selection: SelectionBox;
+  private priority: number;
+  private info: SelectionInfo;
+  private contextCollaboration: string;
+
+  constructor(
+    selection: SelectionBox,
+    priority: number,
+    worldFacts: WorldFacts,
+    contextCollaboration: string,
+  ) {
+    this.selection = selection;
+    this.priority = priority;
+    this.info = new SelectionInfo(
+      worldFacts,
+      selection.getPlacedTiles(),
+      selection.getChatHistory(),
+      selection.getZLevel(),
+      selection.getStart().x,
+      selection.getStart().y,
+      selection.getEnd().x,
+      selection.getEnd().y,
+    );
+    this.contextCollaboration = contextCollaboration;
+  }
+
+  getSelection(): SelectionBox {
+    return this.selection;
+  }
+
+  getPriority(): number {
+    return this.priority;
+  }
+
+  getInfo(): SelectionInfo {
+    return this.info;
+  }
+
+  getContextCollaboration(): string {
+    return this.contextCollaboration;
+  }
+
+  setSelection(selection: SelectionBox): void {
+    this.selection = selection;
+  }
+
+  setPriority(priority: number): void {
+    this.priority = priority;
+  }
+
+  setInfo(info: SelectionInfo): void {
+    this.info = info;
+  }
+
+  setContextCollaboration(contextCollaboration: string): void {
+    this.contextCollaboration = contextCollaboration;
+  }
+}
+
+export class RegenerationQueue<SelectionBox = any> {
+  private queue: RegenerationRequest[] = [];
+  push(request: RegenerationRequest) {
+    this.queue.push(request);
+    this.sortQueue();
+  }
+
+  pop(): RegenerationRequest | undefined {
+    return this.queue.shift();
+  }
+
+  isEmpty(): boolean {
+    return this.queue.length === 0;
+  }
+
+  override(layer: SelectionBox, newPriority: number, newInfo: any) {
+    const reqIndex = this.queue.findIndex((r) => r.getSelection() === layer);
+    if (reqIndex >= 0) {
+      const req = this.queue[reqIndex];
+      req.setPriority(newPriority);
+      req.setInfo(newInfo);
+      this.sortQueue();
+    } else {
+      console.warn(
+        "[RegenerationQueue] Layer not found in queue for override.",
+      );
+    }
+  }
+
+  contains(layer: SelectionBox): boolean {
+    return this.queue.some((r) => r.getSelection() === layer);
+  }
+
+  private sortQueue() {
+    this.queue.sort((a, b) => a.getPriority() - b.getPriority());
+  }
+}
 
 function captureSnapshot(
   scene: EditorScene,
@@ -247,6 +344,36 @@ Use this information to guide your regeneration. Simply do the regeneration by d
   `;
 }
 
+/* ---------------- Dependency Graph Construction ---------------- */
+
+export interface OwnershipMap {
+  // Key: `${x},${y},${layerName}` | Value: SelectionBox that owns the tile
+  tileOwners: Map<string, SelectionBox>;
+}
+
+function buildOwnershipMap(allSelections: SelectionBox[]): OwnershipMap {
+  const tileOwners = new Map<string, SelectionBox>();
+
+  // Determine tile ownership based on each selection's placed tiles (derived from chat history)
+  for (const selection of allSelections) {
+    const placedTiles = selection.getPlacedTiles();
+
+    // Mark all tiles placed by this selection as owned by it
+    for (const tile of placedTiles) {
+      const key = `${tile.x},${tile.y},${tile.layerName}`;
+      // Lower z-level owns shared tiles (if not already owned)
+      if (
+        !tileOwners.has(key) ||
+        selection.getZLevel() < tileOwners.get(key)!.getZLevel()
+      ) {
+        tileOwners.set(key, selection);
+      }
+    }
+  }
+
+  return { tileOwners };
+}
+
 /* ---------------- Main Regeneration Function ---------------- */
 
 export async function regenerate(
@@ -255,10 +382,19 @@ export async function regenerate(
   worldFacts: WorldFacts,
   scene: EditorScene,
 ) {
-  // Queue all selections into a priority/dependency schedule.
-  // Priority: higher z first (within ready set)
-  // Dependency: if two selections overlap and have different z, lower-z MUST run before higher-z.
-  const steps = scheduleRegenerationSteps(scene, allSelections);
+  // Build ownership map before regen so downstream filtering has a stable source of truth.
+  const ownershipMap = buildOwnershipMap(allSelections);
+  console.log(
+    "[Regeneration] Ownership map built with",
+    ownershipMap.tileOwners.size,
+    "owned tiles",
+  );
+
+  // Scheduler provides dependency-safe order; we additionally enforce low z -> high z.
+  const steps = scheduleRegenerationSteps(scene, allSelections).sort(
+    (a, b) => a.job.z - b.job.z,
+  );
+
   console.log(
     "[RegenerationScheduler] Execution order (z):",
     steps.map((s) => s.job.z),
@@ -268,85 +404,82 @@ export async function regenerate(
     const selection = step.job.selection;
     selection.setActive(true);
 
-    // Expose protected overlap rectangles to tools during this regeneration step.
-    // Tools consult OverlapChecker.checkRegenProtection(scene, x, y).
-    (scene as any).regenProtectedRects = step.protectedRects.map((r) => ({
-      x: r.x,
-      y: r.y,
-      width: r.width,
-      height: r.height,
-    }));
+    try {
+      // Expose protected overlap rectangles to tool guards during this step.
+      (scene as any).regenProtectedRects = step.protectedRects.map((r) => ({
+        x: r.x,
+        y: r.y,
+        width: r.width,
+        height: r.height,
+      }));
 
-    // Recompute info at time-of-execution so context passes smoothly between steps
-    // (previous steps may have placed tiles/enemies).
-    const contextCollaboration =
-      selection.getCollaborativeContextForChat() +
-      (step.overlapContextText
-        ? `\n\n=== Overlap Context ===\n${step.overlapContextText}`
-        : "");
+      const contextCollaboration =
+        selection.getCollaborativeContextForChat() +
+        (step.overlapContextText
+          ? `\n\n=== Overlap Context ===\n${step.overlapContextText}`
+          : "");
 
-    const info = new SelectionInfo(
-      worldFacts,
-      selection.getPlacedTiles(),
-      selection.getChatHistory(),
-      selection.getZLevel(),
-      selection.getStart().x,
-      selection.getStart().y,
-      selection.getEnd().x,
-      selection.getEnd().y,
-    );
+      const info = new SelectionInfo(
+        worldFacts,
+        selection.getPlacedTiles(),
+        selection.getChatHistory(),
+        selection.getZLevel(),
+        selection.getStart().x,
+        selection.getStart().y,
+        selection.getEnd().x,
+        selection.getEnd().y,
+      );
 
-    const bounds = {
-      x: Math.min(info.selectionStartX, info.selectionEndX),
-      y: Math.min(info.selectionStartY, info.selectionEndY),
-      width: Math.abs(info.selectionEndX - info.selectionStartX),
-      height: Math.abs(info.selectionEndY - info.selectionStartY),
-    };
+      const bounds = {
+        x: Math.min(info.selectionStartX, info.selectionEndX),
+        y: Math.min(info.selectionStartY, info.selectionEndY),
+        width: Math.abs(info.selectionEndX - info.selectionStartX),
+        height: Math.abs(info.selectionEndY - info.selectionStartY),
+      };
 
-    const snapshot = captureSnapshot(scene, bounds);
+      const snapshot = captureSnapshot(scene, bounds);
 
-    const neighbors: number[][] = [];
-    for (const neighbor of selection.getNeighbors()) {
-      neighbors.push([
-        neighbor.getStart().x,
-        neighbor.getStart().y,
-        neighbor.getEnd().x,
-        neighbor.getEnd().y,
-      ]);
-    }
-
-    const guidePrompt = createGuidePrompt(
-      info,
-      snapshot,
-      contextCollaboration,
-      neighbors,
-    );
-
-    const chatMessageHistory: BaseMessage[] = [];
-    chatMessageHistory.push(
-      new SystemMessage({ content: String(guidePrompt) }),
-    );
-
-    // HARD RESET behavior: only replay human prompts.
-    // (We intentionally do not include any previous assistant/tool messages.)
-    for (const msg of selection.getChatHistory()) {
-      try {
-        if (msg?.getType?.() === "human") chatMessageHistory.push(msg);
-      } catch (e) {
-        // ignore
+      const neighbors: number[][] = [];
+      for (const neighbor of selection.getNeighbors()) {
+        neighbors.push([
+          neighbor.getStart().x,
+          neighbor.getStart().y,
+          neighbor.getEnd().x,
+          neighbor.getEnd().y,
+        ]);
       }
+
+      const guidePrompt = createGuidePrompt(
+        info,
+        snapshot,
+        contextCollaboration,
+        neighbors,
+      );
+
+      const chatMessageHistory: BaseMessage[] = [
+        new SystemMessage({ content: String(guidePrompt) }),
+      ];
+
+      // Replay only human prompts during regeneration reset.
+      for (const msg of selection.getChatHistory()) {
+        try {
+          if (msg?.getType?.() === "human") chatMessageHistory.push(msg);
+        } catch {
+          // ignore malformed history entries
+        }
+      }
+
+      const llmResult = await getChatResponse(chatMessageHistory);
+      console.log(
+        `[Regeneration] Completed selection z=${selection.getZLevel()}`,
+      );
+      console.log("[LLM Output Text]:", llmResult.text.join("\n"));
+      console.log("[Tool Calls]:", llmResult.toolCalls);
+    } finally {
+      // Always clear temp protection/selection state even if a step fails.
+      (scene as any).regenProtectedRects = [];
+      selection.setActive(false);
     }
-
-    const llmResult = await getChatResponse(chatMessageHistory);
-    console.log(
-      `[Regeneration] Completed selection z=${selection.getZLevel()}`,
-    );
-    console.log("[LLM Output Text]:", llmResult.text.join("\n"));
-    console.log("[Tool Calls]:", llmResult.toolCalls);
-
-    // Clear regen protection so normal editing is unaffected.
-    (scene as any).regenProtectedRects = [];
-    selection.setActive(false);
   }
 
   console.log("[Regeneration] Scene regeneration complete.");

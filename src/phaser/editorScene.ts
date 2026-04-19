@@ -13,7 +13,7 @@ import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
 import { DynamicEnemy } from "../enemySystem/runtime/DynamicEnemy.ts";
 import { UIScene } from "./UIScene.ts";
 import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
-import { replaceAllBoxes, SelectionBox } from "./selectionBox.ts";
+import { replaceAllBoxes, SelectionBox, allSelectionBoxes } from "./selectionBox.ts";
 import { regenerate } from "./ExternalClasses/RegenerationTools.ts";
 import { Z_LEVEL_COLORS } from "./colors";
 
@@ -27,7 +27,9 @@ interface BoxSnapshot {
   end: { x: number; y: number };
   zLevel: number;
   placedTiles: { tileIndex: number; x: number; y: number; layerName: string }[];
-  placedEnemies: { enemyType: string; x: number; y: number }[];
+  placedEnemies:
+  // { enemyType: string; x: number; y: number }[];
+  (Slime | UltraSlime)[];
   chatHistory: { type: string; content: string }[];
 }
 
@@ -97,7 +99,7 @@ export class EditorScene extends Phaser.Scene {
     endY: number;
   } | null = null;
   public activeBox: SelectionBox | null = null;
-  selectionBoxes: SelectionBox[] = [];
+  // allSelectionBoxes: SelectionBox[] = [];
 
   // keyboard controls
   private keyA!: Phaser.Input.Keyboard.Key;
@@ -464,15 +466,15 @@ export class EditorScene extends Phaser.Scene {
     // Listen for Event Queue Regen button
     this.game.events.on("ui:eventQueueRegen", async () => {
       console.log("ui:eventQueueRegen received");
-      if (this.selectionBoxes.length === 0) {
+      if (allSelectionBoxes.length === 0) {
         console.log("No selection boxes to regenerate");
         return;
       }
 
       try {
         await regenerate(
-          this.selectionBoxes,
-          this.computeDependencyMap(this.selectionBoxes),
+          allSelectionBoxes,
+          this.computeDependencyMap(allSelectionBoxes),
           this.worldFacts,
           this,
         );
@@ -512,7 +514,7 @@ export class EditorScene extends Phaser.Scene {
     // Deselect all boxes when UI asks
     this.game.events.on("ui:deselectAllBoxes", () => {
       console.log("ui:deselectAllBoxes -> deselecting all boxes");
-      for (const b of this.selectionBoxes) {
+      for (const b of allSelectionBoxes) {
         b.setActive?.(false);
       }
       if (this.activeBox) {
@@ -570,8 +572,8 @@ export class EditorScene extends Phaser.Scene {
           this.activeBox.finalize?.();
 
           // Ensure it's in the permanent list
-          if (!this.selectionBoxes.includes(this.activeBox)) {
-            this.selectionBoxes.push(this.activeBox);
+          if (!allSelectionBoxes.includes(this.activeBox)) {
+            allSelectionBoxes.push(this.activeBox);
           }
 
           // Keep the box active/selected so the UI and chat context remain tied to it.
@@ -741,12 +743,12 @@ export class EditorScene extends Phaser.Scene {
     this.keyDelete.on("down", () => {
       if (!this.activeBox) return;
       // remove from permanent list if present
-      const idx = this.selectionBoxes.indexOf(this.activeBox);
-      if (idx !== -1) {
-        // console.log(`try del a box, old: ${this.selectionBoxes}`);
-        let temp = this.selectionBoxes.splice(idx, 1);
-        // console.log(`Deleted a box, new: ${this.selectionBoxes}, rem: ${temp}`);
-      }
+      // const idx = allSelectionBoxes.indexOf(this.activeBox);
+      // if (idx !== -1) {
+      //   // console.log(`try del a box, old: ${this.selectionBoxes}`);
+      //   let temp = allSelectionBoxes.splice(idx, 1);
+      //   // console.log(`Deleted a box, new: ${this.selectionBoxes}, rem: ${temp}`);
+      // }
       // destroy visuals and resources
       this.activeBox.destroy?.();
       // clear active reference and notify any external context
@@ -1030,24 +1032,24 @@ export class EditorScene extends Phaser.Scene {
     }
 
     // Update selection box tab positions so tabs follow boxes in real-time
-    for (const box of this.selectionBoxes) {
+    for (const box of allSelectionBoxes) {
       box.updateTabPosition?.();
     }
     this.activeBox?.updateTabPosition?.();
 
     // Collaborative Context Merging - Update neighbor detection for all boxes
-    for (const box of this.selectionBoxes) {
+    for (const box of allSelectionBoxes) {
       if (box.updateNeighbors) {
-        box.updateNeighbors(this.selectionBoxes);
+        box.updateNeighbors(allSelectionBoxes);
       }
       if (box.updateIntersections) {
-        box.updateIntersections(this.selectionBoxes);
+        box.updateIntersections(allSelectionBoxes);
       }
     }
     if (this.activeBox && this.activeBox.updateNeighbors) {
-      this.activeBox.updateNeighbors(this.selectionBoxes);
+      this.activeBox.updateNeighbors(allSelectionBoxes);
       if (this.activeBox.updateIntersections) {
-        this.activeBox.updateIntersections(this.selectionBoxes);
+        this.activeBox.updateIntersections(allSelectionBoxes);
       }
     }
 
@@ -1124,7 +1126,7 @@ export class EditorScene extends Phaser.Scene {
 
     // Capture selection boxes — serialize chat messages to plain objects so
     // they survive both JSON save/load and in-memory undo/redo correctly.
-    const selectionBoxes: BoxSnapshot[] = this.selectionBoxes.map((b) => ({
+    const selectionBoxes: BoxSnapshot[] = allSelectionBoxes.map((b) => ({
       start: { x: b.getStart().x, y: b.getStart().y },
       end: { x: b.getEnd().x, y: b.getEnd().y },
       zLevel: b.getZLevel(),
@@ -1178,9 +1180,9 @@ export class EditorScene extends Phaser.Scene {
     }
 
     // Restore selection boxes
-    for (const b of this.selectionBoxes) b.destroy?.();
+    for (const b of allSelectionBoxes) b.destroy?.();
     if (this.activeBox) { this.activeBox.destroy?.(); this.activeBox = null; }
-    this.selectionBoxes = [];
+    allSelectionBoxes.length = 0;
     setActiveSelectionBox(null); // clear the chat pane so it doesn't show stale history
 
     for (const sd of snapshot.selectionBoxes) {
@@ -1201,7 +1203,7 @@ export class EditorScene extends Phaser.Scene {
         return new HumanMessage(m.content);
       });
       box.finalize();
-      this.selectionBoxes.push(box);
+      allSelectionBoxes.push(box);
     }
 
     this.worldFacts.refresh();
@@ -1395,7 +1397,7 @@ export class EditorScene extends Phaser.Scene {
     // Checking Overlapping
     const candidate = new Phaser.Geom.Rectangle(x, y, 1, 1);
     let overlap = false;
-    for (const box of this.selectionBoxes) {
+    for (const box of allSelectionBoxes) {
       if (box === this.activeBox) continue; // skip the box currently being edited
 
       if (box.getZLevel() === this.currentZLevel) {
@@ -1411,7 +1413,7 @@ export class EditorScene extends Phaser.Scene {
     // If overlap does occur, do not make a box
     if (overlap) {
       // If the click lands inside an existing finalized box, select it instead
-      for (const box of this.selectionBoxes) {
+      for (const box of allSelectionBoxes) {
         const bound = box.getBounds();
         if (SelectionBox.rectanglesOverlap(candidate, bound)) {
           // Select this box
@@ -1462,7 +1464,7 @@ export class EditorScene extends Phaser.Scene {
     const possibleBounds = this.activeBox.tempBounds(possibleEnd);
 
     let overlap = false;
-    for (const box of this.selectionBoxes) {
+    for (const box of allSelectionBoxes) {
       if (box.getZLevel() === this.currentZLevel) {
         // only check boxes on same level
         if (
@@ -1506,8 +1508,8 @@ export class EditorScene extends Phaser.Scene {
     this.selectBox(this.activeBox);
 
     // Add to permanent list
-    if (!this.selectionBoxes.includes(this.activeBox)) {
-      this.selectionBoxes.push(this.activeBox);
+    if (!allSelectionBoxes.includes(this.activeBox)) {
+      allSelectionBoxes.push(this.activeBox);
     }
 
     // These define the height and width of the selection box
@@ -1851,7 +1853,7 @@ export class EditorScene extends Phaser.Scene {
 
     let overlap = this.checkLevelOverlap(
       this.activeBox,
-      this.selectionBoxes,
+      allSelectionBoxes,
       this.currentZLevel,
     );
 
@@ -1864,7 +1866,7 @@ export class EditorScene extends Phaser.Scene {
       }
       overlap = this.checkLevelOverlap(
         this.activeBox,
-        this.selectionBoxes,
+        allSelectionBoxes,
         this.currentZLevel,
       );
     }
@@ -1887,7 +1889,7 @@ export class EditorScene extends Phaser.Scene {
 
     let overlap = this.checkLevelOverlap(
       this.activeBox,
-      this.selectionBoxes,
+      allSelectionBoxes,
       this.currentZLevel,
     );
 
@@ -1899,7 +1901,7 @@ export class EditorScene extends Phaser.Scene {
       this.currentZLevel--;
       overlap = this.checkLevelOverlap(
         this.activeBox,
-        this.selectionBoxes,
+        allSelectionBoxes,
         this.currentZLevel,
       );
     }
@@ -1948,8 +1950,8 @@ export class EditorScene extends Phaser.Scene {
     if (!this.activeBox) return;
 
     // Push it to the array
-    if (!this.selectionBoxes.includes(this.activeBox))
-      this.selectionBoxes.push(this.activeBox);
+    if (!allSelectionBoxes.includes(this.activeBox))
+      allSelectionBoxes.push(this.activeBox);
     // mark it as finalized (permanent) so it can't be redrawn; it can still be dragged via its tab
     this.activeBox.finalize?.();
 
@@ -1962,8 +1964,8 @@ export class EditorScene extends Phaser.Scene {
   selectBox(box: SelectionBox | null) {
     if (!box) return;
     // Deactivate all boxes we know about (selectionBoxes and any current activeBox)
-    console.log(`Boxes: ${this.selectionBoxes}`);
-    for (const b of this.selectionBoxes) {
+    console.log(`Boxes: ${allSelectionBoxes}`);
+    for (const b of allSelectionBoxes) {
       b.setActive?.(false);
     }
     if (this.activeBox) {

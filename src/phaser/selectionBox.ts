@@ -22,7 +22,7 @@ interface BoxContext {
   version: number;
 }
 
-const allSelectionBoxes: SelectionBox[] = [];
+export const allSelectionBoxes: SelectionBox[] = [];
 
 
 export function replaceAllBoxes() {
@@ -1105,7 +1105,9 @@ export class SelectionBox {
 
     // clean up actual stuff
 
-    allSelectionBoxes.splice(allSelectionBoxes.indexOf(this), 1);
+    let tempInd = allSelectionBoxes.indexOf(this);
+    if (tempInd != -1)
+      allSelectionBoxes.splice(tempInd, 1);
     // delete owned tiles
     for (let tile of this.placedTiles) {
       GROUND_LAYER.putTileAt(-1, tile.x, tile.y);

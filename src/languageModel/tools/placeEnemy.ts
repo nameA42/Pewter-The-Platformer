@@ -59,7 +59,14 @@ export class PlaceEnemy {
           slime.setData("spawnY", spawnY);
           enemies.push(slime);
           scene.worldFacts.setFact("Enemy", x, y, "Slime");
+
+
+          if (scene.activeBox) {
+            scene.activeBox.addPlacedEnemy(slime);
+          }
+
           return `✅ Placed Slime at (${x}, ${y}).`;
+
         } else if (enemyType === "UltraSlime") {
           const spawnX = x * scene.map.tileWidth + scene.map.tileWidth / 2;
           const spawnY = y * scene.map.tileWidth + scene.map.tileWidth / 2;
@@ -74,7 +81,13 @@ export class PlaceEnemy {
           ultraSlime.setData("spawnX", spawnX);
           ultraSlime.setData("spawnY", spawnY);
           enemies.push(ultraSlime);
-          scene.worldFacts.setFact("Enemy", x, y, "UltraSlime");
+          scene.worldFacts.setFact("Enemy", x, y, "UltraSlime"); // TODO: think I need to learn worldfacts and edit this later
+
+
+          if (scene.activeBox) {
+            scene.activeBox.addPlacedEnemy(ultraSlime);
+          }
+
           return `✅ Placed UltraSlime at (${x}, ${y}).`;
         }
       } catch (e) {

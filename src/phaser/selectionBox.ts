@@ -1,5 +1,8 @@
 import Phaser from "phaser";
 import { Z_LEVEL_COLORS } from "./colors";
+import { COLLECTABLES_LAYER, EditorScene, GROUND_LAYER } from "./editorScene";
+import type { Slime } from "./ExternalClasses/Slime";
+import type { UltraSlime } from "./ExternalClasses/UltraSlime";
 
 // STEP 1: Collaborative Context Merging - Basic interfaces and ownership structure
 // Interface for collaborative context data
@@ -36,7 +39,7 @@ export function replaceAllBoxes() {
   for (let sb of allSelectionBoxes) {
     for (let tile of sb.placedTiles) {
       if (tile.tileIndex > 1)
-        sb.getLayer().putTileAt(tile.tileIndex, tile.x, tile.y);
+        (tile.layerName == "Ground_Layer" ? GROUND_LAYER : COLLECTABLES_LAYER).putTileAt(tile.tileIndex, tile.x, tile.y);
     }
   }
 }
@@ -53,8 +56,8 @@ export class SelectionBox {
   }
   private scene: Phaser.Scene;
   private zLevel: number;
-  public selectedTiles: number[][] = [];
-  private layer: Phaser.Tilemaps.TilemapLayer;
+  public selectedTiles: number[][][] = [];
+  // private layer: Phaser.Tilemaps.TilemapLayer;
   public localContext: BoxContext;
   public placedTiles: {
     tileIndex: number;
@@ -62,11 +65,14 @@ export class SelectionBox {
     y: number;
     layerName: string;
   }[] = [];
-  public placedEnemies: {
-    enemyType: string;
-    x: number;
-    y: number;
-  }[] = [];
+  public placedEnemies:
+    // {
+    // enemyType: string;
+    // x: number;
+    // y: number;
+
+    // }
+    (Slime | UltraSlime)[] = [];
   private tabContainer: Phaser.GameObjects.Container | null = null;
   private onSelect?: (box: SelectionBox) => void;
   private tabBg: Phaser.GameObjects.Rectangle | null = null;
@@ -127,14 +133,14 @@ export class SelectionBox {
     start: Phaser.Math.Vector2,
     end: Phaser.Math.Vector2,
     zLevel: number = 1,
-    layer: Phaser.Tilemaps.TilemapLayer,
+    // layer: Phaser.Tilemaps.TilemapLayer,
     onSelect?: (box: SelectionBox) => void,
   ) {
     this.scene = scene;
     this.start = start.clone();
     this.end = end.clone();
     this.zLevel = zLevel;
-    this.layer = layer;
+    // this.layer = layer;
 
     this.graphics = scene.add.graphics();
     this.graphics.setDepth(100);
@@ -562,26 +568,6 @@ export class SelectionBox {
 
     // Make interactive on the background rectangle
     bg.setInteractive({ useHandCursor: true });
-    bg.on(
-      "pointerdown",
-      (
-        _pointer: Phaser.Input.Pointer,
-        _localX: number,
-        _localY: number,
-        event: any,
-      ) => {
-        // Prevent global pointer handlers (like EditorScene startSelection)
-        // from also reacting to this click.
-        try {
-          if (event && typeof event.stopPropagation === "function") {
-            event.stopPropagation();
-          }
-        } catch (e) {
-          // ignore
-        }
-        if (this.onSelect) this.onSelect(this);
-      },
-    );
 
     // Implement pointer-driven drag so the box follows the mouse without snapping
     try {
@@ -895,7 +881,7 @@ export class SelectionBox {
               layerName: p.layerName,
             }));
             this._dragOriginalPlacedEnemies = this.placedEnemies.map((e) => ({
-              enemyType: e.enemyType,
+              enemyType: e.type,
               x: e.x,
               y: e.y,
             }));
@@ -915,6 +901,10 @@ export class SelectionBox {
           // store pointer-start tile so subsequent moves compute a delta from this origin
           this._dragPointerTileX = pTileX;
           this._dragPointerTileY = pTileY;
+
+          if (dragging) {
+            return;
+          }
           dragging = true;
           this._pointerMoveHandler = pointerMove;
           this._pointerUpHandler = pointerUp;
@@ -985,6 +975,7 @@ export class SelectionBox {
     this.updateTabWithNewInfo()
   }
 
+  // ! will just copy the topmost info
   copyTiles() {
     const sX = Math.min(this.start.x, this.end.x);
     const sY = Math.min(this.start.y, this.end.y);
@@ -993,10 +984,11 @@ export class SelectionBox {
 
     this.selectedTiles = [];
     for (let y = sY; y <= eY; y++) {
-      const row: number[] = [];
+      const row: number[][] = [];
       for (let x = sX; x <= eX; x++) {
-        const tile = this.layer.getTileAt(x, y);
-        row.push(tile ? tile.index : -1);
+        const tile = GROUND_LAYER.getTileAt(x, y);
+        const collectable = COLLECTABLES_LAYER.getTileAt(x, y);
+        row.push([tile ? tile.index : -1, collectable ? collectable.index : -1]);
       }
       this.selectedTiles.push(row);
     }
@@ -1042,14 +1034,14 @@ export class SelectionBox {
   }
 
   // Returns the selected tiles
-  getSelectedTiles(): number[][] {
+  getSelectedTiles(): number[][][] {
     return this.selectedTiles;
   }
 
-  // Expose the layer this selection box is associated with
-  public getLayer(): Phaser.Tilemaps.TilemapLayer {
-    return this.layer;
-  }
+  // // Expose the layer this selection box is associated with
+  // public getLayer(): Phaser.Tilemaps.TilemapLayer {
+  //   return this.layer;
+  // }
 
   // Check if this box overlaps with another box in tile-space
   // Returns true only if they share actual tiles (not just edges)
@@ -1116,7 +1108,8 @@ export class SelectionBox {
     allSelectionBoxes.splice(allSelectionBoxes.indexOf(this), 1);
     // delete owned tiles
     for (let tile of this.placedTiles) {
-      this.getLayer().putTileAt(1, tile.x, tile.y);
+      GROUND_LAYER.putTileAt(-1, tile.x, tile.y);
+      COLLECTABLES_LAYER.putTileAt(-1, tile.x, tile.y);
     }
 
     replaceAllBoxes();
@@ -1464,7 +1457,7 @@ export class SelectionBox {
     }
     if (this.placedEnemies.length > 0) {
       const enemyList = this.placedEnemies
-        .map((e) => `${e.enemyType} at (${e.x}, ${e.y})`)
+        .map((e) => `${e.type} at (${e.x}, ${e.y})`)
         .join("; ");
       msg += ` Current placed enemy positions: ${enemyList}.`;
     }
@@ -1512,9 +1505,10 @@ export class SelectionBox {
   }
 
   // Register an enemy placed within this selection box (tile coords)
-  public addPlacedEnemy(enemyType: string, x: number, y: number) {
-    this.placedEnemies.push({ enemyType, x, y });
-    console.log("Added placed enemy:", { enemyType, x, y });
+  public addPlacedEnemy(enemy: (Slime | UltraSlime)) {
+    // this.placedEnemies.push({ enemyType, x, y });
+    this.placedEnemies.push(enemy);
+    // console.log("Added placed enemy:", { enemyType, x, y });
   }
 
   public getPlacedEnemies() {
@@ -1579,34 +1573,34 @@ export class SelectionBox {
     return this.isActive;
   }
 
-  //Drag and Drop support - Jason Cho
-  public checkTilesInBox() {
-    const sX = Math.min(this.start.x, this.end.x);
-    const sY = Math.min(this.start.y, this.end.y);
-    const eX = Math.max(this.start.x, this.end.x);
-    const eY = Math.max(this.start.y, this.end.y);
-    const tilesInBox: {
-      tileIndex: number;
-      x: number;
-      y: number;
-      layerName: string;
-    }[] = [];
-    for (let y = sY; y <= eY; y++) {
-      for (let x = sX; x <= eX; x++) {
-        const tile = this.layer.getTileAt(x, y);
-        if (tile) {
-          tilesInBox.push({
-            tileIndex: tile.index,
-            x: x,
-            y: y,
-            layerName: this.layer.layer.name,
-          });
-        }
-      }
-    }
-    console.log("Tiles in Box:", tilesInBox);
-    return tilesInBox;
-  }
+  // //Drag and Drop support - Jason Cho
+  // public checkTilesInBox() {
+  //   const sX = Math.min(this.start.x, this.end.x);
+  //   const sY = Math.min(this.start.y, this.end.y);
+  //   const eX = Math.max(this.start.x, this.end.x);
+  //   const eY = Math.max(this.start.y, this.end.y);
+  //   const tilesInBox: {
+  //     tileIndex: number;
+  //     x: number;
+  //     y: number;
+  //     layerName: string;
+  //   }[] = [];
+  //   for (let y = sY; y <= eY; y++) {
+  //     for (let x = sX; x <= eX; x++) {
+  //       const tile = this.layer.getTileAt(x, y);
+  //       if (tile) {
+  //         tilesInBox.push({
+  //           tileIndex: tile.index,
+  //           x: x,
+  //           y: y,
+  //           layerName: this.layer.layer.name,
+  //         });
+  //       }
+  //     }
+  //   }
+  //   console.log("Tiles in Box:", tilesInBox);
+  //   return tilesInBox;
+  // }
 
   private snapshotSelection(): void {
     const sX = Math.min(this.start.x, this.end.x);
@@ -1643,7 +1637,7 @@ export class SelectionBox {
     this.destroyPreviewLayer();
     if (!this.dragSnapshot) return;
 
-    const map = this.layer.tilemap; // use the SAME map
+    const map = GROUND_LAYER.tilemap; // use the SAME map
     const tileW = map.tileWidth;
     const tileH = map.tileHeight;
 
@@ -1697,7 +1691,7 @@ export class SelectionBox {
 
   private updatePreviewLayerPosition(): void {
     if (!this.previewLayer) return;
-    const map = this.layer.tilemap;
+    const map = GROUND_LAYER.tilemap;
     const sX = Math.min(this.start.x, this.end.x);
     const sY = Math.min(this.start.y, this.end.y);
     this.previewLayer.setPosition(sX * map.tileWidth, sY * map.tileHeight);
@@ -1735,10 +1729,11 @@ export class SelectionBox {
     // 1) Clear original snapshot footprint (only cells that had tiles)
     for (let ty = 0; ty < this.dragSnapshot.h; ty++) {
       for (let tx = 0; tx < this.dragSnapshot.w; tx++) {
-        const hadTile = this.dragSnapshot.tiles.some(
-          (t) => t.dx === tx && t.dy === ty,
-        );
-        if (hadTile) this.layer.putTileAt(-1, oldSX + tx, oldSY + ty);
+        // const hadTile = this.dragSnapshot.tiles.some(
+        //   (t) => t.dx === tx && t.dy === ty,
+        // );
+        GROUND_LAYER.putTileAt(-1, oldSX + tx, oldSY + ty);
+        COLLECTABLES_LAYER.putTileAt(-1, oldSX + tx, oldSY + ty);
       }
     }
 
@@ -1776,14 +1771,14 @@ export class SelectionBox {
     this.redraw();
   }
 
-  private targetAreaIsClear(newSX: number, newSY: number): boolean {
-    if (!this.dragSnapshot) return true;
-    for (const t of this.dragSnapshot.tiles) {
-      const nx = newSX + t.dx;
-      const ny = newSY + t.dy;
-      const tile = this.layer.getTileAt(nx, ny);
-      if (tile && tile.index !== -1) return false;
-    }
-    return true;
-  }
+  // private targetAreaIsClear(newSX: number, newSY: number): boolean {
+  //   if (!this.dragSnapshot) return true;
+  //   for (const t of this.dragSnapshot.tiles) {
+  //     const nx = newSX + t.dx;
+  //     const ny = newSY + t.dy;
+  //     const tile = this.layer.getTileAt(nx, ny);
+  //     if (tile && tile.index !== -1) return false;
+  //   } 
+  //   return true;
+  // }
 }

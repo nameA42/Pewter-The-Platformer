@@ -38,6 +38,9 @@ interface WorldSnapshot {
   selectionBoxes: BoxSnapshot[];
 }
 
+export let GROUND_LAYER: Phaser.Tilemaps.TilemapLayer;
+export let COLLECTABLES_LAYER: Phaser.Tilemaps.TilemapLayer;
+
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
   private SCALE = 1.0;
@@ -80,7 +83,7 @@ export class EditorScene extends Phaser.Scene {
 
   private selectedTiles: number[][] = []; // Selected Tiles
 
-  private clipboard: number[][] = []; // Global clipboard for copy and paste
+  private clipboard: number[][][] = []; // Global clipboard for copy and paste
 
   //Selection Box Properties
   private highlightBox!: Phaser.GameObjects.Graphics;
@@ -347,6 +350,7 @@ export class EditorScene extends Phaser.Scene {
     )!;
     // console.log("LAYER1 added:", this.map);
     this.groundLayer = this.map.createLayer("Ground_Layer", tileset, 0, 0)!;
+    GROUND_LAYER = this.groundLayer;
     // console.log("LAYER2 added:", this.map);
     this.collectablesLayer = this.map.createLayer(
       "Collectables_Layer",
@@ -354,6 +358,8 @@ export class EditorScene extends Phaser.Scene {
       0,
       0,
     )!;
+    COLLECTABLES_LAYER = this.collectablesLayer;
+
     this.cameras.main.setBounds(
       0,
       0,
@@ -1077,13 +1083,13 @@ export class EditorScene extends Phaser.Scene {
       this.finalizeSelectBox();
     }
 
-    //Temp code - Jason
-    if (Phaser.Input.Keyboard.JustDown(this.keyB)) {
-      //Call selectionBox.ts checkTilesInBox
-      if (this.activeBox) {
-        this.activeBox.checkTilesInBox();
-      }
-    }
+    // //Temp code - Jason
+    // if (Phaser.Input.Keyboard.JustDown(this.keyB)) {
+    //   //Call selectionBox.ts checkTilesInBox
+    //   if (this.activeBox) {
+    //     this.activeBox.checkTilesInBox();
+    //   }
+    // }
   }
 
   public captureSnapshot(): WorldSnapshot {
@@ -1183,7 +1189,7 @@ export class EditorScene extends Phaser.Scene {
         new Phaser.Math.Vector2(sd.start.x, sd.start.y),
         new Phaser.Math.Vector2(sd.end.x, sd.end.y),
         sd.zLevel,
-        this.groundLayer,
+        // this.groundLayer,
         (b) => this.selectBox(b),
       );
       box.placedTiles = sd.placedTiles.slice();
@@ -1263,7 +1269,7 @@ export class EditorScene extends Phaser.Scene {
               if (m.type === "constructor" && Array.isArray(m.id)) {
                 const kind = m.id[m.id.length - 1] ?? "HumanMessage";
                 const content = m.kwargs?.content ?? "";
-                if (kind === "AIMessage")    return { type: "ai",     content };
+                if (kind === "AIMessage") return { type: "ai", content };
                 if (kind === "SystemMessage") return { type: "system", content };
                 return { type: "human", content };
               }
@@ -1272,10 +1278,10 @@ export class EditorScene extends Phaser.Scene {
           }));
 
           this.restoreSnapshot({
-            groundTiles:       data.groundTiles       ?? [],
+            groundTiles: data.groundTiles ?? [],
             collectablesTiles: data.collectablesTiles ?? [],
-            enemies:           data.enemies           ?? [],
-            selectionBoxes:    normBoxes,
+            enemies: data.enemies ?? [],
+            selectionBoxes: normBoxes,
           });
 
           this.saveSnapshot();
@@ -1427,7 +1433,7 @@ export class EditorScene extends Phaser.Scene {
           this.selectionStart,
           this.selectionEnd,
           this.currentZLevel,
-          this.groundLayer,
+          // this.groundLayer,
           (box) => {
             this.selectBox(box);
           },
@@ -1622,8 +1628,8 @@ export class EditorScene extends Phaser.Scene {
 
     for (let y = 0; y < this.clipboard.length; y++) {
       for (let x = 0; x < this.clipboard[y].length; x++) {
-        const tileIndex = this.clipboard[y][x];
-        if (tileIndex === -1) continue;
+        const tileIndex = this.clipboard[y][x][0];
+        const collectablesIndex = this.clipboard[y][x][1];
 
         const pasteX = sX + x;
         const pasteY = sY + y;
@@ -1634,7 +1640,10 @@ export class EditorScene extends Phaser.Scene {
           pasteY >= 0 &&
           pasteY < mapHeight
         ) {
-          this.placeTile(this.groundLayer, pasteX, pasteY, tileIndex);
+          if (tileIndex > 1)
+            this.placeTile(this.groundLayer, pasteX, pasteY, tileIndex);
+          if (tileIndex > 1)
+            this.placeTile(this.collectablesLayer, pasteX, pasteY, collectablesIndex);
         }
       }
     }

@@ -301,6 +301,12 @@ export class WorldFacts {
     }
   }
 
+  clearEnemy(x: number, y: number) {
+    this.enemyFacts = this.enemyFacts.filter(
+      (f) => !(f.x === x && f.y === y)
+    );
+  }
+
   // --- Extract all structures in the scene ---
   private extractStructures(scene: EditorScene): StructureFact[] {
     const structures: StructureFact[] = [];

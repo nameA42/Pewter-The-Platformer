@@ -26,7 +26,7 @@ export async function regenerateSelection(
   // Try to save map history if available
   try {
     scene.bindMapHistory?.();
-  } catch (e) {}
+  } catch (e) { }
 
   // Helper to regenerate a single box
   const singleRegen = async (targetBox: SelectionBox, ctxSuffix: string) => {
@@ -37,7 +37,7 @@ export async function regenerateSelection(
     const eX = Math.max(start.x, end.x);
     const eY = Math.max(start.y, end.y);
 
-    const layer = targetBox.getLayer();
+    // const layer = targetBox.getLayer(); // TODO: Fix this, removing target box layer info cause it didn't make sense in the first place for it to have an associated layer
 
     // parse HIGHER_BOUNDS from ctxSuffix (bounds-only protection)
     const higherRects: Phaser.Geom.Rectangle[] = [];
@@ -57,7 +57,7 @@ export async function regenerateSelection(
           }
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     const isInsideAnyHigher = (tx: number, ty: number) => {
       for (const r of higherRects) {
@@ -99,11 +99,11 @@ export async function regenerateSelection(
             try {
               if (scene.groundLayer)
                 scene.placeTile(scene.groundLayer, x, y, -1);
-            } catch (e) {}
+            } catch (e) { }
             try {
               if (scene.collectablesLayer)
                 scene.placeTile(scene.collectablesLayer, x, y, -1);
-            } catch (e) {}
+            } catch (e) { }
           }
         }
       }
@@ -116,11 +116,11 @@ export async function regenerateSelection(
           if (isInsideAnyHigher(x, y)) continue;
           try {
             if (scene.groundLayer) scene.placeTile(scene.groundLayer, x, y, -1);
-          } catch (e) {}
+          } catch (e) { }
           try {
             if (scene.collectablesLayer)
               scene.placeTile(scene.collectablesLayer, x, y, -1);
-          } catch (e) {}
+          } catch (e) { }
         }
       }
     }
@@ -213,14 +213,14 @@ export async function regenerateSelection(
           scene.placeTile(layer, worldX, worldY, tileIdx);
           try {
             targetBox.addPlacedTile(tileIdx, worldX, worldY, layer.layer.name);
-          } catch (e) {}
+          } catch (e) { }
         }
       }
     }
 
     try {
       targetBox.copyTiles();
-    } catch (e) {}
+    } catch (e) { }
 
     const brect = targetBox.getBounds
       ? targetBox.getBounds()
@@ -240,7 +240,7 @@ export async function regenerateSelection(
           if (Phaser.Geom.Intersects.RectangleToRectangle(thisBounds, bb)) {
             intersecting.push(b);
           }
-        } catch (e) {}
+        } catch (e) { }
       }
       if (!intersecting.includes(box)) intersecting.push(box);
 
@@ -292,7 +292,7 @@ export async function regenerateSelection(
     } finally {
       scene.activeBox = _savedActiveBox;
     }
-  } catch (e) {}
+  } catch (e) { }
 }
 
 export default regenerateSelection;

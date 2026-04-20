@@ -13,7 +13,7 @@ import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
 import { DynamicEnemy } from "../enemySystem/runtime/DynamicEnemy.ts";
 import { UIScene } from "./UIScene.ts";
 import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
-import { replaceAllBoxes, SelectionBox, allSelectionBoxes } from "./selectionBox.ts";
+import { replaceAllBoxes, SelectionBox, allSelectionBoxes, addPlacedTile, superDuperRealUserLayer } from "./selectionBox.ts";
 import { regenerate } from "./ExternalClasses/RegenerationTools.ts";
 import { Z_LEVEL_COLORS } from "./colors";
 
@@ -873,7 +873,19 @@ export class EditorScene extends Phaser.Scene {
     );
     tileIndex = tileIndex === 0 ? -1 : tileIndex; // Allow -1 for erasing tiles
     console.log(`Placing tile at (${x}, ${y}) with index ${tileIndex}`);
-    layer.putTileAt(tileIndex, x, y);
+    if (this.activeBox) {
+      if (this.activeBox.containsPoint(x, y)) {
+        this.activeBox.addPlacedTile(tileIndex, x, y, layer.layer.name);
+        layer.putTileAt(tileIndex, x, y);
+        replaceAllBoxes();
+      }
+    }
+    else {
+      addPlacedTile(superDuperRealUserLayer, tileIndex, x, y, layer.layer.name);
+      layer.putTileAt(tileIndex, x, y);
+      replaceAllBoxes();
+    }
+
   }
 
   update() {

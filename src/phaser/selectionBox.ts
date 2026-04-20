@@ -23,6 +23,14 @@ interface BoxContext {
 }
 
 export const allSelectionBoxes: SelectionBox[] = [];
+// if future people wonder "why didn't they just make a selection box that doesn't have shading"
+// I don't know how that code works or if we can disable it so I didn't touch it :thumbsup:
+export const superDuperRealUserLayer: {
+  tileIndex: number,
+  x: number,
+  y: number,
+  layerName: string
+}[] = [];
 
 
 export function replaceAllBoxes() {
@@ -41,6 +49,10 @@ export function replaceAllBoxes() {
       if (tile.tileIndex > 1)
         (tile.layerName == "Ground_Layer" ? GROUND_LAYER : COLLECTABLES_LAYER).putTileAt(tile.tileIndex, tile.x, tile.y);
     }
+  }
+  for (let tile of superDuperRealUserLayer) {
+    if (tile.tileIndex > 1)
+      (tile.layerName == "Ground_Layer" ? GROUND_LAYER : COLLECTABLES_LAYER).putTileAt(tile.tileIndex, tile.x, tile.y);
   }
 }
 
@@ -161,6 +173,11 @@ export class SelectionBox {
     // create tab after initial draw
     this.createTab();
     allSelectionBoxes.push(this);
+  }
+
+  public containsPoint(x: number, y: number) {
+    return Math.min(this.start.x, this.end.x) <= x && Math.max(this.start.x, this.end.x) >= x
+      && Math.min(this.start.y, this.end.y) <= y && Math.max(this.start.y, this.end.y) >= y
   }
 
   // STEP 2: Collaborative Context Merging - Basic data management methods
@@ -1495,15 +1512,7 @@ export class SelectionBox {
     y: number,
     layerName: string,
   ) {
-    // this.placedTiles = this.placedTiles.filter((tile) => {tile.x != x || tile.y != y})
-    let replace = this.placedTiles.find((tile) => tile.x == x && tile.y == y && tile.layerName == layerName);
-    if (replace != undefined) {
-      replace.tileIndex = tileIndex;
-    }
-    else {
-      this.placedTiles.push({ tileIndex, x, y, layerName });
-    }
-    console.log("Added placed tile:", { tileIndex, x, y, layerName });
+    addPlacedTile(this.placedTiles, tileIndex, x, y, layerName);
   }
 
   // Register an enemy placed within this selection box (tile coords)
@@ -1783,4 +1792,29 @@ export class SelectionBox {
   //   } 
   //   return true;
   // }
+}
+
+export function addPlacedTile(
+  tilesthing: { tileIndex: number, x: number, y: number, layerName: string }[],
+  tileIndex: number,
+  x: number,
+  y: number,
+  layerName: string,
+) {
+
+  // this.placedTiles = this.placedTiles.filter((tile) => {tile.x != x || tile.y != y})
+  let replace = tilesthing.findIndex((tile) => tile.x == x && tile.y == y && tile.layerName == layerName);
+
+
+  if (replace != -1) {
+    if (tileIndex == -1) {
+      tilesthing.splice(replace, 1);
+      return;
+    }
+    tilesthing[replace].tileIndex = tileIndex;
+  }
+  else if (tileIndex != -1) {
+    tilesthing.push({ tileIndex, x, y, layerName });
+  }
+  console.log("Added placed tile:", { tileIndex, x, y, layerName });
 }

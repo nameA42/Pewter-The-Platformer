@@ -30,7 +30,10 @@ export const superDuperRealUserLayer: {
   x: number,
   y: number,
   layerName: string
-}[] = [];
+}[] = [
+    { tileIndex: 7, x: 5, y: 5, layerName: "Ground_Layer" }, // ULTRA SLIME
+    { tileIndex: 8, x: 6, y: 5, layerName: "Ground_Layer" } // normal slime
+  ];
 
 
 export function replaceAllBoxes() {

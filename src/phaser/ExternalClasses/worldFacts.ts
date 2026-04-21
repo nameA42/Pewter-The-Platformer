@@ -301,6 +301,10 @@ export class WorldFacts {
     }
   }
 
+  clearEnemies() {
+    this.enemyFacts.length = 0;
+  }
+
   // --- Extract all structures in the scene ---
   private extractStructures(scene: EditorScene): StructureFact[] {
     const structures: StructureFact[] = [];

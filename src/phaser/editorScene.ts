@@ -17,7 +17,7 @@ import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
 import { DynamicEnemy } from "../enemySystem/runtime/DynamicEnemy.ts";
 import { UIScene } from "./UIScene.ts";
 import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
-import { replaceAllBoxes, SelectionBox } from "./selectionBox.ts";
+import { replaceAllBoxes, SelectionBox, allSelectionBoxes, addPlacedTile, superDuperRealUserLayer } from "./selectionBox.ts";
 import { regenerate } from "./ExternalClasses/RegenerationTools.ts";
 import { Z_LEVEL_COLORS } from "./colors";
 
@@ -31,7 +31,9 @@ interface BoxSnapshot {
   end: { x: number; y: number };
   zLevel: number;
   placedTiles: { tileIndex: number; x: number; y: number; layerName: string }[];
-  placedEnemies: { enemyType: string; x: number; y: number }[];
+  // placedEnemies:
+  // { enemyType: string; x: number; y: number }[];
+  // (Slime | UltraSlime)[];
   chatHistory: { type: string; content: string }[];
 }
 
@@ -41,6 +43,10 @@ interface WorldSnapshot {
   enemies: EnemySnapshotEntry[];
   selectionBoxes: BoxSnapshot[];
 }
+
+export let GROUND_LAYER: Phaser.Tilemaps.TilemapLayer;
+export let COLLECTABLES_LAYER: Phaser.Tilemaps.TilemapLayer;
+export let editorScene: EditorScene;
 
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
@@ -85,7 +91,7 @@ export class EditorScene extends Phaser.Scene {
 
   private selectedTiles: number[][] = []; // Selected Tiles
 
-  private clipboard: number[][] = []; // Global clipboard for copy and paste
+  private clipboard: number[][][] = []; // Global clipboard for copy and paste
 
   //Selection Box Properties
   private highlightBox!: Phaser.GameObjects.Graphics;
@@ -99,7 +105,7 @@ export class EditorScene extends Phaser.Scene {
     endY: number;
   } | null = null;
   public activeBox: SelectionBox | null = null;
-  selectionBoxes: SelectionBox[] = [];
+  // allSelectionBoxes: SelectionBox[] = [];
 
   // keyboard controls
   private keyA!: Phaser.Input.Keyboard.Key;
@@ -153,6 +159,7 @@ export class EditorScene extends Phaser.Scene {
 
   constructor() {
     super({ key: "editorScene" });
+    editorScene = this;
   }
 
   // Collaborative Context Merging - Expose active box for chat system
@@ -203,6 +210,49 @@ export class EditorScene extends Phaser.Scene {
         });
       }
     });
+
+    // instantiate enemies // !NOTE: I know this is evil but like I don't wanna have to figure out a better way
+    this.enemies.length = 0;
+
+    replaceAllBoxes(); // one last replace just in case
+    this.groundLayer.forEachTile((tile) => {
+      if (tile.index == 7) {
+        const spawnX = tile.x * this.map.tileWidth + this.map.tileWidth / 2;
+        const spawnY = tile.y * this.map.tileWidth + this.map.tileWidth / 2;
+        const ultraSlime = new UltraSlime(
+          this,
+          spawnX,
+          spawnY,
+          this.map,
+          this.groundLayer,
+        );
+        // Store spawn position for reset when exiting play mode
+        ultraSlime.setData("spawnX", spawnX);
+        ultraSlime.setData("spawnY", spawnY);
+        this.enemies.push(ultraSlime);
+        // this.worldFacts.setFact("Enemy", x, y, "UltraSlime"); // TODO: think I need to learn worldfacts and edit this later
+        tile.index = -1;
+      }
+      if (tile.index == 8) {
+        const spawnX = tile.x * this.map.tileWidth + this.map.tileWidth / 2;
+        const spawnY = tile.y * this.map.tileWidth + this.map.tileWidth / 2;
+        const slime = new Slime(
+          this,
+          spawnX,
+          spawnY,
+          this.map,
+          this.groundLayer,
+        );
+        // Store spawn position for reset when exiting play mode
+        slime.setData("spawnX", spawnX);
+        slime.setData("spawnY", spawnY);
+        this.enemies.push(slime);
+        // this.worldFacts.setFact("Enemy", x, y, "UltraSlime"); // TODO: think I need to learn worldfacts and edit this later
+        tile.index = -1;
+      }
+
+    })
+
 
     // Enable physics and gravity for play mode
     this.physics.world.gravity.y = 1500;
@@ -369,6 +419,7 @@ export class EditorScene extends Phaser.Scene {
     )!;
     // console.log("LAYER1 added:", this.map);
     this.groundLayer = this.map.createLayer("Ground_Layer", tileset, 0, 0)!;
+    GROUND_LAYER = this.groundLayer;
     // console.log("LAYER2 added:", this.map);
     this.collectablesLayer = this.map.createLayer(
       "Collectables_Layer",
@@ -376,6 +427,8 @@ export class EditorScene extends Phaser.Scene {
       0,
       0,
     )!;
+    COLLECTABLES_LAYER = this.collectablesLayer;
+
     this.cameras.main.setBounds(
       0,
       0,
@@ -480,15 +533,15 @@ export class EditorScene extends Phaser.Scene {
     // Listen for Event Queue Regen button
     this.game.events.on("ui:eventQueueRegen", async () => {
       console.log("ui:eventQueueRegen received");
-      if (this.selectionBoxes.length === 0) {
+      if (allSelectionBoxes.length === 0) {
         console.log("No selection boxes to regenerate");
         return;
       }
 
       try {
         await regenerate(
-          this.selectionBoxes,
-          this.computeDependencyMap(this.selectionBoxes),
+          allSelectionBoxes,
+          this.computeDependencyMap(allSelectionBoxes),
           this.worldFacts,
           this,
         );
@@ -528,7 +581,7 @@ export class EditorScene extends Phaser.Scene {
     // Deselect all boxes when UI asks
     this.game.events.on("ui:deselectAllBoxes", () => {
       console.log("ui:deselectAllBoxes -> deselecting all boxes");
-      for (const b of this.selectionBoxes) {
+      for (const b of allSelectionBoxes) {
         b.setActive?.(false);
       }
       if (this.activeBox) {
@@ -586,8 +639,8 @@ export class EditorScene extends Phaser.Scene {
           this.activeBox.finalize?.();
 
           // Ensure it's in the permanent list
-          if (!this.selectionBoxes.includes(this.activeBox)) {
-            this.selectionBoxes.push(this.activeBox);
+          if (!allSelectionBoxes.includes(this.activeBox)) {
+            allSelectionBoxes.push(this.activeBox);
           }
 
           // Keep the box active/selected so the UI and chat context remain tied to it.
@@ -661,38 +714,23 @@ export class EditorScene extends Phaser.Scene {
           // Eraser should clear from both layers
           this.placeTile(this.groundLayer, tileX, tileY, -1);
           this.placeTile(this.collectablesLayer, tileX, tileY, -1);
-        } else if (this.selectedBlockName === "Slime Enemy") {
-          // Spawn actual Slime object (not a tile)
-          const spawnX = tileX * this.map.tileWidth + this.map.tileWidth / 2;
-          const spawnY = tileY * this.map.tileHeight + this.map.tileHeight / 2;
-          const slime = new Slime(
-            this,
-            spawnX,
-            spawnY,
-            this.map,
-            this.groundLayer,
-          );
-          slime.setData("spawnX", spawnX);
-          slime.setData("spawnY", spawnY);
-          this.enemies.push(slime);
-        } else if (this.selectedBlockName === "Ultra Slime") {
-          // Spawn actual UltraSlime object (not a tile)
-          const spawnX = tileX * this.map.tileWidth + this.map.tileWidth / 2;
-          const spawnY = tileY * this.map.tileHeight + this.map.tileHeight / 2;
-          const ultraSlime = new UltraSlime(
-            this,
-            spawnX,
-            spawnY,
-            this.map,
-            this.groundLayer,
-          );
-          ultraSlime.setData("spawnX", spawnX);
-          ultraSlime.setData("spawnY", spawnY);
-          this.enemies.push(ultraSlime);
-        } else if (
-          this.selectedBlockName === "Coin" ||
-          this.selectedBlockName === "Fruit"
-        ) {
+          // } else if (this.selectedBlockName === "Slime Enemy") {
+          //   // Spawn actual Slime object (not a tile)
+          //   const spawnX = tileX * this.map.tileWidth + this.map.tileWidth / 2;
+          //   const spawnY = tileY * this.map.tileHeight + this.map.tileHeight / 2;
+          //   const slime = new Slime(this, spawnX, spawnY, this.map, this.groundLayer);
+          //   slime.setData("spawnX", spawnX);
+          //   slime.setData("spawnY", spawnY);
+          //   this.enemies.push(slime);
+          // } else if (this.selectedBlockName === "Ultra Slime") {
+          //   // Spawn actual UltraSlime object (not a tile)
+          //   const spawnX = tileX * this.map.tileWidth + this.map.tileWidth / 2;
+          //   const spawnY = tileY * this.map.tileHeight + this.map.tileHeight / 2;
+          //   const ultraSlime = new UltraSlime(this, spawnX, spawnY, this.map, this.groundLayer);
+          //   ultraSlime.setData("spawnX", spawnX);
+          //   ultraSlime.setData("spawnY", spawnY);
+          //   this.enemies.push(ultraSlime);
+        } else if (this.selectedBlockName === "Coin" || this.selectedBlockName === "Fruit") {
           // Place collectable in the dedicated collectables layer
           this.placeTile(
             this.collectablesLayer,
@@ -785,12 +823,12 @@ export class EditorScene extends Phaser.Scene {
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
       if (!this.activeBox) return;
       // remove from permanent list if present
-      const idx = this.selectionBoxes.indexOf(this.activeBox);
-      if (idx !== -1) {
-        // console.log(`try del a box, old: ${this.selectionBoxes}`);
-        let temp = this.selectionBoxes.splice(idx, 1);
-        // console.log(`Deleted a box, new: ${this.selectionBoxes}, rem: ${temp}`);
-      }
+      // const idx = allSelectionBoxes.indexOf(this.activeBox);
+      // if (idx !== -1) {
+      //   // console.log(`try del a box, old: ${this.selectionBoxes}`);
+      //   let temp = allSelectionBoxes.splice(idx, 1);
+      //   // console.log(`Deleted a box, new: ${this.selectionBoxes}, rem: ${temp}`);
+      // }
       // destroy visuals and resources
       this.activeBox.destroy?.();
       // clear active reference and notify any external context
@@ -916,7 +954,19 @@ export class EditorScene extends Phaser.Scene {
     );
     tileIndex = tileIndex === 0 ? -1 : tileIndex; // Allow -1 for erasing tiles
     console.log(`Placing tile at (${x}, ${y}) with index ${tileIndex}`);
-    layer.putTileAt(tileIndex, x, y);
+    if (this.activeBox) {
+      if (this.activeBox.containsPoint(x, y)) {
+        this.activeBox.addPlacedTile(tileIndex, x, y, layer.layer.name);
+        layer.putTileAt(tileIndex, x, y);
+        replaceAllBoxes();
+      }
+    }
+    else {
+      addPlacedTile(superDuperRealUserLayer, tileIndex, x, y, layer.layer.name);
+      layer.putTileAt(tileIndex, x, y);
+      replaceAllBoxes();
+    }
+
   }
 
   update() {
@@ -1068,11 +1118,8 @@ export class EditorScene extends Phaser.Scene {
     }
 
     // Continuous Block Placement (enemies are placed once on click, not continuously)
-    if (
-      this.isPlacing &&
-      this.selectedBlockName !== "Slime Enemy" &&
-      this.selectedBlockName !== "Ultra Slime"
-    ) {
+    // if (this.isPlacing && this.selectedBlockName !== "Slime Enemy" && this.selectedBlockName !== "Ultra Slime") {
+    if (this.isPlacing) {
       const pointer = this.input.activePointer;
       const tileX = Math.floor(pointer.worldX / this.TILE_SIZE);
       const tileY = Math.floor(pointer.worldY / this.TILE_SIZE);
@@ -1095,24 +1142,24 @@ export class EditorScene extends Phaser.Scene {
     }
 
     // Update selection box tab positions so tabs follow boxes in real-time
-    for (const box of this.selectionBoxes) {
+    for (const box of allSelectionBoxes) {
       box.updateTabPosition?.();
     }
     this.activeBox?.updateTabPosition?.();
 
     // Collaborative Context Merging - Update neighbor detection for all boxes
-    for (const box of this.selectionBoxes) {
+    for (const box of allSelectionBoxes) {
       if (box.updateNeighbors) {
-        box.updateNeighbors(this.selectionBoxes);
+        box.updateNeighbors(allSelectionBoxes);
       }
       if (box.updateIntersections) {
-        box.updateIntersections(this.selectionBoxes);
+        box.updateIntersections(allSelectionBoxes);
       }
     }
     if (this.activeBox && this.activeBox.updateNeighbors) {
-      this.activeBox.updateNeighbors(this.selectionBoxes);
+      this.activeBox.updateNeighbors(allSelectionBoxes);
       if (this.activeBox.updateIntersections) {
-        this.activeBox.updateIntersections(this.selectionBoxes);
+        this.activeBox.updateIntersections(allSelectionBoxes);
       }
     }
 
@@ -1153,13 +1200,13 @@ export class EditorScene extends Phaser.Scene {
       this.finalizeSelectBox();
     }
 
-    //Temp code - Jason
-    if (Phaser.Input.Keyboard.JustDown(this.keyB)) {
-      //Call selectionBox.ts checkTilesInBox
-      if (this.activeBox) {
-        this.activeBox.checkTilesInBox();
-      }
-    }
+    // //Temp code - Jason
+    // if (Phaser.Input.Keyboard.JustDown(this.keyB)) {
+    //   //Call selectionBox.ts checkTilesInBox
+    //   if (this.activeBox) {
+    //     this.activeBox.checkTilesInBox();
+    //   }
+    // }
   }
 
   public captureSnapshot(): WorldSnapshot {
@@ -1199,12 +1246,12 @@ export class EditorScene extends Phaser.Scene {
 
     // Capture selection boxes — serialize chat messages to plain objects so
     // they survive both JSON save/load and in-memory undo/redo correctly.
-    const selectionBoxes: BoxSnapshot[] = this.selectionBoxes.map((b) => ({
+    const selectionBoxes: BoxSnapshot[] = allSelectionBoxes.map((b) => ({
       start: { x: b.getStart().x, y: b.getStart().y },
       end: { x: b.getEnd().x, y: b.getEnd().y },
       zLevel: b.getZLevel(),
       placedTiles: b.placedTiles.slice(),
-      placedEnemies: b.placedEnemies.slice(),
+      // placedEnemies: b.placedEnemies.slice(),
       chatHistory: b.localContext.chatHistory
         .filter((m) => m._getType?.() !== "system") // don't snapshot the system prompt
         .map((m) => ({
@@ -1275,12 +1322,9 @@ export class EditorScene extends Phaser.Scene {
     }
 
     // Restore selection boxes
-    for (const b of this.selectionBoxes) b.destroy?.();
-    if (this.activeBox) {
-      this.activeBox.destroy?.();
-      this.activeBox = null;
-    }
-    this.selectionBoxes = [];
+    for (const b of allSelectionBoxes) b.destroy?.();
+    if (this.activeBox) { this.activeBox.destroy?.(); this.activeBox = null; }
+    allSelectionBoxes.length = 0;
     setActiveSelectionBox(null); // clear the chat pane so it doesn't show stale history
 
     for (const sd of snapshot.selectionBoxes) {
@@ -1289,11 +1333,11 @@ export class EditorScene extends Phaser.Scene {
         new Phaser.Math.Vector2(sd.start.x, sd.start.y),
         new Phaser.Math.Vector2(sd.end.x, sd.end.y),
         sd.zLevel,
-        this.groundLayer,
+        // this.groundLayer,
         (b) => this.selectBox(b),
       );
       box.placedTiles = sd.placedTiles.slice();
-      box.placedEnemies = sd.placedEnemies.slice();
+      // box.placedEnemies = sd.placedEnemies.slice();
       // Reconstruct proper LangChain message instances from the serialized format
       box.localContext.chatHistory = sd.chatHistory.map((m) => {
         if (m.type === "ai") return new AIMessage(m.content);
@@ -1301,7 +1345,7 @@ export class EditorScene extends Phaser.Scene {
         return new HumanMessage(m.content);
       });
       box.finalize();
-      this.selectionBoxes.push(box);
+      allSelectionBoxes.push(box);
     }
 
     this.worldFacts.refresh();
@@ -1373,8 +1417,7 @@ export class EditorScene extends Phaser.Scene {
                 const kind = m.id[m.id.length - 1] ?? "HumanMessage";
                 const content = m.kwargs?.content ?? "";
                 if (kind === "AIMessage") return { type: "ai", content };
-                if (kind === "SystemMessage")
-                  return { type: "system", content };
+                if (kind === "SystemMessage") return { type: "system", content };
                 return { type: "human", content };
               }
               return m; // already in new { type, content } format
@@ -1499,7 +1542,7 @@ export class EditorScene extends Phaser.Scene {
     // Checking Overlapping
     const candidate = new Phaser.Geom.Rectangle(x, y, 1, 1);
     let overlap = false;
-    for (const box of this.selectionBoxes) {
+    for (const box of allSelectionBoxes) {
       if (box === this.activeBox) continue; // skip the box currently being edited
 
       if (box.getZLevel() === this.currentZLevel) {
@@ -1515,7 +1558,7 @@ export class EditorScene extends Phaser.Scene {
     // If overlap does occur, do not make a box
     if (overlap) {
       // If the click lands inside an existing finalized box, select it instead
-      for (const box of this.selectionBoxes) {
+      for (const box of allSelectionBoxes) {
         const bound = box.getBounds();
         if (SelectionBox.rectanglesOverlap(candidate, bound)) {
           // Select this box
@@ -1537,7 +1580,7 @@ export class EditorScene extends Phaser.Scene {
           this.selectionStart,
           this.selectionEnd,
           this.currentZLevel,
-          this.groundLayer,
+          // this.groundLayer,
           (box) => {
             this.selectBox(box);
           },
@@ -1566,7 +1609,7 @@ export class EditorScene extends Phaser.Scene {
     const possibleBounds = this.activeBox.tempBounds(possibleEnd);
 
     let overlap = false;
-    for (const box of this.selectionBoxes) {
+    for (const box of allSelectionBoxes) {
       if (box.getZLevel() === this.currentZLevel) {
         // only check boxes on same level
         if (
@@ -1610,8 +1653,8 @@ export class EditorScene extends Phaser.Scene {
     this.selectBox(this.activeBox);
 
     // Add to permanent list
-    if (!this.selectionBoxes.includes(this.activeBox)) {
-      this.selectionBoxes.push(this.activeBox);
+    if (!allSelectionBoxes.includes(this.activeBox)) {
+      allSelectionBoxes.push(this.activeBox);
     }
 
     // These define the height and width of the selection box
@@ -1732,8 +1775,8 @@ export class EditorScene extends Phaser.Scene {
 
     for (let y = 0; y < this.clipboard.length; y++) {
       for (let x = 0; x < this.clipboard[y].length; x++) {
-        const tileIndex = this.clipboard[y][x];
-        if (tileIndex === -1) continue;
+        const tileIndex = this.clipboard[y][x][0];
+        const collectablesIndex = this.clipboard[y][x][1];
 
         const pasteX = sX + x;
         const pasteY = sY + y;
@@ -1744,7 +1787,10 @@ export class EditorScene extends Phaser.Scene {
           pasteY >= 0 &&
           pasteY < mapHeight
         ) {
-          this.placeTile(this.groundLayer, pasteX, pasteY, tileIndex);
+          if (tileIndex > 1)
+            this.placeTile(this.groundLayer, pasteX, pasteY, tileIndex);
+          if (tileIndex > 1)
+            this.placeTile(this.collectablesLayer, pasteX, pasteY, collectablesIndex);
         }
       }
     }
@@ -1903,7 +1949,7 @@ export class EditorScene extends Phaser.Scene {
     }
     this.optionsPanelVisible = false;
 
-    // Respawn all enemies (including ones killed during play) back to editor positions
+    // Respawn all enemies (including ones killed during play) back to editor positions // TODO YOU ARE HERE
     this.enemies.forEach((enemy) => {
       const spawnX = enemy.getData("spawnX");
       const spawnY = enemy.getData("spawnY");
@@ -1952,6 +1998,9 @@ export class EditorScene extends Phaser.Scene {
     this.cameras.main.centerOn(0, 0);
 
     // also remove the editor button
+
+
+    replaceAllBoxes();
   }
 
   private resetPlayLevel() {
@@ -1982,9 +2031,22 @@ export class EditorScene extends Phaser.Scene {
         if (spawnX !== undefined && spawnY !== undefined) {
           (enemy as any).respawn(spawnX, spawnY);
         }
+
         // Clear any lingering projectiles
         (enemy as any).clearProjectiles?.();
       });
+
+
+
+      this.groundLayer.forEachTile((tile) => {
+        if (tile.index == 7) {
+          tile.index = -1;
+        }
+        if (tile.index == 8) {
+          tile.index = -1;
+        }
+
+      })
     });
   }
 
@@ -2032,7 +2094,7 @@ export class EditorScene extends Phaser.Scene {
 
     let overlap = this.checkLevelOverlap(
       this.activeBox,
-      this.selectionBoxes,
+      allSelectionBoxes,
       this.currentZLevel,
     );
 
@@ -2045,7 +2107,7 @@ export class EditorScene extends Phaser.Scene {
       }
       overlap = this.checkLevelOverlap(
         this.activeBox,
-        this.selectionBoxes,
+        allSelectionBoxes,
         this.currentZLevel,
       );
     }
@@ -2068,7 +2130,7 @@ export class EditorScene extends Phaser.Scene {
 
     let overlap = this.checkLevelOverlap(
       this.activeBox,
-      this.selectionBoxes,
+      allSelectionBoxes,
       this.currentZLevel,
     );
 
@@ -2080,7 +2142,7 @@ export class EditorScene extends Phaser.Scene {
       this.currentZLevel--;
       overlap = this.checkLevelOverlap(
         this.activeBox,
-        this.selectionBoxes,
+        allSelectionBoxes,
         this.currentZLevel,
       );
     }
@@ -2129,8 +2191,8 @@ export class EditorScene extends Phaser.Scene {
     if (!this.activeBox) return;
 
     // Push it to the array
-    if (!this.selectionBoxes.includes(this.activeBox))
-      this.selectionBoxes.push(this.activeBox);
+    if (!allSelectionBoxes.includes(this.activeBox))
+      allSelectionBoxes.push(this.activeBox);
     // mark it as finalized (permanent) so it can't be redrawn; it can still be dragged via its tab
     this.activeBox.finalize?.();
 
@@ -2143,8 +2205,8 @@ export class EditorScene extends Phaser.Scene {
   selectBox(box: SelectionBox | null) {
     if (!box) return;
     // Deactivate all boxes we know about (selectionBoxes and any current activeBox)
-    console.log(`Boxes: ${this.selectionBoxes}`);
-    for (const b of this.selectionBoxes) {
+    console.log(`Boxes: ${allSelectionBoxes}`);
+    for (const b of allSelectionBoxes) {
       b.setActive?.(false);
     }
     if (this.activeBox) {

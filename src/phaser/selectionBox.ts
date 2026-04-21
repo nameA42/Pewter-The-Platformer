@@ -1,5 +1,8 @@
 import Phaser from "phaser";
 import { Z_LEVEL_COLORS } from "./colors";
+import { COLLECTABLES_LAYER, editorScene, EditorScene, GROUND_LAYER } from "./editorScene";
+import type { Slime } from "./ExternalClasses/Slime";
+import type { UltraSlime } from "./ExternalClasses/UltraSlime";
 
 // STEP 1: Collaborative Context Merging - Basic interfaces and ownership structure
 // Interface for collaborative context data
@@ -19,7 +22,18 @@ interface BoxContext {
   version: number;
 }
 
-const allSelectionBoxes: SelectionBox[] = [];
+export const allSelectionBoxes: SelectionBox[] = [];
+// if future people wonder "why didn't they just make a selection box that doesn't have shading"
+// I don't know how that code works or if we can disable it so I didn't touch it :thumbsup:
+export const superDuperRealUserLayer: {
+  tileIndex: number,
+  x: number,
+  y: number,
+  layerName: string
+}[] = [
+    // { tileIndex: 7, x: 5, y: 5, layerName: "Ground_Layer" }, // ULTRA SLIME
+    // { tileIndex: 8, x: 6, y: 5, layerName: "Ground_Layer" } // normal slime
+  ];
 
 
 export function replaceAllBoxes() {
@@ -36,9 +50,19 @@ export function replaceAllBoxes() {
   for (let sb of allSelectionBoxes) {
     for (let tile of sb.placedTiles) {
       if (tile.tileIndex > 1)
-        sb.getLayer().putTileAt(tile.tileIndex, tile.x, tile.y);
+        (tile.layerName == "Ground_Layer" ? GROUND_LAYER : COLLECTABLES_LAYER).putTileAt(tile.tileIndex, tile.x, tile.y);
     }
   }
+  for (let tile of superDuperRealUserLayer) {
+    if (tile.tileIndex > 1)
+      (tile.layerName == "Ground_Layer" ? GROUND_LAYER : COLLECTABLES_LAYER).putTileAt(tile.tileIndex, tile.x, tile.y);
+  }
+  editorScene.worldFacts.clearEnemies();
+  GROUND_LAYER.forEachTile((tile) => {
+    if (tile.index == 7 || tile.index == 8) {
+      editorScene.worldFacts.setFact("Enemy", tile.x, tile.y, tile.index == 7 ? "UltraSlime" : "Slime");
+    }
+  })
 }
 
 export class SelectionBox {
@@ -53,8 +77,8 @@ export class SelectionBox {
   }
   private scene: Phaser.Scene;
   private zLevel: number;
-  public selectedTiles: number[][] = [];
-  private layer: Phaser.Tilemaps.TilemapLayer;
+  public selectedTiles: number[][][] = [];
+  // private layer: Phaser.Tilemaps.TilemapLayer;
   public localContext: BoxContext;
   public placedTiles: {
     tileIndex: number;
@@ -62,11 +86,14 @@ export class SelectionBox {
     y: number;
     layerName: string;
   }[] = [];
-  public placedEnemies: {
-    enemyType: string;
-    x: number;
-    y: number;
-  }[] = [];
+  // public placedEnemies:
+  //   // {
+  //   // enemyType: string;
+  //   // x: number;
+  //   // y: number;
+
+  //   // }
+  //   (Slime | UltraSlime)[] = [];
   private tabContainer: Phaser.GameObjects.Container | null = null;
   private onSelect?: (box: SelectionBox) => void;
   private tabBg: Phaser.GameObjects.Rectangle | null = null;
@@ -93,11 +120,11 @@ export class SelectionBox {
     y: number;
     layerName: string;
   }[];
-  private _dragOriginalPlacedEnemies?: {
-    enemyType: string;
-    x: number;
-    y: number;
-  }[];
+  // private _dragOriginalPlacedEnemies?: {
+  //   enemyType: string;
+  //   x: number;
+  //   y: number;
+  // }[];
   private _dragStartHandler?: (pointer: Phaser.Input.Pointer, obj: any) => void;
   private _dragHandler?: (
     pointer: Phaser.Input.Pointer,
@@ -127,14 +154,14 @@ export class SelectionBox {
     start: Phaser.Math.Vector2,
     end: Phaser.Math.Vector2,
     zLevel: number = 1,
-    layer: Phaser.Tilemaps.TilemapLayer,
+    // layer: Phaser.Tilemaps.TilemapLayer,
     onSelect?: (box: SelectionBox) => void,
   ) {
     this.scene = scene;
     this.start = start.clone();
     this.end = end.clone();
     this.zLevel = zLevel;
-    this.layer = layer;
+    // this.layer = layer;
 
     this.graphics = scene.add.graphics();
     this.graphics.setDepth(100);
@@ -155,6 +182,11 @@ export class SelectionBox {
     // create tab after initial draw
     this.createTab();
     allSelectionBoxes.push(this);
+  }
+
+  public containsPoint(x: number, y: number) {
+    return Math.min(this.start.x, this.end.x) <= x && Math.max(this.start.x, this.end.x) >= x
+      && Math.min(this.start.y, this.end.y) <= y && Math.max(this.start.y, this.end.y) >= y
   }
 
   // STEP 2: Collaborative Context Merging - Basic data management methods
@@ -549,7 +581,7 @@ export class SelectionBox {
       .setOrigin(0, 0.5);
     bg.setStrokeStyle(1, initialStroke);
     const txt = this.scene.add
-      .text(6, 0, `Box`, { fontSize: "10px", color: "#ffffff" })
+      .text(6, 0, `Box`, { fontSize: "10px", color: "#ffffff", resolution: 2 })
       .setOrigin(0, 0.5);
 
     const container = this.scene.add.container(worldX, worldY - 10, [bg, txt]);
@@ -562,26 +594,6 @@ export class SelectionBox {
 
     // Make interactive on the background rectangle
     bg.setInteractive({ useHandCursor: true });
-    bg.on(
-      "pointerdown",
-      (
-        _pointer: Phaser.Input.Pointer,
-        _localX: number,
-        _localY: number,
-        event: any,
-      ) => {
-        // Prevent global pointer handlers (like EditorScene startSelection)
-        // from also reacting to this click.
-        try {
-          if (event && typeof event.stopPropagation === "function") {
-            event.stopPropagation();
-          }
-        } catch (e) {
-          // ignore
-        }
-        if (this.onSelect) this.onSelect(this);
-      },
-    );
 
     // Implement pointer-driven drag so the box follows the mouse without snapping
     try {
@@ -778,61 +790,62 @@ export class SelectionBox {
           // swallow
         }
         // Also handle any placed enemies that were moved with the box
-        try {
-          const origE = this._dragOriginalPlacedEnemies;
-          if (origE && origE.length > 0) {
-            const rg = (this.scene as any).regenerator as any;
-            const deltaX = Math.floor(
-              this.start.x - (this._dragInitialStart?.x ?? 0),
-            );
-            const deltaY = Math.floor(
-              this.start.y - (this._dragInitialStart?.y ?? 0),
-            );
-            const eMoves: Array<any> = [];
-            if (
-              this.placedEnemies &&
-              this.placedEnemies.length === origE.length
-            ) {
-              for (let i = 0; i < origE.length; i++) {
-                const o = origE[i];
-                const n = this.placedEnemies[i];
-                if (!n) continue;
-                if (o.x === n.x && o.y === n.y) continue;
-                eMoves.push({
-                  type: "enemy",
-                  from: { x: o.x, y: o.y },
-                  to: { x: n.x, y: n.y },
-                });
-              }
-            } else {
-              for (const o of origE) {
-                const toX = o.x + deltaX;
-                const toY = o.y + deltaY;
-                if (o.x === toX && o.y === toY) continue;
-                eMoves.push({
-                  type: "enemy",
-                  from: { x: o.x, y: o.y },
-                  to: { x: toX, y: toY },
-                });
-              }
-            }
-            if (
-              eMoves.length > 0 &&
-              rg &&
-              typeof rg.moveObjects === "function"
-            ) {
-              try {
-                // console.log("Things be thinging"); // NOTE: This be not being happening
-                rg.moveObjects(eMoves);
-              } catch (er) {
-                // eslint-disable-next-line no-console
-                console.error("SelectionBox: moveObjects (enemies) failed", er);
-              }
-            }
-          }
-        } catch (e) {
-          // swallow
-        }
+        // ! this doesn't work anyways and I aint gonna read all of that so it's going
+        // try {
+        //   const origE = this._dragOriginalPlacedEnemies;
+        //   if (origE && origE.length > 0) {
+        //     const rg = (this.scene as any).regenerator as any;
+        //     const deltaX = Math.floor(
+        //       this.start.x - (this._dragInitialStart?.x ?? 0),
+        //     );
+        //     const deltaY = Math.floor(
+        //       this.start.y - (this._dragInitialStart?.y ?? 0),
+        //     );
+        //     const eMoves: Array<any> = [];
+        //     if (
+        //       this.placedEnemies &&
+        //       this.placedEnemies.length === origE.length
+        //     ) {
+        //       for (let i = 0; i < origE.length; i++) {
+        //         const o = origE[i];
+        //         const n = this.placedEnemies[i];
+        //         if (!n) continue;
+        //         if (o.x === n.x && o.y === n.y) continue;
+        //         eMoves.push({
+        //           type: "enemy",
+        //           from: { x: o.x, y: o.y },
+        //           to: { x: n.x, y: n.y },
+        //         });
+        //       }
+        //     } else {
+        //       for (const o of origE) {
+        //         const toX = o.x + deltaX;
+        //         const toY = o.y + deltaY;
+        //         if (o.x === toX && o.y === toY) continue;
+        //         eMoves.push({
+        //           type: "enemy",
+        //           from: { x: o.x, y: o.y },
+        //           to: { x: toX, y: toY },
+        //         });
+        //       }
+        //     }
+        //     if (
+        //       eMoves.length > 0 &&
+        //       rg &&
+        //       typeof rg.moveObjects === "function"
+        //     ) {
+        //       try {
+        //         // console.log("Things be thinging"); // NOTE: This be not being happening
+        //         rg.moveObjects(eMoves);
+        //       } catch (er) {
+        //         // eslint-disable-next-line no-console
+        //         console.error("SelectionBox: moveObjects (enemies) failed", er);
+        //       }
+        //     }
+        //   }
+        // } catch (e) {
+        //   // swallow
+        // }
         // clear drag snapshot
         try {
           this._dragOriginalPlacedTiles = undefined;
@@ -894,14 +907,14 @@ export class SelectionBox {
               y: p.y,
               layerName: p.layerName,
             }));
-            this._dragOriginalPlacedEnemies = this.placedEnemies.map((e) => ({
-              enemyType: e.enemyType,
-              x: e.x,
-              y: e.y,
-            }));
+            // this._dragOriginalPlacedEnemies = this.placedEnemies.map((e) => ({
+            //   enemyType: e.type,
+            //   x: e.x,
+            //   y: e.y,
+            // }));
           } catch (err) {
             this._dragOriginalPlacedTiles = undefined;
-            this._dragOriginalPlacedEnemies = undefined;
+            // this._dragOriginalPlacedEnemies = undefined;
           }
           const cam =
             this.scene.cameras && this.scene.cameras.main
@@ -915,6 +928,10 @@ export class SelectionBox {
           // store pointer-start tile so subsequent moves compute a delta from this origin
           this._dragPointerTileX = pTileX;
           this._dragPointerTileY = pTileY;
+
+          if (dragging) {
+            return;
+          }
           dragging = true;
           this._pointerMoveHandler = pointerMove;
           this._pointerUpHandler = pointerUp;
@@ -985,6 +1002,7 @@ export class SelectionBox {
     this.updateTabWithNewInfo()
   }
 
+  // ! will just copy the topmost info
   copyTiles() {
     const sX = Math.min(this.start.x, this.end.x);
     const sY = Math.min(this.start.y, this.end.y);
@@ -993,10 +1011,11 @@ export class SelectionBox {
 
     this.selectedTiles = [];
     for (let y = sY; y <= eY; y++) {
-      const row: number[] = [];
+      const row: number[][] = [];
       for (let x = sX; x <= eX; x++) {
-        const tile = this.layer.getTileAt(x, y);
-        row.push(tile ? tile.index : -1);
+        const tile = GROUND_LAYER.getTileAt(x, y);
+        const collectable = COLLECTABLES_LAYER.getTileAt(x, y);
+        row.push([tile ? tile.index : -1, collectable ? collectable.index : -1]);
       }
       this.selectedTiles.push(row);
     }
@@ -1042,14 +1061,14 @@ export class SelectionBox {
   }
 
   // Returns the selected tiles
-  getSelectedTiles(): number[][] {
+  getSelectedTiles(): number[][][] {
     return this.selectedTiles;
   }
 
-  // Expose the layer this selection box is associated with
-  public getLayer(): Phaser.Tilemaps.TilemapLayer {
-    return this.layer;
-  }
+  // // Expose the layer this selection box is associated with
+  // public getLayer(): Phaser.Tilemaps.TilemapLayer {
+  //   return this.layer;
+  // }
 
   // Check if this box overlaps with another box in tile-space
   // Returns true only if they share actual tiles (not just edges)
@@ -1113,10 +1132,13 @@ export class SelectionBox {
 
     // clean up actual stuff
 
-    allSelectionBoxes.splice(allSelectionBoxes.indexOf(this), 1);
+    let tempInd = allSelectionBoxes.indexOf(this);
+    if (tempInd != -1)
+      allSelectionBoxes.splice(tempInd, 1);
     // delete owned tiles
     for (let tile of this.placedTiles) {
-      this.getLayer().putTileAt(1, tile.x, tile.y);
+      GROUND_LAYER.putTileAt(-1, tile.x, tile.y);
+      COLLECTABLES_LAYER.putTileAt(-1, tile.x, tile.y);
     }
 
     replaceAllBoxes();
@@ -1462,12 +1484,12 @@ export class SelectionBox {
         .join("; ");
       msg += ` Current placed tile positions: ${tileList}.`;
     }
-    if (this.placedEnemies.length > 0) {
-      const enemyList = this.placedEnemies
-        .map((e) => `${e.enemyType} at (${e.x}, ${e.y})`)
-        .join("; ");
-      msg += ` Current placed enemy positions: ${enemyList}.`;
-    }
+    // if (this.placedEnemies.length > 0) {
+    //   const enemyList = this.placedEnemies
+    //     .map((e) => `${e.type} at (${e.x}, ${e.y})`)
+    //     .join("; ");
+    //   msg += ` Current placed enemy positions: ${enemyList}.`;
+    // }
 
     return msg;
   }
@@ -1500,26 +1522,20 @@ export class SelectionBox {
     y: number,
     layerName: string,
   ) {
-    // this.placedTiles = this.placedTiles.filter((tile) => {tile.x != x || tile.y != y})
-    let replace = this.placedTiles.find((tile) => tile.x == x && tile.y == y && tile.layerName == layerName);
-    if (replace != undefined) {
-      replace.tileIndex = tileIndex;
-    }
-    else {
-      this.placedTiles.push({ tileIndex, x, y, layerName });
-    }
-    console.log("Added placed tile:", { tileIndex, x, y, layerName });
+    if (this.containsPoint(x, y))
+      addPlacedTile(this.placedTiles, tileIndex, x, y, layerName);
   }
 
-  // Register an enemy placed within this selection box (tile coords)
-  public addPlacedEnemy(enemyType: string, x: number, y: number) {
-    this.placedEnemies.push({ enemyType, x, y });
-    console.log("Added placed enemy:", { enemyType, x, y });
-  }
+  // // Register an enemy placed within this selection box (tile coords)
+  // public addPlacedEnemy(enemy: (Slime | UltraSlime)) {
+  //   // this.placedEnemies.push({ enemyType, x, y });
+  //   this.placedEnemies.push(enemy);
+  //   // console.log("Added placed enemy:", { enemyType, x, y });
+  // }
 
-  public getPlacedEnemies() {
-    return this.placedEnemies;
-  }
+  // public getPlacedEnemies() {
+  //   return this.placedEnemies;
+  // }
 
   public getPlacedTiles() {
     return this.placedTiles;
@@ -1579,34 +1595,34 @@ export class SelectionBox {
     return this.isActive;
   }
 
-  //Drag and Drop support - Jason Cho
-  public checkTilesInBox() {
-    const sX = Math.min(this.start.x, this.end.x);
-    const sY = Math.min(this.start.y, this.end.y);
-    const eX = Math.max(this.start.x, this.end.x);
-    const eY = Math.max(this.start.y, this.end.y);
-    const tilesInBox: {
-      tileIndex: number;
-      x: number;
-      y: number;
-      layerName: string;
-    }[] = [];
-    for (let y = sY; y <= eY; y++) {
-      for (let x = sX; x <= eX; x++) {
-        const tile = this.layer.getTileAt(x, y);
-        if (tile) {
-          tilesInBox.push({
-            tileIndex: tile.index,
-            x: x,
-            y: y,
-            layerName: this.layer.layer.name,
-          });
-        }
-      }
-    }
-    console.log("Tiles in Box:", tilesInBox);
-    return tilesInBox;
-  }
+  // //Drag and Drop support - Jason Cho
+  // public checkTilesInBox() {
+  //   const sX = Math.min(this.start.x, this.end.x);
+  //   const sY = Math.min(this.start.y, this.end.y);
+  //   const eX = Math.max(this.start.x, this.end.x);
+  //   const eY = Math.max(this.start.y, this.end.y);
+  //   const tilesInBox: {
+  //     tileIndex: number;
+  //     x: number;
+  //     y: number;
+  //     layerName: string;
+  //   }[] = [];
+  //   for (let y = sY; y <= eY; y++) {
+  //     for (let x = sX; x <= eX; x++) {
+  //       const tile = this.layer.getTileAt(x, y);
+  //       if (tile) {
+  //         tilesInBox.push({
+  //           tileIndex: tile.index,
+  //           x: x,
+  //           y: y,
+  //           layerName: this.layer.layer.name,
+  //         });
+  //       }
+  //     }
+  //   }
+  //   console.log("Tiles in Box:", tilesInBox);
+  //   return tilesInBox;
+  // }
 
   private snapshotSelection(): void {
     const sX = Math.min(this.start.x, this.end.x);
@@ -1643,7 +1659,7 @@ export class SelectionBox {
     this.destroyPreviewLayer();
     if (!this.dragSnapshot) return;
 
-    const map = this.layer.tilemap; // use the SAME map
+    const map = GROUND_LAYER.tilemap; // use the SAME map
     const tileW = map.tileWidth;
     const tileH = map.tileHeight;
 
@@ -1697,7 +1713,7 @@ export class SelectionBox {
 
   private updatePreviewLayerPosition(): void {
     if (!this.previewLayer) return;
-    const map = this.layer.tilemap;
+    const map = GROUND_LAYER.tilemap;
     const sX = Math.min(this.start.x, this.end.x);
     const sY = Math.min(this.start.y, this.end.y);
     this.previewLayer.setPosition(sX * map.tileWidth, sY * map.tileHeight);
@@ -1735,10 +1751,12 @@ export class SelectionBox {
     // 1) Clear original snapshot footprint (only cells that had tiles)
     for (let ty = 0; ty < this.dragSnapshot.h; ty++) {
       for (let tx = 0; tx < this.dragSnapshot.w; tx++) {
-        const hadTile = this.dragSnapshot.tiles.some(
-          (t) => t.dx === tx && t.dy === ty,
-        );
-        if (hadTile) this.layer.putTileAt(-1, oldSX + tx, oldSY + ty);
+        // const hadTile = this.dragSnapshot.tiles.some(
+        //   (t) => t.dx === tx && t.dy === ty,
+        // );
+
+        GROUND_LAYER.putTileAt(-1, oldSX + tx, oldSY + ty);
+        COLLECTABLES_LAYER.putTileAt(-1, oldSX + tx, oldSY + ty);
       }
     }
 
@@ -1776,14 +1794,39 @@ export class SelectionBox {
     this.redraw();
   }
 
-  private targetAreaIsClear(newSX: number, newSY: number): boolean {
-    if (!this.dragSnapshot) return true;
-    for (const t of this.dragSnapshot.tiles) {
-      const nx = newSX + t.dx;
-      const ny = newSY + t.dy;
-      const tile = this.layer.getTileAt(nx, ny);
-      if (tile && tile.index !== -1) return false;
+  // private targetAreaIsClear(newSX: number, newSY: number): boolean {
+  //   if (!this.dragSnapshot) return true;
+  //   for (const t of this.dragSnapshot.tiles) {
+  //     const nx = newSX + t.dx;
+  //     const ny = newSY + t.dy;
+  //     const tile = this.layer.getTileAt(nx, ny);
+  //     if (tile && tile.index !== -1) return false;
+  //   } 
+  //   return true;
+  // }
+}
+
+export function addPlacedTile(
+  tilesthing: { tileIndex: number, x: number, y: number, layerName: string }[],
+  tileIndex: number,
+  x: number,
+  y: number,
+  layerName: string,
+) {
+
+  // this.placedTiles = this.placedTiles.filter((tile) => {tile.x != x || tile.y != y})
+  let replace = tilesthing.findIndex((tile) => tile.x == x && tile.y == y && tile.layerName == layerName);
+
+
+  if (replace != -1) {
+    if (tileIndex == -1) {
+      tilesthing.splice(replace, 1);
+      return;
     }
-    return true;
+    tilesthing[replace].tileIndex = tileIndex;
   }
+  else if (tileIndex != -1) {
+    tilesthing.push({ tileIndex, x, y, layerName });
+  }
+  console.log("Added placed tile:", { tileIndex, x, y, layerName });
 }

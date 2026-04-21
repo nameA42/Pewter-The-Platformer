@@ -50,6 +50,10 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
       this.speed,
     );
 
+    this.generatePos(x, y, map);
+  }
+
+  generatePos(x: number, y: number, map: Phaser.Tilemaps.Tilemap) {
     // define two patrol points: 3 tiles left, back to original position
     const tileSize = map.tileWidth;
     const startTile = {
@@ -61,6 +65,7 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
       { x: startTile.x, y: startTile.y }, // back to start
     ];
   }
+
 
   update(
     player: Phaser.GameObjects.Sprite,

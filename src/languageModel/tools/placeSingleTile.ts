@@ -77,7 +77,7 @@ export class PlaceSingleTile {
         y,
         placementType,
       );
-      if (!overlapCheck.canPlace) {
+      if (!overlapCheck.canPlace && tileIndex < 7) {
         return `❌ Cannot place tile at (${x}, ${y}): ${overlapCheck.reason}`;
       }
 

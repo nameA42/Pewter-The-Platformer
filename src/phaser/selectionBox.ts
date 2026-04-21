@@ -102,6 +102,7 @@ export class SelectionBox {
   private tabText: Phaser.GameObjects.Text | null = null;
   private isActive: boolean = false;
   private isFinalized: boolean = false;
+  private isResizing: boolean = false;
 
   // STEP 3: Collaborative Context Merging - Neighbor tracking
   private neighbors: Set<SelectionBox> = new Set();
@@ -461,18 +462,75 @@ export class SelectionBox {
   }
 
   updateEnd(end: Phaser.Math.Vector2) {
-    if (this.isFinalized) return; // don't allow resizing finalized boxes
+    if (this.isFinalized && !this.isResizing) return; // don't allow resizing finalized boxes
     this.end = end.clone();
     this.redraw();
   }
 
   resizeAttempt(clickPoint: Phaser.Math.Vector2) {
+    console.log(`the finler${this.isFinalized}, s: ${this.start.x}, ${this.start.y}, cp: ${clickPoint.x}, ${clickPoint.y}`);
+    if (!this.isFinalized) return false;
+    // this.isFinalized = false;
     // let xDist = Math.min(Math.abs(clickPoint.x - this.start.x), Math.abs(clickPoint.x - this.end.x));
     // let yDist = Math.min(Math.abs(clickPoint.y - this.start.y), Math.abs(clickPoint.y - this.end.y));
-    if (this.start.distance(clickPoint) < maxResizeDistToEdge) {
-      return;
+    if (this.start.distanceSq(clickPoint) < maxResizeDistToEdge) {
+      this.isResizing = true;
+      console.log("Resizeler");
+      // this.isFinalized = false;
+      this.start = this.end;
+      this.end = clickPoint.clone();
+      this.redraw();
+      return true;
     }
+    if (this.end.distanceSq(clickPoint) < maxResizeDistToEdge) {
+      this.isResizing = true;
+      console.log("Resizeler");
+      // this.isFinalized = false;
+      // this.start = this.end;
+      this.end = clickPoint.clone();
+      this.redraw();
+      return true;
+    }
+    // other corners
+    let otherCorn1 = new Phaser.Math.Vector2(this.start.x, this.end.y);
+    let otherCorn2 = new Phaser.Math.Vector2(this.end.x, this.start.y);
 
+    if (otherCorn1.distanceSq(clickPoint) < maxResizeDistToEdge) {
+      this.isResizing = true;
+      console.log("Resizeler");
+      // this.isFinalized = false;
+      this.start = otherCorn2;
+      this.end = clickPoint.clone();
+      this.redraw();
+      return true;
+    }
+    if (otherCorn2.distanceSq(clickPoint) < maxResizeDistToEdge) {
+      this.isResizing = true;
+      console.log("Resizeler");
+      // this.isFinalized = false;
+      this.start = otherCorn1;
+      this.end = clickPoint.clone();
+      this.redraw();
+      return true;
+    }
+  }
+
+  finishResizing() {
+    // if (!this.isResizing) return;
+    this.isResizing = false;
+    // for (let tile of this.placedTiles) {
+    //   if (!this.containsPoint(tile.x, tile.y)) {
+    //     this.addPlacedTile(-1, tile.x, tile.y, tile.layerName);
+    //   }
+    // }
+    this.placedTiles = this.placedTiles.filter((tile) => {
+      if (this.containsPoint(tile.x, tile.y)) {
+        return true;
+      }
+      (tile.layerName == "Ground_Layer" ? GROUND_LAYER : COLLECTABLES_LAYER).putTileAt(-1, tile.x, tile.y);
+      return false;
+    })
+    replaceAllBoxes();
   }
 
   setZLevel(zLevel: number) {
@@ -1417,7 +1475,7 @@ export class SelectionBox {
     if (neighborCount > 0) parts.push(`${neighborCount}n`);
     if (dataCount > 0) parts.push(`${dataCount}d`);
     if (intersectionCount > 0) parts.push(`${intersectionCount}z`);
-    let text = `Box${this.isActive ? `[(${this.start.x},${this.start.y}),(${this.end.x},${this.end.y})]` : ''}${parts.length > 0 ? ` (${parts.join(", ")})` : ''}`;
+    let text = `Box${this.isActive ? `[(${Math.min(this.start.x, this.end.x)},${Math.min(this.start.y, this.end.y)}),(${Math.max(this.end.x, this.start.x)},${Math.max(this.end.y, this.start.y)})]` : ''}${parts.length > 0 ? ` (${parts.join(", ")})` : ''}`;
 
     this.tabText.setText(text);
 

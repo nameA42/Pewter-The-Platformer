@@ -8,6 +8,7 @@ export class LoadingScene extends Phaser.Scene {
   preload() {
     this.load.setPath("phaserAssets/");
     this.load.image("tileset", "pewterPlatformerTilesetExtended.png");
+    this.load.image("extras-tileset", "pewterPlatformerTilesetBackgroundExtras.png");
     this.load.tilemapTiledJSON("defaultMap", "pewterPlatformerDefaultMap.json");
     //this.load.image("pellets", "pellets.png");
 

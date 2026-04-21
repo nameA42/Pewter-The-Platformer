@@ -410,11 +410,19 @@ export class EditorScene extends Phaser.Scene {
       0,
       0,
     )!;
-    // console.log("Tileset added:", this.map);
+
+    const extrasTileset = this.map.addTilesetImage(
+      "Extras",
+      "extras-tileset",
+      16,
+      16,
+      0,
+      0,
+    );
 
     this.backgroundLayer = this.map.createLayer(
       "Background_Layer",
-      tileset,
+      extrasTileset ? [tileset, extrasTileset] : tileset,
       0,
       0,
     )!;

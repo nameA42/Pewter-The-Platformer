@@ -1,0 +1,14 @@
+{ "columns":2,
+ "image":"pewterPlatformerTilesetBackgroundExtras.png",
+ "imageheight":16,
+ "imagewidth":32,
+ "margin":0,
+ "name":"Extras",
+ "spacing":0,
+ "tilecount":2,
+ "tiledversion":"1.11.2",
+ "tileheight":16,
+ "tilewidth":16,
+ "type":"tileset",
+ "version":"1.10"
+}

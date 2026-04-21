@@ -65,6 +65,8 @@ export function replaceAllBoxes() {
   })
 }
 
+const maxResizeDistToEdge = 0.5;
+
 export class SelectionBox {
   private graphics: Phaser.GameObjects.Graphics;
   private start: Phaser.Math.Vector2;
@@ -462,6 +464,15 @@ export class SelectionBox {
     if (this.isFinalized) return; // don't allow resizing finalized boxes
     this.end = end.clone();
     this.redraw();
+  }
+
+  resizeAttempt(clickPoint: Phaser.Math.Vector2) {
+    // let xDist = Math.min(Math.abs(clickPoint.x - this.start.x), Math.abs(clickPoint.x - this.end.x));
+    // let yDist = Math.min(Math.abs(clickPoint.y - this.start.y), Math.abs(clickPoint.y - this.end.y));
+    if (this.start.distance(clickPoint) < maxResizeDistToEdge) {
+      return;
+    }
+
   }
 
   setZLevel(zLevel: number) {

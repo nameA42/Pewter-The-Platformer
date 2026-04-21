@@ -84,7 +84,7 @@ export class GameScene extends Phaser.Scene {
     */
 
     const tileset = this.map.addTilesetImage(
-      "pewterPlatformerTileset",
+      "pewterPlatformerTilesetExtended",
       "tileset",
       16,
       16,

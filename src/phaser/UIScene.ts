@@ -24,6 +24,7 @@ export class UIScene extends Phaser.Scene {
   private terrainBlocks: string[] = [
     "Grass-Half Block",
     "Dirt Block",
+    "Grass Block",
     "Question Block",
   ];
   private enemies: string[] = ["Slime Enemy", "Ultra Slime"];
@@ -420,23 +421,21 @@ export class UIScene extends Phaser.Scene {
     );
     this.deselectBoxBtn.setDepth(1001);
 
-    // Linear Regen button - emits a request the EditorScene will handle
+    // Linear Regen button - coming soon, disabled
     this.regenerateButton = this.createButton(
       this,
       380,
       toolbarY,
-      "♻️ Linear Regen",
-      () => {
-        this.game.events.emit("ui:regenerateSelection");
-      },
+      "♻️ Linear Regen\n(Coming Soon)",
+      () => {},
       {
-        fill: 0x222222,
-        hoverFill: 0x222222,
+        fill: 0x1a1a1a,
+        hoverFill: 0x1a1a1a,
         downFill: 0x1a1a1a,
-        stroke: 0x444444,
-        hoverStroke: 0xb3b3b3,
-        downStroke: 0xd9d9d9,
-        textColor: "#ffffff",
+        stroke: 0x333333,
+        hoverStroke: 0x333333,
+        downStroke: 0x333333,
+        textColor: "#555555",
         fontSize: toolbarButtonFontSize,
         paddingX: toolbarButtonPaddingX,
         paddingY: toolbarButtonPaddingY,
@@ -444,6 +443,10 @@ export class UIScene extends Phaser.Scene {
       },
     );
     this.regenerateButton.setDepth(1001);
+    // Disable interaction — button is a placeholder until feature ships
+    try {
+      (this.regenerateButton.list[0] as Phaser.GameObjects.Graphics).disableInteractive();
+    } catch (e) {}
 
     // API Sprite Generation toggle button
     // Starts OFF to prevent accidental API credit usage
@@ -525,6 +528,8 @@ export class UIScene extends Phaser.Scene {
     this.apiSpriteToggle.add(apiStatus);
 
     this.apiSpriteToggle.setDepth(1001);
+    this.apiSpriteToggle.setVisible(false);
+    SpriteGenerator.useExternalApi = false;
 
     const saveButton = this.createButton(
       this,
@@ -579,7 +584,6 @@ export class UIScene extends Phaser.Scene {
       this.playButton,
       this.deselectBoxBtn,
       this.regenerateButton,
-      this.apiSpriteToggle,
       saveButton,
       loadButton,
     ];
@@ -591,39 +595,9 @@ export class UIScene extends Phaser.Scene {
     }
 
 
-    // Listen for regeneration lifecycle events so the button can show feedback
-    this.game.events.on("regenerate:started", () => {
-      try {
-        const bg = this.regenerateButton
-          .list[0] as Phaser.GameObjects.GameObject;
-        const txt = this.regenerateButton.list[1] as Phaser.GameObjects.Text;
-        // Visual feedback: disable interaction and change text
-        try {
-          bg.disableInteractive();
-        } catch (e) {}
-        try {
-          txt.setText("♻️ Regenerating...");
-        } catch (e) {}
-      } catch (e) {
-        // ignore
-      }
-    });
-
-    this.game.events.on("regenerate:finished", (_payload?: any) => {
-      try {
-        const bg = this.regenerateButton
-          .list[0] as Phaser.GameObjects.GameObject;
-        const txt = this.regenerateButton.list[1] as Phaser.GameObjects.Text;
-        try {
-          bg.setInteractive({ useHandCursor: true });
-        } catch (e) {}
-        try {
-          txt.setText("♻️ Linear Regen");
-        } catch (e) {}
-      } catch (e) {
-        // ignore
-      }
-    });
+    // Linear Regen is coming soon — lifecycle handlers are no-ops until feature ships
+    this.game.events.on("regenerate:started", () => {});
+    this.game.events.on("regenerate:finished", () => {});
 
     this.input.keyboard!.on("keydown-H", () => {
       const editorScene = this.scene.get("editorScene") as EditorScene;
@@ -686,6 +660,7 @@ export class UIScene extends Phaser.Scene {
       Fruit: "pt-block-icon-fruit",
       "Grass-Half Block": "pt-block-icon-grass-half",
       "Dirt Block": "pt-block-icon-dirt",
+      "Grass Block": "pt-block-icon-grass",
       "Question Block": "pt-block-icon-question",
       "Ultra Slime": "pt-block-icon-ultra-slime",
       "Slime Enemy": "pt-block-icon-slime",

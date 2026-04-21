@@ -103,17 +103,8 @@
  "tileheight":16,
  "tilesets":[
         {
-         "columns":15,
          "firstgid":1,
-         "image":"pewterPlatformerTilesetExtended.png",
-         "imageheight":16,
-         "imagewidth":240,
-         "margin":0,
-         "name":"pewterPlatformerTilesetExtended",
-         "spacing":0,
-         "tilecount":15,
-         "tileheight":16,
-         "tilewidth":16
+         "source":"pewterPlatformerTilesetExtended.tsj"
         }],
  "tilewidth":16,
  "type":"map",

@@ -12,7 +12,8 @@ if (!modelName) throw new Error("Missing VITE_LLM_MODEL_NAME in .env file!");
 
 const llmTemp = 0.7;
 
-const sysPrompt =
+// UNUSED — initializeLLM is never called. Active system prompt is in chatBox.ts.
+const outdatedInitialSysPrompt =
   "You are 'Pewter', an expert tile-based map designer by day and an incredible video game player by night. " +
   "Your job is to help the player create a platformer game that is both playable and completable. You must always follow instructions and use the tools available. " +
   "Sometimes your job will require you to use multiple different tools at once so feel free to use each tool multiple times and use all the tools if necessary. " +
@@ -110,7 +111,7 @@ export async function initializeLLM(
   chatMessageHistory: BaseMessage[],
 ): Promise<void> {
   //inject sys prompt
-  chatMessageHistory.push(new SystemMessage(sysPrompt));
+  chatMessageHistory.push(new SystemMessage(outdatedInitialSysPrompt));
 }
 
 // export async function getChatResponse(chatMessageHistory: BaseMessage[]): Promise<string> {

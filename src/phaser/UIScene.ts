@@ -526,6 +526,8 @@ export class UIScene extends Phaser.Scene {
     this.apiSpriteToggle.add(apiStatus);
 
     this.apiSpriteToggle.setDepth(1001);
+    this.apiSpriteToggle.setVisible(false);
+    SpriteGenerator.useExternalApi = false;
 
     const saveButton = this.createButton(
       this,
@@ -580,7 +582,6 @@ export class UIScene extends Phaser.Scene {
       this.playButton,
       this.deselectBoxBtn,
       this.regenerateButton,
-      this.apiSpriteToggle,
       saveButton,
       loadButton,
     ];

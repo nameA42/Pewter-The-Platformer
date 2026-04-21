@@ -64,7 +64,6 @@ export function setActiveSelectionBox(
     "Layers available: Collectables_Layer and Ground_Layer. " +
     "Tile ID 2 = coin, 3 = fruit, 4 = platform block, 5 = dirt block, 6 = grass block, 7 = question mark block, 8 = super slime, 9 = normal slime, 10-14 = sky/background tiles. " +
     "Category: Collectables = [2, 3], Ground = [4, 5, 6, 7]. " +
-    "Undo/Redo: Use the undoRedo tool to revert or re-apply map changes. 'undo' steps back through saved snapshots; 'redo' moves forward. Use 'times' to jump multiple steps. " +
     "Each tool has a description — check it. Most tasks require one or more tools; use each as many times as needed. When given specific coordinates, use them strictly. When given a general location or random placement, use your judgement. " +
     "When the WorldFacts tool gives you information about the world, use it silently to inform your tool calls — do not summarize or report it back to the player. " +
     "You operate in rounds: each round you may call tools, and the results are fed back to you for the next round. You have a maximum of 8 rounds before you must give a final response, so plan your tool calls efficiently. " +

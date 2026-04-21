@@ -800,32 +800,32 @@ export class EditorScene extends Phaser.Scene {
       dragStartPoint.set(pointer.x, pointer.y);
     });
 
-    this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-      if (pointer.middleButtonDown()) {
-        isDragging = true;
-        dragStartPoint.set(pointer.x, pointer.y);
-      } else if (pointer.leftButtonDown()) {
-        this.isPlacing = true;
-        // Pasting the recently selected area of tiles
-        const worldPoint = this.cameras.main.getWorldPoint(
-          pointer.x,
-          pointer.y,
-        );
-        const tileX = Math.floor(worldPoint.x / (16 * this.SCALE));
-        const tileY = Math.floor(worldPoint.y / (16 * this.SCALE));
+    // this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => { //! Why are there 2 of these :sob:
+    //   if (pointer.middleButtonDown()) {
+    //     isDragging = true;
+    //     dragStartPoint.set(pointer.x, pointer.y);
+    //   } else if (pointer.leftButtonDown()) {
+    //     this.isPlacing = true;
+    //     // Pasting the recently selected area of tiles
+    //     const worldPoint = this.cameras.main.getWorldPoint(
+    //       pointer.x,
+    //       pointer.y,
+    //     );
+    //     const tileX = Math.floor(worldPoint.x / (16 * this.SCALE));
+    //     const tileY = Math.floor(worldPoint.y / (16 * this.SCALE));
 
-        // Place the currently selected brush tile
-        //this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
-      } else if (pointer.rightButtonDown()) {
-        // Setup selection box
-        console.log(`Starting selection`);
-        this.startSelection(pointer);
+    //     // Place the currently selected brush tile
+    //     //this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
+    //   } else if (pointer.rightButtonDown()) {
+    //     // Setup selection box
+    //     console.log(`Starting selection`);
+    //     this.startSelection(pointer);
 
-        this.selectedTileIndex =
-          this.groundLayer.getTileAtWorldXY(pointer.worldX, pointer.worldY)
-            ?.index || 0;
-      }
-    });
+    //     this.selectedTileIndex =
+    //       this.groundLayer.getTileAtWorldXY(pointer.worldX, pointer.worldY)
+    //         ?.index || 0;
+    //   }
+    // });
 
     this.keyDelete.on("down", () => {
       const el = document.activeElement;
@@ -1550,6 +1550,7 @@ export class EditorScene extends Phaser.Scene {
     */
     // Checking Overlapping
     const candidate = new Phaser.Geom.Rectangle(x, y, 1, 1);
+
     let overlap = false;
     for (const box of allSelectionBoxes) {
       if (box === this.activeBox) continue; // skip the box currently being edited
@@ -1600,6 +1601,10 @@ export class EditorScene extends Phaser.Scene {
         // If overlap does not occur, continue working with the existing active box
         this.selectionStart.set(x, y);
         this.selectionEnd.set(x, y);
+
+        if (this.activeBox.resizeAttempt(new Phaser.Math.Vector2(x, y))) { // this was a resize attempt, not a gen new attempt
+          return;
+        }
         this.activeBox.updateStart(this.selectionStart);
         this.activeBox.updateEnd(this.selectionEnd);
       }
@@ -1654,6 +1659,7 @@ export class EditorScene extends Phaser.Scene {
 
     // Finalize the box
     this.activeBox.updateEnd(this.selectionEnd);
+    this.activeBox.finishResizing();
     this.activeBox.copyTiles();
     // Swap chatbox context to this selection box
     setActiveSelectionBox(this.activeBox);

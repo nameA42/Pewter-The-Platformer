@@ -41,7 +41,7 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
     map: Phaser.Tilemaps.Tilemap,
     groundLayer: Phaser.Tilemaps.TilemapLayer,
   ) {
-    super(scene, x, y, "spritesheet", 6);
+    super(scene, x, y, "spritesheet", 7);
 
     scene.add.existing(this);
     scene.physics.add.existing(this);

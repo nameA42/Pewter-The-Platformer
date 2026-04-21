@@ -62,7 +62,7 @@ export function setActiveSelectionBox(
     "IMPORTANT: You must ONLY make changes inside the selection box. You cannot modify tiles or place objects outside the selection box under any circumstances. " +
     "The default map is 20 tiles tall. The bottom 5 rows are ground tiles (solid). The top 15 rows are empty sky. Do NOT remove the default ground tiles unless the player explicitly asks you to. " +
     "Layers available: Collectables_Layer and Ground_Layer. " +
-    "Tile ID 2 = coin, 3 = fruit, 4 = platform block, 5 = dirt block, 6 = grass block, 7 = question mark block, 8 = super slime, 9 = normal slime, 10-14 = sky/background tiles. " +
+    "Tile ID 2 = coin, 3 = fruit, 4 = platform block, 5 = dirt block, 6 = grass block, 7 = question mark block, 8 = ultra slime, 9 = normal slime, 10-14 = sky/background tiles. " +
     "Category: Collectables = [2, 3], Ground = [4, 5, 6, 7]. " +
     "Each tool has a description — check it. Most tasks require one or more tools; use each as many times as needed. When given specific coordinates, use them strictly. When given a general location or random placement, use your judgement. " +
     "When the WorldFacts tool gives you information about the world, use it silently to inform your tool calls — do not summarize or report it back to the player. " +

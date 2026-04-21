@@ -35,7 +35,7 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
     map: Phaser.Tilemaps.Tilemap,
     groundLayer: Phaser.Tilemaps.TilemapLayer,
   ) {
-    super(scene, x, y, "spritesheet", 7);
+    super(scene, x, y, "spritesheet", 8);
 
     scene.add.existing(this);
     scene.physics.add.existing(this);

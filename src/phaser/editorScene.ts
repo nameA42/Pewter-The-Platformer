@@ -212,11 +212,12 @@ export class EditorScene extends Phaser.Scene {
     });
 
     // instantiate enemies // !NOTE: I know this is evil but like I don't wanna have to figure out a better way
+    this.enemies.forEach((e) => e.destroy());
     this.enemies.length = 0;
 
     replaceAllBoxes(); // one last replace just in case
     this.groundLayer.forEachTile((tile) => {
-      if (tile.index == 7) {
+      if (tile.index == 8) {
         const spawnX = tile.x * this.map.tileWidth + this.map.tileWidth / 2;
         const spawnY = tile.y * this.map.tileWidth + this.map.tileWidth / 2;
         const ultraSlime = new UltraSlime(
@@ -233,7 +234,7 @@ export class EditorScene extends Phaser.Scene {
         // this.worldFacts.setFact("Enemy", x, y, "UltraSlime"); // TODO: think I need to learn worldfacts and edit this later
         tile.index = -1;
       }
-      if (tile.index == 8) {
+      if (tile.index == 9) {
         const spawnX = tile.x * this.map.tileWidth + this.map.tileWidth / 2;
         const spawnY = tile.y * this.map.tileWidth + this.map.tileWidth / 2;
         const slime = new Slime(
@@ -978,7 +979,7 @@ export class EditorScene extends Phaser.Scene {
       if (!this.isDead) {
         for (let i = this.enemies.length - 1; i >= 0; i--) {
           const enemy = this.enemies[i];
-          if (!enemy || !enemy.active) continue; // skip disabled enemies (dead, waiting to respawn)
+          if (!enemy || !enemy.active) continue; // skip dead enemies (they respawn on player death)
           this.playerHealth = enemy.update(
             this.player,
             this.playerHealth,
@@ -1949,15 +1950,12 @@ export class EditorScene extends Phaser.Scene {
     }
     this.optionsPanelVisible = false;
 
-    // Respawn all enemies (including ones killed during play) back to editor positions // TODO YOU ARE HERE
+    // Destroy all enemies — tiles are restored by replaceAllBoxes() below
     this.enemies.forEach((enemy) => {
-      const spawnX = enemy.getData("spawnX");
-      const spawnY = enemy.getData("spawnY");
-      if (spawnX !== undefined && spawnY !== undefined) {
-        (enemy as any).respawn(spawnX, spawnY);
-      }
       (enemy as any).clearProjectiles?.();
+      enemy.destroy();
     });
+    this.enemies.length = 0;
 
     // Reset gravity
     this.physics.world.gravity.y = 0;
@@ -2039,10 +2037,10 @@ export class EditorScene extends Phaser.Scene {
 
 
       this.groundLayer.forEachTile((tile) => {
-        if (tile.index == 7) {
+        if (tile.index == 8) {
           tile.index = -1;
         }
-        if (tile.index == 8) {
+        if (tile.index == 9) {
           tile.index = -1;
         }
 

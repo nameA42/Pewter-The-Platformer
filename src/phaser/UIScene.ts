@@ -24,6 +24,7 @@ export class UIScene extends Phaser.Scene {
   private terrainBlocks: string[] = [
     "Grass-Half Block",
     "Dirt Block",
+    "Grass Block",
     "Question Block",
   ];
   private enemies: string[] = ["Slime Enemy", "Ultra Slime"];
@@ -686,6 +687,7 @@ export class UIScene extends Phaser.Scene {
       Fruit: "pt-block-icon-fruit",
       "Grass-Half Block": "pt-block-icon-grass-half",
       "Dirt Block": "pt-block-icon-dirt",
+      "Grass Block": "pt-block-icon-grass",
       "Question Block": "pt-block-icon-question",
       "Ultra Slime": "pt-block-icon-ultra-slime",
       "Slime Enemy": "pt-block-icon-slime",

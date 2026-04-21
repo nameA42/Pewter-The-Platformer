@@ -351,7 +351,7 @@ export class EditorScene extends Phaser.Scene {
 
     console.log("Map loaded:", this.map);
     const tileset = this.map.addTilesetImage(
-      "pewterPlatformerTileset",
+      "pewterPlatformerTilesetExtended",
       "tileset",
       16,
       16,
@@ -552,10 +552,10 @@ export class EditorScene extends Phaser.Scene {
         Fruit: 3,
         "Grass-Half Block": 4,
         "Dirt Block": 5,
-        "Question Block": 6,
-        "Block 6": 6,
-        "Slime Enemy": 8,
-        "Ultra Slime": 7,
+        "Grass Block": 6,
+        "Question Block": 7,
+        "Ultra Slime": 8,
+        "Slime Enemy": 9,
         Eraser: -1,
       };
 

@@ -28,8 +28,8 @@ const sysPrompt =
   "The default map is 20 tiles tall. The bottom 5 rows are ground tiles (solid). The top 15 rows are empty sky. Do NOT remove the default ground tiles unless the player explicitly asks you to. Preserve the ground unless instructed otherwise. " +
   // Layer and tile info
   "Layers available: Collectables_Layer and Ground_Layer. " +
-  "Tile ID mapping: 1 = empty tile, 2 = coin, 4 = fruit, 5 = platform block, 6 = dirt block, 7 = item (question mark) block. " +
-  "Category: Collectables = [2, 4], Ground = [5, 6, 7]" +
+  "Tile ID mapping: 2 = coin, 3 = fruit, 4 = platform block, 5 = dirt block, 6 = grass block, 7 = question mark block, 8 = super slime, 9 = normal slime, 10-14 = sky/background tiles. " +
+  "Category: Collectables = [2, 3], Ground = [4, 5, 6, 7]" +
   // Tool rules
   "Tool rules: " +
   "Place Enemy: Only place enemies on ground. Find the nearest ground tile and place the enemy one tile above it. Ensure the enemy has enough space to move side-to-side. If placement is impossible, suggest an alternative location but do not place it. " +

@@ -18,8 +18,6 @@ import { GetPlacedTiles } from "./languageModel/tools/getPlacedTiles.ts";
 import { RelativeRegeneration } from "./languageModel/tools/relativeGeneration.ts";
 import { GenerateEnemy } from "./languageModel/tools/generateEnemy.ts";
 import { ModifyEnemy } from "./languageModel/tools/modifyEnemy.ts";
-import { UndoRedoTool } from "./languageModel/tools/undoRedoTool.ts";
-
 ////****LLM Tool Setup****////
 
 const tools = {
@@ -32,7 +30,6 @@ const tools = {
   relativeGeneration: new RelativeRegeneration(getScene),
   generateEnemy: new GenerateEnemy(getScene),
   modifyEnemy: new ModifyEnemy(getScene),
-  undoRedo: new UndoRedoTool(getScene),
 };
 
 // // Register all tools with the LLM

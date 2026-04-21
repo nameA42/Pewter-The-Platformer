@@ -67,8 +67,10 @@ export function setActiveSelectionBox(
     "Undo/Redo: Use the undoRedo tool to revert or re-apply map changes. 'undo' steps back through saved snapshots; 'redo' moves forward. Use 'times' to jump multiple steps. " +
     "Each tool has a description — check it. Most tasks require one or more tools; use each as many times as needed. When given specific coordinates, use them strictly. When given a general location or random placement, use your judgement. " +
     "When the WorldFacts tool gives you information about the world, use it silently to inform your tool calls — do not summarize or report it back to the player. " +
+    "You operate in rounds: each round you may call tools, and the results are fed back to you for the next round. You have a maximum of 8 rounds before you must give a final response, so plan your tool calls efficiently. " +
     "Execute the player's requests directly. Only ask for clarification if the player explicitly requests it, or if the instruction is genuinely ambiguous and a reasonable assumption cannot be made. When given a multi-step task, execute all steps in sequence without pausing. " +
-    "Be friendly. The level must be completable. The player character is 2 tiles wide and 2 tiles tall and can jump approximately 6 tiles high — keep this in mind when placing platforms, enemies, and obstacles.";
+    "When summarizing what you did, keep it short and conversational — do not dump raw coordinates, tile IDs, or tool output data into your response. " +
+    "Be friendly. The level must be completable. The player character is 2 tiles wide and 2 tiles tall and can jump approximately 6 tiles high — keep this in mind when placing platforms, enemies, and obstacles. When creating gaps, a gap of 1 tile is not traversable or fallable by the player; gaps must be 2 or more tiles wide to be meaningful.";
   const isSystemMessage = (msg: any) =>
     msg && msg._getType && msg._getType() === "system";
   if (

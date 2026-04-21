@@ -211,12 +211,75 @@ export async function getChatResponse(
   };
 
   try {
-    // Initial LLM call
-    console.log("Invoking LLM with message history:", chatMessageHistory);
-    let response = await llmWithTools.invoke(chatMessageHistory);
-    console.log("Raw LLM response:", response);
+    const MAX_ITERATIONS = 8;
+    let iterations = 0;
 
-    // Extract any text content
+    let response = await llmWithTools.invoke(chatMessageHistory);
+    console.log("Raw LLM response (round 1):", response);
+
+    while ((response.tool_calls?.length ?? 0) > 0 && iterations < MAX_ITERATIONS) {
+      iterations++;
+
+      // Push AI message so the model can see its own tool-call requests
+      chatMessageHistory.push(response);
+
+      // Run all tool calls from this round
+      for await (const toolCall of response.tool_calls ?? []) {
+        const tool = toolsByName[toolCall.name];
+        if (!tool) {
+          const errorMsg = `Error: Unknown tool "${toolCall.name}".`;
+          console.error(errorMsg);
+          output.errors.push(errorMsg);
+          chatMessageHistory.push(new ToolMessage({
+            name: toolCall.name,
+            content: errorMsg,
+            tool_call_id: String(toolCall.id ?? ""),
+          }));
+          continue;
+        }
+
+        try {
+          const result = await tool.invoke(toolCall.args);
+          console.log(`Tool called ${toolCall.name} with result:`, result);
+
+          output.toolCalls.push({ name: toolCall.name, args: toolCall.args, result });
+
+          chatMessageHistory.push(new ToolMessage({
+            name: toolCall.name,
+            content: result,
+            tool_call_id: String(toolCall.id ?? ""),
+          }));
+
+          try {
+            if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+              window.dispatchEvent(new CustomEvent("toolCalled", {
+                detail: { name: toolCall.name, args: toolCall.args, result },
+              }));
+            }
+          } catch (e) { /* ignore */ }
+
+        } catch (toolError) {
+          const errorMsg = `Error: Tool '${toolCall.name}' failed with args: ${JSON.stringify(toolCall.args)}.\nDetails: ${toolError}`;
+          console.error(errorMsg);
+          output.errors.push(errorMsg);
+          chatMessageHistory.push(new ToolMessage({
+            name: toolCall.name,
+            content: errorMsg,
+            tool_call_id: String(toolCall.id ?? ""),
+          }));
+        }
+      }
+
+      // Re-invoke for the next round
+      response = await llmWithTools.invoke(chatMessageHistory);
+      console.log(`Raw LLM response (round ${iterations + 1}):`, response);
+    }
+
+    if (iterations >= MAX_ITERATIONS) {
+      console.warn("Pewter hit the iteration limit — stopping tool loop.");
+    }
+
+    // Only collect text from the final response (no tool calls)
     if (typeof response.content === "string") {
       output.text.push(response.content);
     } else if (Array.isArray(response.content)) {
@@ -227,106 +290,9 @@ export async function getChatResponse(
       }
     }
 
-    // Step 3: Handle tool calls
-    async function handleToolCall() {
-      for await (const toolCall of response.tool_calls ?? []) {
-        const tool = toolsByName[toolCall.name];
-        if (!tool) {
-          const errorMsg = `Error: Unknown tool "${toolCall.name}".`;
-          console.error(errorMsg);
-          output.errors.push(errorMsg);
-          chatMessageHistory.push(
-            new ToolMessage({
-              name: toolCall.name,
-              content: errorMsg,
-              tool_call_id: String(toolCall.id ?? ""),
-            }),
-          );
-          continue;
-        }
-
-        try {
-          const result = await tool.invoke(toolCall.args);
-          console.log(`Tool called ${toolCall.name} with result:`, result);
-
-          output.toolCalls.push({
-            name: toolCall.name,
-            args: toolCall.args,
-            result: result,
-          });
-
-          chatMessageHistory.push(
-            new ToolMessage({
-              name: toolCall.name,
-              content: result,
-              tool_call_id: String(toolCall.id ?? ""),
-            }),
-          );
-          // Notify UI/editor that a tool was called so selection boxes can finalize
-          try {
-            if (
-              typeof window !== "undefined" &&
-              typeof window.dispatchEvent === "function"
-            ) {
-              window.dispatchEvent(
-                new CustomEvent("toolCalled", {
-                  detail: { name: toolCall.name, args: toolCall.args, result },
-                }),
-              );
-            }
-          } catch (e) {
-            // ignore
-          }
-        } catch (toolError) {
-          const errorMsg = `Error: Tool '${toolCall.name}' failed with args: ${JSON.stringify(toolCall.args)}.\nDetails: ${toolError}`;
-          console.error(errorMsg);
-          output.errors.push(errorMsg);
-
-          chatMessageHistory.push(
-            new ToolMessage({
-              name: toolCall.name,
-              content: errorMsg,
-              tool_call_id: String(toolCall.id ?? ""),
-            }),
-          );
-        }
-      }
-    }
-
-    // Only push AI response to history if there are tool calls — required so the
-    // LLM can see its own tool-call requests when processing ToolMessages.
-    // For plain responses the caller pushes its own AIMessage, so we skip this
-    // to avoid duplicate AI entries in the chat display.
-    if ((response.tool_calls?.length ?? 0) > 0) {
-      chatMessageHistory.push(response);
-    }
-
-    await handleToolCall();
-
-    // Step 4: Re-invoke LLM if tools were used
-    if ((response.tool_calls?.length ?? 0) > 0) {
-      response = await llmWithTools.invoke(chatMessageHistory);
-      console.log("Raw LLM response after tool calls:", response);
-      if (typeof response.content === "string") {
-        output.text.push(response.content);
-      } else if (Array.isArray(response.content)) {
-        await handleToolCall();
-        for (const part of response.content) {
-          if (
-            part.type &&
-            part.type === "text" &&
-            typeof part.text === "string"
-          ) {
-            output.text.push(part.text);
-          }
-        }
-      }
-    }
-
-    // Save a world snapshot after every AI response that used tools,
-    // so each message is independently undoable regardless of which
-    // send function was used.
-    if (output.toolCalls.length > 0) {
+    const READ_ONLY_TOOLS = new Set(["getPlacedTiles", "getWorldFacts", "relativeGeneration"]);
+    const usedWriteTool = output.toolCalls.some(tc => !READ_ONLY_TOOLS.has(tc.name));
+    if (usedWriteTool) {
       try {
         if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
           window.dispatchEvent(new CustomEvent("saveWorldSnapshot"));

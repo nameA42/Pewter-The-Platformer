@@ -53,6 +53,7 @@ export class EditorScene extends Phaser.Scene {
   private playButton!: Phaser.GameObjects.Text;
   private mapHistory: WorldSnapshot[] = [];
   private currentMapIteration: number = -1;
+  private static readonly MAX_HISTORY = 50;
 
   private minZoomLevel = 2.25;
   private maxZoomLevel = 10;
@@ -780,6 +781,8 @@ export class EditorScene extends Phaser.Scene {
     });
 
     this.keyDelete.on("down", () => {
+      const el = document.activeElement;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
       if (!this.activeBox) return;
       // remove from permanent list if present
       const idx = this.selectionBoxes.indexOf(this.activeBox);
@@ -798,6 +801,7 @@ export class EditorScene extends Phaser.Scene {
       } catch (e) {
         // ignore
       }
+      this.saveSnapshot();
       console.log("Active selection box deleted");
     });
     //TODO: handle UI -> Editor communication
@@ -1112,6 +1116,11 @@ export class EditorScene extends Phaser.Scene {
       }
     }
 
+    const activeEl = document.activeElement;
+    if (activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA")) {
+      return;
+    }
+
     if (Phaser.Input.Keyboard.JustDown(this.keyC) && this.keyCtrl.isDown) {
       this.copySelection();
       console.log("Copied selection");
@@ -1301,6 +1310,9 @@ export class EditorScene extends Phaser.Scene {
   public saveSnapshot(): void {
     this.mapHistory = this.mapHistory.slice(0, this.currentMapIteration + 1);
     this.mapHistory.push(this.captureSnapshot());
+    if (this.mapHistory.length > EditorScene.MAX_HISTORY) {
+      this.mapHistory.splice(0, this.mapHistory.length - EditorScene.MAX_HISTORY);
+    }
     this.currentMapIteration = this.mapHistory.length - 1;
   }
 
@@ -1694,6 +1706,7 @@ export class EditorScene extends Phaser.Scene {
         this.placeTile(this.groundLayer, x, y, -1); // Remove tile
       }
     }
+    this.saveSnapshot();
   }
 
   // Pasting selection of tiles function
@@ -1741,6 +1754,7 @@ export class EditorScene extends Phaser.Scene {
       "x",
       this.clipboard[0]?.length,
     );
+    this.saveSnapshot();
   }
 
   private createOptionsButton(): void {

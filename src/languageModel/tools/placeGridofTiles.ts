@@ -100,7 +100,7 @@ export class PlaceGridofTiles {
             y,
             placementType,
           );
-          if (!overlapCheck.canPlace) {
+          if (!overlapCheck.canPlace && tileIndex < 7) {
             return `❌ Cannot place grid: ${overlapCheck.reason} at position (${x}, ${y})`;
           }
         }

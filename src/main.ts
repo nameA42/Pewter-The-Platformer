@@ -10,28 +10,28 @@ import {
   registerTool,
 } from "./languageModel/modelConnector.ts";
 import { PlaceSingleTile } from "./languageModel/tools/placeSingleTile.ts";
-import { PlaceEnemy } from "./languageModel/tools/placeEnemy.ts";
+// import { PlaceEnemy } from "./languageModel/tools/placeEnemy.ts";
 import { PlaceGridofTiles } from "./languageModel/tools/placeGridofTiles.ts";
 import { ClearTile } from "./languageModel/tools/clearTile.ts";
 import { WorldFactsTool } from "./languageModel/tools/worldFactsTool.ts";
 import { GetPlacedTiles } from "./languageModel/tools/getPlacedTiles.ts";
 import { RelativeRegeneration } from "./languageModel/tools/relativeGeneration.ts";
-import { GenerateEnemy } from "./languageModel/tools/generateEnemy.ts";
-import { ModifyEnemy } from "./languageModel/tools/modifyEnemy.ts";
+// import { GenerateEnemy } from "./languageModel/tools/generateEnemy.ts";
+// import { ModifyEnemy } from "./languageModel/tools/modifyEnemy.ts";
 import { UndoRedoTool } from "./languageModel/tools/undoRedoTool.ts";
 
 ////****LLM Tool Setup****////
 
 const tools = {
   placeSingleTile: new PlaceSingleTile(getScene),
-  placeEnemy: new PlaceEnemy(getScene),
+  // placeEnemy: new PlaceEnemy(getScene),
   placeGridofTiles: new PlaceGridofTiles(getScene),
   clearTile: new ClearTile(getScene),
   WorldFactsTool: new WorldFactsTool(getScene),
   getPlacedTiles: new GetPlacedTiles(getScene),
   relativeGeneration: new RelativeRegeneration(getScene),
-  generateEnemy: new GenerateEnemy(getScene),
-  modifyEnemy: new ModifyEnemy(getScene),
+  // generateEnemy: new GenerateEnemy(getScene),
+  // modifyEnemy: new ModifyEnemy(getScene),
   undoRedo: new UndoRedoTool(getScene),
 };
 

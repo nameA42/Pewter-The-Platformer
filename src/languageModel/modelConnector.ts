@@ -27,22 +27,22 @@ const sysPrompt =
   // Default map layout
   "The default map is 20 tiles tall. The bottom 5 rows are ground tiles (solid). The top 15 rows are empty sky. Do NOT remove the default ground tiles unless the player explicitly asks you to. Preserve the ground unless instructed otherwise. " +
   // Layer and tile info
-  "Layers available: Collectables_Layer and Ground_Layer. " +
+  "Layers available: Collectables_Layer and Ground_Layer(also put enemies on this layer). " +
   "Tile ID mapping: 1 = empty tile, 2 = coin, 4 = fruit, 5 = platform block, 6 = dirt block, 7 = item (question mark) block. " +
   "Category: Collectables = [2, 4], Ground = [5, 6, 7]" +
   // Tool rules
   "Tool rules: " +
   "Place Enemy: Only place enemies on ground. Find the nearest ground tile and place the enemy one tile above it. Ensure the enemy has enough space to move side-to-side. If placement is impossible, suggest an alternative location but do not place it. " +
-  "Generate Enemy: Create custom enemies using CEDL or pre-built templates. Each enemy gets a unique name automatically (e.g., 'Slime', 'Slime 1', 'Slime 2' if duplicates exist). " +
-  "Modify Enemy: Modify existing enemies by their unique name. Accepts natural language requests - convert to CEDL format. Can update stats, looks, projectiles, or behavior. " +
-  "TEMPLATE LIBRARY: 'Patrol Guard', 'Turret', 'Charger', 'Flyer', 'Sniper', 'Shotgunner', 'Bullet Hell', 'Homing Drone', 'Berserker', 'Teleporter'. " +
-  "TEMPLATE CUSTOMIZATION: Combine template with cedl_code to override properties. " +
-  "ACTIONS: Basic (patrol, move_toward_player, move_away_from_player, shoot, jump, tint, scale, wait). " +
-  "ENVIRONMENTAL ACTIONS: smart_patrol (avoids pits/walls), avoid_pit, jump_to_platform (max_height), seek_cover, lure_to_hazard, flee_from_hazard, ambush (trigger_distance), drop_attack. " +
-  "PROJECTILE PATTERNS: 'single', 'spread', 'burst', 'circular', 'homing'. " +
-  "CONDITIONS: player_distance, health, timer, player_x_relative, random, always. " +
-  "TERRAIN CONDITIONS: pit_ahead, pit_distance, wall_ahead, platform_above, platform_distance, cover_nearby, hazard_nearby, player_near_hazard, on_ground. " +
-  "Use smart_patrol instead of patrol for enemies that should avoid falling into pits. " +
+  // "Generate Enemy: Create custom enemies using CEDL or pre-built templates. Each enemy gets a unique name automatically (e.g., 'Slime', 'Slime 1', 'Slime 2' if duplicates exist). " +
+  // "Modify Enemy: Modify existing enemies by their unique name. Accepts natural language requests - convert to CEDL format. Can update stats, looks, projectiles, or behavior. " +
+  // "TEMPLATE LIBRARY: 'Patrol Guard', 'Turret', 'Charger', 'Flyer', 'Sniper', 'Shotgunner', 'Bullet Hell', 'Homing Drone', 'Berserker', 'Teleporter'. " +
+  // "TEMPLATE CUSTOMIZATION: Combine template with cedl_code to override properties. " +
+  // "ACTIONS: Basic (patrol, move_toward_player, move_away_from_player, shoot, jump, tint, scale, wait). " +
+  // "ENVIRONMENTAL ACTIONS: smart_patrol (avoids pits/walls), avoid_pit, jump_to_platform (max_height), seek_cover, lure_to_hazard, flee_from_hazard, ambush (trigger_distance), drop_attack. " +
+  // "PROJECTILE PATTERNS: 'single', 'spread', 'burst', 'circular', 'homing'. " +
+  // "CONDITIONS: player_distance, health, timer, player_x_relative, random, always. " +
+  // "TERRAIN CONDITIONS: pit_ahead, pit_distance, wall_ahead, platform_above, platform_distance, cover_nearby, hazard_nearby, player_near_hazard, on_ground. " +
+  // "Use smart_patrol instead of patrol for enemies that should avoid falling into pits. " +
   "Clear Tile: Clear only on the Ground_Layer unless specifically instructed otherwise. " +
   "World Facts: Use this tool to provide yourself with the facts within the world or within the selection. Using the get method, you " +
   "Place Tile: Use this tool to place a given index or term on a layer when told. Use the tile information and map each tile to the index. " +

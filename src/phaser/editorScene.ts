@@ -27,9 +27,9 @@ interface BoxSnapshot {
   end: { x: number; y: number };
   zLevel: number;
   placedTiles: { tileIndex: number; x: number; y: number; layerName: string }[];
-  placedEnemies:
+  // placedEnemies:
   // { enemyType: string; x: number; y: number }[];
-  (Slime | UltraSlime)[];
+  // (Slime | UltraSlime)[];
   chatHistory: { type: string; content: string }[];
 }
 
@@ -42,6 +42,7 @@ interface WorldSnapshot {
 
 export let GROUND_LAYER: Phaser.Tilemaps.TilemapLayer;
 export let COLLECTABLES_LAYER: Phaser.Tilemaps.TilemapLayer;
+export let editorScene: EditorScene;
 
 export class EditorScene extends Phaser.Scene {
   private TILE_SIZE = 16;
@@ -150,6 +151,7 @@ export class EditorScene extends Phaser.Scene {
 
   constructor() {
     super({ key: "editorScene" });
+    editorScene = this;
   }
 
   // Collaborative Context Merging - Expose active box for chat system
@@ -196,6 +198,49 @@ export class EditorScene extends Phaser.Scene {
         this.collectablesSnapshot.push({ x: tile.x, y: tile.y, index: tile.index });
       }
     });
+
+    // instantiate enemies // !NOTE: I know this is evil but like I don't wanna have to figure out a better way
+    this.enemies.length = 0;
+
+    replaceAllBoxes(); // one last replace just in case
+    this.groundLayer.forEachTile((tile) => {
+      if (tile.index == 7) {
+        const spawnX = tile.x * this.map.tileWidth + this.map.tileWidth / 2;
+        const spawnY = tile.y * this.map.tileWidth + this.map.tileWidth / 2;
+        const ultraSlime = new UltraSlime(
+          this,
+          spawnX,
+          spawnY,
+          this.map,
+          this.groundLayer,
+        );
+        // Store spawn position for reset when exiting play mode
+        ultraSlime.setData("spawnX", spawnX);
+        ultraSlime.setData("spawnY", spawnY);
+        this.enemies.push(ultraSlime);
+        // this.worldFacts.setFact("Enemy", x, y, "UltraSlime"); // TODO: think I need to learn worldfacts and edit this later
+        tile.index = -1;
+      }
+      if (tile.index == 8) {
+        const spawnX = tile.x * this.map.tileWidth + this.map.tileWidth / 2;
+        const spawnY = tile.y * this.map.tileWidth + this.map.tileWidth / 2;
+        const slime = new Slime(
+          this,
+          spawnX,
+          spawnY,
+          this.map,
+          this.groundLayer,
+        );
+        // Store spawn position for reset when exiting play mode
+        slime.setData("spawnX", spawnX);
+        slime.setData("spawnY", spawnY);
+        this.enemies.push(slime);
+        // this.worldFacts.setFact("Enemy", x, y, "UltraSlime"); // TODO: think I need to learn worldfacts and edit this later
+        tile.index = -1;
+      }
+
+    })
+
 
     // Enable physics and gravity for play mode
     this.physics.world.gravity.y = 1500;
@@ -646,22 +691,22 @@ export class EditorScene extends Phaser.Scene {
           // Eraser should clear from both layers
           this.placeTile(this.groundLayer, tileX, tileY, -1);
           this.placeTile(this.collectablesLayer, tileX, tileY, -1);
-        } else if (this.selectedBlockName === "Slime Enemy") {
-          // Spawn actual Slime object (not a tile)
-          const spawnX = tileX * this.map.tileWidth + this.map.tileWidth / 2;
-          const spawnY = tileY * this.map.tileHeight + this.map.tileHeight / 2;
-          const slime = new Slime(this, spawnX, spawnY, this.map, this.groundLayer);
-          slime.setData("spawnX", spawnX);
-          slime.setData("spawnY", spawnY);
-          this.enemies.push(slime);
-        } else if (this.selectedBlockName === "Ultra Slime") {
-          // Spawn actual UltraSlime object (not a tile)
-          const spawnX = tileX * this.map.tileWidth + this.map.tileWidth / 2;
-          const spawnY = tileY * this.map.tileHeight + this.map.tileHeight / 2;
-          const ultraSlime = new UltraSlime(this, spawnX, spawnY, this.map, this.groundLayer);
-          ultraSlime.setData("spawnX", spawnX);
-          ultraSlime.setData("spawnY", spawnY);
-          this.enemies.push(ultraSlime);
+          // } else if (this.selectedBlockName === "Slime Enemy") {
+          //   // Spawn actual Slime object (not a tile)
+          //   const spawnX = tileX * this.map.tileWidth + this.map.tileWidth / 2;
+          //   const spawnY = tileY * this.map.tileHeight + this.map.tileHeight / 2;
+          //   const slime = new Slime(this, spawnX, spawnY, this.map, this.groundLayer);
+          //   slime.setData("spawnX", spawnX);
+          //   slime.setData("spawnY", spawnY);
+          //   this.enemies.push(slime);
+          // } else if (this.selectedBlockName === "Ultra Slime") {
+          //   // Spawn actual UltraSlime object (not a tile)
+          //   const spawnX = tileX * this.map.tileWidth + this.map.tileWidth / 2;
+          //   const spawnY = tileY * this.map.tileHeight + this.map.tileHeight / 2;
+          //   const ultraSlime = new UltraSlime(this, spawnX, spawnY, this.map, this.groundLayer);
+          //   ultraSlime.setData("spawnX", spawnX);
+          //   ultraSlime.setData("spawnY", spawnY);
+          //   this.enemies.push(ultraSlime);
         } else if (this.selectedBlockName === "Coin" || this.selectedBlockName === "Fruit") {
           // Place collectable in the dedicated collectables layer
           this.placeTile(this.collectablesLayer, tileX, tileY, this.selectedTileIndex);
@@ -1029,7 +1074,8 @@ export class EditorScene extends Phaser.Scene {
     }
 
     // Continuous Block Placement (enemies are placed once on click, not continuously)
-    if (this.isPlacing && this.selectedBlockName !== "Slime Enemy" && this.selectedBlockName !== "Ultra Slime") {
+    // if (this.isPlacing && this.selectedBlockName !== "Slime Enemy" && this.selectedBlockName !== "Ultra Slime") {
+    if (this.isPlacing) {
       const pointer = this.input.activePointer;
       const tileX = Math.floor(pointer.worldX / this.TILE_SIZE);
       const tileY = Math.floor(pointer.worldY / this.TILE_SIZE);
@@ -1143,7 +1189,7 @@ export class EditorScene extends Phaser.Scene {
       end: { x: b.getEnd().x, y: b.getEnd().y },
       zLevel: b.getZLevel(),
       placedTiles: b.placedTiles.slice(),
-      placedEnemies: b.placedEnemies.slice(),
+      // placedEnemies: b.placedEnemies.slice(),
       chatHistory: b.localContext.chatHistory
         .filter((m) => m._getType?.() !== "system") // don't snapshot the system prompt
         .map((m) => ({
@@ -1207,7 +1253,7 @@ export class EditorScene extends Phaser.Scene {
         (b) => this.selectBox(b),
       );
       box.placedTiles = sd.placedTiles.slice();
-      box.placedEnemies = sd.placedEnemies.slice();
+      // box.placedEnemies = sd.placedEnemies.slice();
       // Reconstruct proper LangChain message instances from the serialized format
       box.localContext.chatHistory = sd.chatHistory.map((m) => {
         if (m.type === "ai") return new AIMessage(m.content);
@@ -1742,7 +1788,7 @@ export class EditorScene extends Phaser.Scene {
       this.player = undefined as any;
     }
 
-    // Respawn all enemies (including ones killed during play) back to editor positions
+    // Respawn all enemies (including ones killed during play) back to editor positions // TODO YOU ARE HERE
     this.enemies.forEach((enemy) => {
       const spawnX = enemy.getData("spawnX");
       const spawnY = enemy.getData("spawnY");
@@ -1785,6 +1831,9 @@ export class EditorScene extends Phaser.Scene {
     this.cameras.main.centerOn(0, 0);
 
     // also remove the editor button
+
+
+    replaceAllBoxes();
   }
 
   private resetPlayLevel() {
@@ -1815,9 +1864,22 @@ export class EditorScene extends Phaser.Scene {
         if (spawnX !== undefined && spawnY !== undefined) {
           (enemy as any).respawn(spawnX, spawnY);
         }
+
         // Clear any lingering projectiles
         (enemy as any).clearProjectiles?.();
       });
+
+
+
+      this.groundLayer.forEachTile((tile) => {
+        if (tile.index == 7) {
+          tile.index = -1;
+        }
+        if (tile.index == 8) {
+          tile.index = -1;
+        }
+
+      })
     });
   }
 

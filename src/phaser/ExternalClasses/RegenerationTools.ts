@@ -358,13 +358,14 @@ function buildOwnershipMap(allSelections: SelectionBox[]): OwnershipMap {
   for (const selection of allSelections) {
     const placedTiles = selection.getPlacedTiles();
 
-    // Mark all tiles placed by this selection as owned by it
+    // Mark all tiles placed by this selection as owned by it.
+    // If ownership conflicts, higher z-level takes ownership.
     for (const tile of placedTiles) {
       const key = `${tile.x},${tile.y},${tile.layerName}`;
-      // Lower z-level owns shared tiles (if not already owned)
+      // Higher z-level owns shared tiles (if not already owned)
       if (
         !tileOwners.has(key) ||
-        selection.getZLevel() < tileOwners.get(key)!.getZLevel()
+        selection.getZLevel() > tileOwners.get(key)!.getZLevel()
       ) {
         tileOwners.set(key, selection);
       }

@@ -22,7 +22,7 @@ export interface ScheduledRegenStep {
   overlappingHigher: SelectionBox[];
   /** Selections with lower z that overlap this job (informational only) */
   overlappingLower: SelectionBox[];
-  /** Rectangles that must be treated as read-only for this job (to avoid overwriting lower-z results). */
+  /** Rectangles that must be treated as read-only for this job (higher-z ownership in overlaps). */
   protectedRects: Phaser.Geom.Rectangle[];
   /** Fresh overlap snapshot context text to include in prompts. */
   overlapContextText: string;
@@ -110,8 +110,8 @@ export function scheduleRegenerationSteps(
     order.push(...remaining);
   }
 
-  // Build per-step protection rects: for a job (selection S), protect intersections with any LOWER z selection.
-  // That means: do not overwrite in overlap area produced by established lower z.
+  // Build per-step protection rects: for a job (selection S), protect intersections with any HIGHER z selection.
+  // That means: lower-z steps cannot edit overlap area that belongs to higher-z selections.
   const steps: ScheduledRegenStep[] = [];
   for (const sel of order) {
     const z = sel.getZLevel();
@@ -125,10 +125,8 @@ export function scheduleRegenerationSteps(
       if (o.a !== sel && o.b !== sel) continue;
       const other = o.a === sel ? o.b : o.a;
       if (other.getZLevel() > z) overlappingHigher.push(other);
-      if (other.getZLevel() < z) {
-        overlappingLower.push(other);
-        protectedRects.push(o.intersection);
-      }
+      if (other.getZLevel() < z) overlappingLower.push(other);
+      if (other.getZLevel() > z) protectedRects.push(o.intersection);
     }
 
     // Very lightweight overlap context text for now: snapshot the *current* world tiles in overlap.
@@ -138,7 +136,7 @@ export function scheduleRegenerationSteps(
       overlapContextText +=
         "Overlaps with other selections (different z-levels). ";
       overlapContextText +=
-        "Do not overwrite existing tiles in overlap regions.\n";
+        "Lower z-levels must treat higher-z overlap regions as read-only.\n";
       overlapContextText +=
         "Overlapping selections: " +
         [

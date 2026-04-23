@@ -10,8 +10,8 @@ export interface OverlapResult {
 export class OverlapChecker {
   /**
    * Regeneration protection: blocks edits inside currently-protected rectangles.
-   * This is set by the regeneration scheduler per-step to prevent higher-z jobs
-   * from overwriting lower-z overlap regions.
+   * This is set by the regeneration scheduler per-step so lower-z jobs cannot
+   * edit overlap regions owned by higher-z selections.
    */
   static checkRegenProtection(
     scene: EditorScene,

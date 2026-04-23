@@ -7,7 +7,11 @@ type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
 import { regenerateSelection as regenerateSelectionModule } from "./regenerator";
 import { sendUserPrompt } from "../languageModel/chatBox";
 import { setActiveSelectionBox } from "../languageModel/chatBox";
-import { HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
+import {
+  HumanMessage,
+  AIMessage,
+  SystemMessage,
+} from "@langchain/core/messages";
 import { Slime } from "./ExternalClasses/Slime.ts";
 import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
 import { DynamicEnemy } from "../enemySystem/runtime/DynamicEnemy.ts";
@@ -108,6 +112,7 @@ export class EditorScene extends Phaser.Scene {
   private keyN!: Phaser.Input.Keyboard.Key;
   private keyZ!: Phaser.Input.Keyboard.Key;
   private keyY!: Phaser.Input.Keyboard.Key;
+  private keyR!: Phaser.Input.Keyboard.Key;
   private keyO!: Phaser.Input.Keyboard.Key;
   private keyP!: Phaser.Input.Keyboard.Key;
   private keyB!: Phaser.Input.Keyboard.Key;
@@ -188,7 +193,11 @@ export class EditorScene extends Phaser.Scene {
     this.collectablesSnapshot = [];
     this.collectablesLayer.forEachTile((tile) => {
       if (tile.index > 0) {
-        this.collectablesSnapshot.push({ x: tile.x, y: tile.y, index: tile.index });
+        this.collectablesSnapshot.push({
+          x: tile.x,
+          y: tile.y,
+          index: tile.index,
+        });
       }
     });
 
@@ -219,7 +228,10 @@ export class EditorScene extends Phaser.Scene {
           this.coinCount++;
         } else if (t.index === 3) {
           // Fruit collected — restore 1 HP
-          this.playerHealth = Math.min(this.playerHealth + 1, this.maxPlayerHealth);
+          this.playerHealth = Math.min(
+            this.playerHealth + 1,
+            this.maxPlayerHealth,
+          );
         }
         this.collectablesLayer.putTileAt(-1, t.x, t.y);
       },
@@ -255,7 +267,9 @@ export class EditorScene extends Phaser.Scene {
     const scaledFontSize = Math.max(8, baseFontSize / cam.zoom);
     const hudTopLeft = cam.getWorldPoint(16, 16);
 
-    const initHearts = "♥".repeat(this.playerHealth) + "♡".repeat(this.maxPlayerHealth - this.playerHealth);
+    const initHearts =
+      "♥".repeat(this.playerHealth) +
+      "♡".repeat(this.maxPlayerHealth - this.playerHealth);
     this.healthText = this.add
       .text(hudTopLeft.x, hudTopLeft.y, `HP: ${initHearts}`, {
         fontSize: `${scaledFontSize}px`,
@@ -267,12 +281,17 @@ export class EditorScene extends Phaser.Scene {
       .setDepth(1000);
 
     this.coinText = this.add
-      .text(hudTopLeft.x, hudTopLeft.y + scaledFontSize + 4, `Coins: ${this.coinCount}`, {
-        fontSize: `${scaledFontSize}px`,
-        color: "#FFD700",
-        stroke: "#000000",
-        strokeThickness: 4,
-      })
+      .text(
+        hudTopLeft.x,
+        hudTopLeft.y + scaledFontSize + 4,
+        `Coins: ${this.coinCount}`,
+        {
+          fontSize: `${scaledFontSize}px`,
+          color: "#FFD700",
+          stroke: "#000000",
+          strokeThickness: 4,
+        },
+      )
       .setScrollFactor(1)
       .setDepth(1000);
   }
@@ -614,6 +633,7 @@ export class EditorScene extends Phaser.Scene {
       this.keyN = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.N);
       this.keyO = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.O);
       this.keyP = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.P);
+      this.keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
       this.keyB = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B);
       this.keyDelete = this.input.keyboard!.addKey(
         Phaser.Input.Keyboard.KeyCodes.DELETE,
@@ -641,7 +661,8 @@ export class EditorScene extends Phaser.Scene {
     this.input.on("pointerup", this.endSelection, this);
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-      if (pointer.middleButtonDown()) { // ! might need to change this to chain of ifs instead of if else
+      if (pointer.middleButtonDown()) {
+        // ! might need to change this to chain of ifs instead of if else
         isDragging = true;
         dragStartPoint.set(pointer.x, pointer.y);
       } else if (pointer.leftButtonDown()) {
@@ -663,7 +684,13 @@ export class EditorScene extends Phaser.Scene {
           // Spawn actual Slime object (not a tile)
           const spawnX = tileX * this.map.tileWidth + this.map.tileWidth / 2;
           const spawnY = tileY * this.map.tileHeight + this.map.tileHeight / 2;
-          const slime = new Slime(this, spawnX, spawnY, this.map, this.groundLayer);
+          const slime = new Slime(
+            this,
+            spawnX,
+            spawnY,
+            this.map,
+            this.groundLayer,
+          );
           slime.setData("spawnX", spawnX);
           slime.setData("spawnY", spawnY);
           this.enemies.push(slime);
@@ -671,16 +698,35 @@ export class EditorScene extends Phaser.Scene {
           // Spawn actual UltraSlime object (not a tile)
           const spawnX = tileX * this.map.tileWidth + this.map.tileWidth / 2;
           const spawnY = tileY * this.map.tileHeight + this.map.tileHeight / 2;
-          const ultraSlime = new UltraSlime(this, spawnX, spawnY, this.map, this.groundLayer);
+          const ultraSlime = new UltraSlime(
+            this,
+            spawnX,
+            spawnY,
+            this.map,
+            this.groundLayer,
+          );
           ultraSlime.setData("spawnX", spawnX);
           ultraSlime.setData("spawnY", spawnY);
           this.enemies.push(ultraSlime);
-        } else if (this.selectedBlockName === "Coin" || this.selectedBlockName === "Fruit") {
+        } else if (
+          this.selectedBlockName === "Coin" ||
+          this.selectedBlockName === "Fruit"
+        ) {
           // Place collectable in the dedicated collectables layer
-          this.placeTile(this.collectablesLayer, tileX, tileY, this.selectedTileIndex);
+          this.placeTile(
+            this.collectablesLayer,
+            tileX,
+            tileY,
+            this.selectedTileIndex,
+          );
         } else {
           // All terrain tiles go in the ground layer
-          this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
+          this.placeTile(
+            this.groundLayer,
+            tileX,
+            tileY,
+            this.selectedTileIndex,
+          );
         }
       } else if (pointer.rightButtonDown()) {
         // Setup selection box
@@ -899,7 +945,11 @@ export class EditorScene extends Phaser.Scene {
         for (let i = this.enemies.length - 1; i >= 0; i--) {
           const enemy = this.enemies[i];
           if (!enemy || !enemy.active) continue; // skip disabled enemies (dead, waiting to respawn)
-          this.playerHealth = enemy.update(this.player, this.playerHealth, this.gameActive);
+          this.playerHealth = enemy.update(
+            this.player,
+            this.playerHealth,
+            this.gameActive,
+          );
         }
       }
 
@@ -921,7 +971,10 @@ export class EditorScene extends Phaser.Scene {
         if (this.coinText) {
           this.coinText.setText(`Coins: ${this.coinCount}`);
           this.coinText.setFontSize(scaledFontSize);
-          this.coinText.setPosition(hudTopLeft.x, hudTopLeft.y + scaledFontSize + 4);
+          this.coinText.setPosition(
+            hudTopLeft.x,
+            hudTopLeft.y + scaledFontSize + 4,
+          );
         }
       }
 
@@ -1030,15 +1083,27 @@ export class EditorScene extends Phaser.Scene {
     }
 
     // Continuous Block Placement (enemies are placed once on click, not continuously)
-    if (this.isPlacing && this.selectedBlockName !== "Slime Enemy" && this.selectedBlockName !== "Ultra Slime") {
+    if (
+      this.isPlacing &&
+      this.selectedBlockName !== "Slime Enemy" &&
+      this.selectedBlockName !== "Ultra Slime"
+    ) {
       const pointer = this.input.activePointer;
       const tileX = Math.floor(pointer.worldX / this.TILE_SIZE);
       const tileY = Math.floor(pointer.worldY / this.TILE_SIZE);
       if (this.selectedBlockName === "Eraser") {
         this.placeTile(this.groundLayer, tileX, tileY, -1);
         this.placeTile(this.collectablesLayer, tileX, tileY, -1);
-      } else if (this.selectedBlockName === "Coin" || this.selectedBlockName === "Fruit") {
-        this.placeTile(this.collectablesLayer, tileX, tileY, this.selectedTileIndex);
+      } else if (
+        this.selectedBlockName === "Coin" ||
+        this.selectedBlockName === "Fruit"
+      ) {
+        this.placeTile(
+          this.collectablesLayer,
+          tileX,
+          tileY,
+          this.selectedTileIndex,
+        );
       } else {
         this.placeTile(this.groundLayer, tileX, tileY, this.selectedTileIndex);
       }
@@ -1094,6 +1159,9 @@ export class EditorScene extends Phaser.Scene {
       this.increaseZLevel();
     } else if (Phaser.Input.Keyboard.JustDown(this.keyO)) {
       this.decreaseZLevel();
+    } else if (Phaser.Input.Keyboard.JustDown(this.keyR)) {
+      // Keyboard shortcut for regeneration (matches Event Queue Regen behavior)
+      this.game.events.emit("ui:eventQueueRegen");
     } else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
       this.finalizeSelectBox();
     }
@@ -1129,7 +1197,12 @@ export class EditorScene extends Phaser.Scene {
       const spawnX = e.getData("spawnX") ?? e.x;
       const spawnY = e.getData("spawnY") ?? e.y;
       if (e instanceof DynamicEnemy) {
-        return { kind: "Dynamic", spawnX, spawnY, definition: e.getDefinition() };
+        return {
+          kind: "Dynamic",
+          spawnX,
+          spawnY,
+          definition: e.getDefinition(),
+        };
       } else if (e instanceof UltraSlime) {
         return { kind: "UltraSlime", spawnX, spawnY };
       } else {
@@ -1149,7 +1222,10 @@ export class EditorScene extends Phaser.Scene {
         .filter((m) => m._getType?.() !== "system") // don't snapshot the system prompt
         .map((m) => ({
           type: m._getType?.() ?? "human",
-          content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+          content:
+            typeof m.content === "string"
+              ? m.content
+              : JSON.stringify(m.content),
         })),
     }));
 
@@ -1175,17 +1251,36 @@ export class EditorScene extends Phaser.Scene {
     this.enemies = [];
     for (const entry of snapshot.enemies) {
       if (entry.kind === "Slime") {
-        const s = new Slime(this, entry.spawnX, entry.spawnY, this.map, this.groundLayer);
+        const s = new Slime(
+          this,
+          entry.spawnX,
+          entry.spawnY,
+          this.map,
+          this.groundLayer,
+        );
         s.setData("spawnX", entry.spawnX);
         s.setData("spawnY", entry.spawnY);
         this.enemies.push(s);
       } else if (entry.kind === "UltraSlime") {
-        const u = new UltraSlime(this, entry.spawnX, entry.spawnY, this.map, this.groundLayer);
+        const u = new UltraSlime(
+          this,
+          entry.spawnX,
+          entry.spawnY,
+          this.map,
+          this.groundLayer,
+        );
         u.setData("spawnX", entry.spawnX);
         u.setData("spawnY", entry.spawnY);
         this.enemies.push(u);
       } else {
-        const d = new DynamicEnemy(this, entry.spawnX, entry.spawnY, entry.definition, this.map, this.groundLayer);
+        const d = new DynamicEnemy(
+          this,
+          entry.spawnX,
+          entry.spawnY,
+          entry.definition,
+          this.map,
+          this.groundLayer,
+        );
         d.setData("spawnX", entry.spawnX);
         d.setData("spawnY", entry.spawnY);
         this.enemies.push(d);
@@ -1194,7 +1289,10 @@ export class EditorScene extends Phaser.Scene {
 
     // Restore selection boxes
     for (const b of this.selectionBoxes) b.destroy?.();
-    if (this.activeBox) { this.activeBox.destroy?.(); this.activeBox = null; }
+    if (this.activeBox) {
+      this.activeBox.destroy?.();
+      this.activeBox = null;
+    }
     this.selectionBoxes = [];
     setActiveSelectionBox(null); // clear the chat pane so it doesn't show stale history
 
@@ -1284,8 +1382,9 @@ export class EditorScene extends Phaser.Scene {
               if (m.type === "constructor" && Array.isArray(m.id)) {
                 const kind = m.id[m.id.length - 1] ?? "HumanMessage";
                 const content = m.kwargs?.content ?? "";
-                if (kind === "AIMessage")    return { type: "ai",     content };
-                if (kind === "SystemMessage") return { type: "system", content };
+                if (kind === "AIMessage") return { type: "ai", content };
+                if (kind === "SystemMessage")
+                  return { type: "system", content };
                 return { type: "human", content };
               }
               return m; // already in new { type, content } format
@@ -1293,10 +1392,10 @@ export class EditorScene extends Phaser.Scene {
           }));
 
           this.restoreSnapshot({
-            groundTiles:       data.groundTiles       ?? [],
+            groundTiles: data.groundTiles ?? [],
             collectablesTiles: data.collectablesTiles ?? [],
-            enemies:           data.enemies           ?? [],
-            selectionBoxes:    normBoxes,
+            enemies: data.enemies ?? [],
+            selectionBoxes: normBoxes,
           });
 
           this.saveSnapshot();
@@ -1556,7 +1655,6 @@ export class EditorScene extends Phaser.Scene {
     if (uiScene && typeof uiScene.handleSelectionInfo === "function") {
       uiScene.handleSelectionInfo(msg);
     }
-
   }
 
   // Copy selection of tiles function
@@ -1759,8 +1857,14 @@ export class EditorScene extends Phaser.Scene {
     this.isJumpPressed = false;
 
     // Destroy play-mode HUD
-    if (this.healthText) { this.healthText.destroy(); this.healthText = null; }
-    if (this.coinText) { this.coinText.destroy(); this.coinText = null; }
+    if (this.healthText) {
+      this.healthText.destroy();
+      this.healthText = null;
+    }
+    if (this.coinText) {
+      this.coinText.destroy();
+      this.coinText = null;
+    }
 
     // Restore collected tiles so the editor shows the original map
     for (const t of this.collectablesSnapshot) {

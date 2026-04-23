@@ -866,6 +866,7 @@ export class EditorScene extends Phaser.Scene {
       14,
     ) as PlayerSprite;
 
+    this.player.setSize(10, 14).setOffset(3, 1);
     this.player.setCollideWorldBounds(false);
     this.player.isFalling = true;
     this.physics.add.collider(this.player, this.groundLayer);

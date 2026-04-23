@@ -21,7 +21,7 @@ export class ClearTile {
       .number()
       .int()
       .min(0)
-      .describe("Maximum X (rightmost column index, exclusive)."),
+      .describe("Maximum X (rightmost column index, inclusive)."),
     yMin: z
       .number()
       .int()
@@ -31,7 +31,7 @@ export class ClearTile {
       .number()
       .int()
       .min(0)
-      .describe("Maximum Y (bottommost row index, exclusive)."),
+      .describe("Maximum Y (bottommost row index, inclusive)."),
     layerName: z
       .string()
       .min(1)
@@ -70,7 +70,7 @@ export class ClearTile {
         const toRemove = scene.enemies.filter((enemy) => {
           const tileX = Math.floor(enemy.x / tileW);
           const tileY = Math.floor(enemy.y / tileH);
-          return tileX >= xMin && tileX < xMax && tileY >= yMin && tileY < yMax;
+          return tileX >= xMin && tileX <= xMax && tileY >= yMin && tileY <= yMax;
         });
         for (const enemy of toRemove) {
           const idx = scene.enemies.indexOf(enemy);

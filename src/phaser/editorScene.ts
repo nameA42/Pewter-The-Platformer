@@ -704,6 +704,7 @@ export class EditorScene extends Phaser.Scene {
     this.input.on("pointerup", this.endSelection, this);
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      if (this.gameActive) return;
       if (pointer.middleButtonDown()) {
         // ! might need to change this to chain of ifs instead of if else
         isDragging = true;
@@ -768,6 +769,7 @@ export class EditorScene extends Phaser.Scene {
     });
 
     this.input.on("pointerup", () => {
+      if (this.gameActive) return;
       isDragging = false;
       if (this.isPlacing) {
         this.saveSnapshot(); // save after the paint stroke completes
@@ -776,6 +778,7 @@ export class EditorScene extends Phaser.Scene {
     });
 
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
+      if (this.gameActive) return;
       // Setup pointer movement
       this.highlightTile(pointer);
 
@@ -801,6 +804,7 @@ export class EditorScene extends Phaser.Scene {
     });
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      if (this.gameActive) return;
       if (pointer.middleButtonDown()) {
         isDragging = true;
         dragStartPoint.set(pointer.x, pointer.y);
@@ -858,8 +862,8 @@ export class EditorScene extends Phaser.Scene {
     this.player = this.physics.add.sprite(
       100,
       100,
-      "platformer_characters",
-      "tile_0000.png",
+      "spritesheet",
+      14,
     ) as PlayerSprite;
 
     this.player.setCollideWorldBounds(false);
@@ -1399,7 +1403,10 @@ export class EditorScene extends Phaser.Scene {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "pewter-map.json";
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+    a.download = `pewter-map_${timestamp}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }

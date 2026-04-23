@@ -160,15 +160,8 @@ export class GameScene extends Phaser.Scene {
     ) as PlayerSprite;
     */
 
-    if (!this.textures.exists('player-temp')) {
-      this.add.graphics()
-        .fillStyle(0xff0000)
-        .fillRect(0, 0, 16, 16)
-        .generateTexture('player-temp', 16, 16)
-        .destroy();
-    }
-
-    this.player = this.physics.add.sprite(100, 150, 'player-temp') as PlayerSprite;
+    this.player = this.physics.add.sprite(100, 150, 'spritesheet', 14) as PlayerSprite;
+    this.player.setScale(2);
 
     this.player.setCollideWorldBounds(false);
     this.player.isFalling = false;
@@ -193,9 +186,7 @@ export class GameScene extends Phaser.Scene {
     console.log('Camera scroll:', this.cameras.main.scrollX, this.cameras.main.scrollY);
     console.log('Camera zoom:', this.cameras.main.zoom);
 
-    // Make sure player is big enough to see and positioned well
-    this.player.setScale(2); // Make it bigger
-    this.player.setTint(0xff0000); // Make sure it's red
+    this.player.setScale(2);
 
     this.physics.add.collider(this.player, this.groundLayer);
 

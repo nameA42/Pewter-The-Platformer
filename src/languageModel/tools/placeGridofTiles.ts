@@ -59,7 +59,14 @@ export class PlaceGridofTiles {
         return "❌ Tool Failed: no reference to scene.";
       }
 
-      const { tileIndex, xMin, xMax, yMin, yMax, layerName } = args;
+      const { tileIndex, xMin, xMax, yMin, yMax } = args;
+      let { layerName } = args;
+
+      const ENEMY_TILE_INDICES = [8, 9];
+      if (ENEMY_TILE_INDICES.includes(tileIndex)) {
+        layerName = "Ground_Layer";
+      }
+
       const map = scene.map;
       const layer = map.getLayer(layerName)?.tilemapLayer;
 
@@ -137,7 +144,8 @@ Places a rectangular grid of tiles on the map.
 - tileIndex: numeric ID of the tile to place.
 - (xMin, yMin): top-left inclusive coordinates.
 - (xMax, yMax): bottom-right inclusive coordinates.
-- layerName: the name of the target map layer. Choose between 'Ground_Layer' and 'Collectables_Layer' 
+- layerName: the name of the target map layer. Choose between 'Ground_Layer' and 'Collectables_Layer'.
+- IMPORTANT: Enemy tiles (index 8 = Ultra Slime, index 9 = Slime) must always be placed on 'Ground_Layer'. This is enforced automatically.
 `,
     },
   );

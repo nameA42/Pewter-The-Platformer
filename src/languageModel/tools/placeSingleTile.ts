@@ -47,7 +47,14 @@ export class PlaceSingleTile {
         return "Tool Failed: no reference to scene.";
       }
 
-      const { tileIndex, x, y, layerName } = args;
+      const { tileIndex, x, y } = args;
+      let { layerName } = args;
+
+      const ENEMY_TILE_INDICES = [8, 9];
+      if (ENEMY_TILE_INDICES.includes(tileIndex)) {
+        layerName = "Ground_Layer";
+      }
+
       const map = scene.map;
       const layer = map.getLayer(layerName)?.tilemapLayer;
 
@@ -103,7 +110,8 @@ export class PlaceSingleTile {
 
         - tileIndex: numeric ID of the tile to place.
         - x, y: integer tile coordinates (not pixels).
-        - layerName: the name of the target map layer. Choose between 'Ground_Layer' and 'Collectables_Layer' 
+        - layerName: the name of the target map layer. Choose between 'Ground_Layer' and 'Collectables_Layer'.
+        - IMPORTANT: Enemy tiles (index 8 = Ultra Slime, index 9 = Slime) must always be placed on 'Ground_Layer'. This is enforced automatically.
         `,
     },
   );

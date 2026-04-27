@@ -59,7 +59,7 @@ export class ClearTile {
           for (let y = yMin; y <= yMax; y++) {
             map.removeTileAt(x, y, false, false, layer);
             if (scene.activeBox) {
-              scene.activeBox.addPlacedTile(1, x, y, layerName);
+              scene.activeBox.addPlacedTile(-1, x, y, layerName);
             }
           }
         }

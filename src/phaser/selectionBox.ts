@@ -1749,16 +1749,26 @@ export class SelectionBox {
     // }
 
     // 1) Clear original snapshot footprint (only cells that had tiles)
-    for (let ty = 0; ty < this.dragSnapshot.h; ty++) {
-      for (let tx = 0; tx < this.dragSnapshot.w; tx++) {
-        // const hadTile = this.dragSnapshot.tiles.some(
-        //   (t) => t.dx === tx && t.dy === ty,
-        // );
+    // for (let ty = 0; ty < this.dragSnapshot.h; ty++) {
+    //   for (let tx = 0; tx < this.dragSnapshot.w; tx++) {
+    //     // const hadTile = this.dragSnapshot.tiles.some(
+    //     //   (t) => t.dx === tx && t.dy === ty,
+    //     // );
 
-        GROUND_LAYER.putTileAt(-1, oldSX + tx, oldSY + ty);
-        COLLECTABLES_LAYER.putTileAt(-1, oldSX + tx, oldSY + ty);
-      }
+    //     GROUND_LAYER.putTileAt(-1, oldSX + tx, oldSY + ty);
+    //     COLLECTABLES_LAYER.putTileAt(-1, oldSX + tx, oldSY + ty);
+    //   }
+    // }
+
+    for (let tile of this.dragSnapshot.tiles) {
+
+      if (tile.index == -1) continue;
+      // (tile.layerName == "Ground_Layer" ? GROUND_LAYER : COLLECTABLES_LAYER).putTileAt(-1, tile.x, tile.y);
+
+      GROUND_LAYER.putTileAt(-1, oldSX + tile.dx, oldSY + tile.dy);
+      COLLECTABLES_LAYER.putTileAt(-1, oldSX + tile.dx, oldSY + tile.dy);
     }
+
 
     // // 2) Paste at new location
     // for (const t of this.dragSnapshot.tiles) {

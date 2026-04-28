@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import {
   sendUserPromptWithContext,
   getDisplayChatHistory,
+  isBotResponding,
 } from "../languageModel/chatBox.ts";
 import { EditorScene } from "./editorScene.ts";
 import { SpriteGenerator } from "../enemySystem/sprite/SpriteGenerator.ts";
@@ -299,6 +300,49 @@ export class UIScene extends Phaser.Scene {
       // ignore if DOM not available
     }
 
+    // Helper: show a short-lived message in the log
+    let lastNoBoxWarningTime = 0;
+    const showTempMessage = (html: string, duration = 3000) => {
+      const existing = log.querySelector(".pt-temp-message");
+      if (existing) existing.remove();
+      const msg = document.createElement("p");
+      msg.className = "pt-temp-message";
+      msg.innerHTML = html;
+      msg.style.cssText = "color:#f59e0b;font-style:italic;margin:4px 0;";
+      log.appendChild(msg);
+      log.scrollTop = log.scrollHeight;
+      setTimeout(() => {
+        msg.style.transition = "opacity 0.5s";
+        msg.style.opacity = "0";
+        setTimeout(() => msg.remove(), 500);
+      }, duration);
+    };
+
+    // Helper: keep the input placeholder in sync with current state
+    const updateInputState = () => {
+      const activeBox = (window as any).getActiveSelectionBox?.();
+      if (isBotResponding()) {
+        input.placeholder = "Pewter is thinking...";
+      } else if (!activeBox) {
+        input.placeholder = "Select a region first (right-click & drag)...";
+      } else {
+        input.placeholder = "Type a command...";
+      }
+    };
+
+    // Re-add the typing indicator to the log if the bot is still responding
+    // (called after log innerHTML is replaced, e.g. on tab/box switch).
+    const ensureTypingIndicator = () => {
+      if (isBotResponding() && !log.querySelector("#pt-typing-indicator")) {
+        const typingEl = document.createElement("p");
+        typingEl.id = "pt-typing-indicator";
+        typingEl.innerHTML =
+          '<strong>AI:</strong> <span class="pt-typing-dots"></span>';
+        log.appendChild(typingEl);
+        log.scrollTop = log.scrollHeight;
+      }
+    };
+
     // Listen for changes to the active selection so we always render only the
     // currently-active selection box history.
     if (
@@ -309,6 +353,9 @@ export class UIScene extends Phaser.Scene {
         try {
           log.innerHTML = getDisplayChatHistory();
           log.scrollTop = log.scrollHeight;
+          updateInputState();
+          // If the bot is still working, keep the typing indicator visible.
+          ensureTypingIndicator();
         } catch (e) {
           console.warn("Failed to render active selection history:", e);
         }
@@ -318,16 +365,33 @@ export class UIScene extends Phaser.Scene {
     input.addEventListener("keydown", (e: KeyboardEvent) => {
       // Prevent Phaser from capturing WASD and other keys when typing in chat
       e.stopPropagation();
+
+      // Warn when typing a printable character with no selection box active
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+        const activeBox = (window as any).getActiveSelectionBox?.();
+        const now = Date.now();
+        if (!activeBox && now - lastNoBoxWarningTime > 2000) {
+          lastNoBoxWarningTime = now;
+          showTempMessage("⚠️ Select a region on the map first (right-click and drag).");
+        }
+      }
     });
 
     // Only display new messages as they are sent (not history)
     input.addEventListener("keydown", async (e: KeyboardEvent) => {
       if (e.key === "Enter") {
+        const activeBox = (window as any).getActiveSelectionBox?.();
+        if (!activeBox) {
+          input.value = "";
+          showTempMessage("⚠️ Select a region on the map first (right-click and drag).");
+          return;
+        }
+        if (isBotResponding()) return;
+
         const userMsg = input.value.trim();
         if (!userMsg) return;
 
         input.value = "";
-        const activeBox = (window as any).getActiveSelectionBox?.();
         console.log("[UIScene] activeBox at send time:", activeBox, "pendingMove:", activeBox?._pendingMoveNotify);
         const moveContext: string | null = activeBox?.consumePendingMoveContext?.() ?? null;
         if (moveContext) {
@@ -735,6 +799,16 @@ export class UIScene extends Phaser.Scene {
         blocksContent.style.display = "none";
         controlsContent.style.display = "none";
         this.updateLog();
+        // If the bot is still responding, restore the typing indicator so the
+        // user can see that a request is still in flight after switching tabs.
+        if (log && isBotResponding() && !log.querySelector("#pt-typing-indicator")) {
+          const typingEl = document.createElement("p");
+          typingEl.id = "pt-typing-indicator";
+          typingEl.innerHTML =
+            '<strong>AI:</strong> <span class="pt-typing-dots"></span>';
+          log.appendChild(typingEl);
+          log.scrollTop = log.scrollHeight;
+        }
       };
 
       const switchToBlocks = () => {

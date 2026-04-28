@@ -147,6 +147,7 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
   private shootPellet() {
     const pellet = this.scene.physics.add.sprite(this.x, this.y, "pellets", 1);
     pellet.setScale(2);
+    pellet.body.setSize(5, 5, true);
     pellet.body.velocity.x = !this.isFlipped
       ? this.pelletVelocity
       : -this.pelletVelocity;

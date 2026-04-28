@@ -233,6 +233,14 @@ export async function sendUserPromptWithContext(
     return fallback.content as string;
   } finally {
     setBotResponding(false);
+    // Fire a second event now that botResponding is false so the UI can update
+    // the input placeholder and clear any lingering typing indicator.
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
+      window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
+    }
   }
 }
 

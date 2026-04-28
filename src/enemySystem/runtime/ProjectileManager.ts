@@ -147,9 +147,12 @@ export class ProjectileManager {
       return null;
     }
 
-    // Set size if specified
+    // Set size if specified, otherwise default to a small hitbox matching the dot art
     if (definition.size) {
       sprite.setDisplaySize(definition.size, definition.size);
+      sprite.body.setSize(definition.size, definition.size, true);
+    } else {
+      sprite.body.setSize(6, 6, true);
     }
 
     // Calculate velocity

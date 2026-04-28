@@ -60,7 +60,7 @@ const gameConfig: Phaser.Types.Core.GameConfig & { resolution?: number } = {
   physics: {
     default: "arcade",
     arcade: {
-      debug: false,
+      debug: true,
       gravity: {
         x: 0,
         y: 0,

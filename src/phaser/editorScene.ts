@@ -42,6 +42,7 @@ interface WorldSnapshot {
   collectablesTiles: { x: number; y: number; index: number }[];
   enemies: EnemySnapshotEntry[];
   selectionBoxes: BoxSnapshot[];
+  userTiles: { tileIndex: number; x: number; y: number; layerName: string }[];
 }
 
 export let GROUND_LAYER: Phaser.Tilemaps.TilemapLayer;
@@ -1277,7 +1278,9 @@ export class EditorScene extends Phaser.Scene {
         })),
     }));
 
-    return { groundTiles, collectablesTiles, enemies, selectionBoxes };
+    const userTiles = superDuperRealUserLayer.slice();
+
+    return { groundTiles, collectablesTiles, enemies, selectionBoxes, userTiles };
   }
 
   public restoreSnapshot(snapshot: WorldSnapshot): void {
@@ -1335,11 +1338,27 @@ export class EditorScene extends Phaser.Scene {
       }
     }
 
-    // Restore selection boxes
-    for (const b of allSelectionBoxes) b.destroy?.();
-    if (this.activeBox) { this.activeBox.destroy?.(); this.activeBox = null; }
+    // Restore superDuperRealUserLayer before destroying old boxes
+    superDuperRealUserLayer.length = 0;
+    for (const t of snapshot.userTiles ?? []) superDuperRealUserLayer.push(t);
+
+    // Restore selection boxes — destroy old ones safely:
+    // 1. Snapshot the array and clear references first so destroy()'s internal
+    //    splice is a no-op (no mutation during iteration) and replaceAllBoxes()
+    //    inside destroy() won't render stale partial state.
+    // 2. Zero out placedTiles before destroy() so it doesn't erase the tile
+    //    layer that was just restored from the snapshot above.
+    const toDestroy = allSelectionBoxes.slice();
+    if (this.activeBox && !toDestroy.includes(this.activeBox)) {
+      toDestroy.push(this.activeBox);
+    }
     allSelectionBoxes.length = 0;
-    setActiveSelectionBox(null); // clear the chat pane so it doesn't show stale history
+    this.activeBox = null;
+    setActiveSelectionBox(null);
+    for (const b of toDestroy) {
+      b.placedTiles = [];
+      b.destroy?.();
+    }
 
     for (const sd of snapshot.selectionBoxes) {
       const box = new SelectionBox(
@@ -1359,7 +1378,7 @@ export class EditorScene extends Phaser.Scene {
         return new HumanMessage(m.content);
       });
       box.finalize();
-      allSelectionBoxes.push(box);
+      // Note: constructor already pushes to allSelectionBoxes — no push needed here
     }
 
     this.worldFacts.refresh();
@@ -1446,6 +1465,7 @@ export class EditorScene extends Phaser.Scene {
             collectablesTiles: data.collectablesTiles ?? [],
             enemies: data.enemies ?? [],
             selectionBoxes: normBoxes,
+            userTiles: data.userTiles ?? [],
           });
 
           this.saveSnapshot();

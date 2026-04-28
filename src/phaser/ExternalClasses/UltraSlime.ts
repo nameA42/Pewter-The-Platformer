@@ -161,6 +161,7 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
   private shootPellet() {
     const pellet = this.scene.physics.add.sprite(this.x, this.y, "pellets", 0);
     pellet.setScale(2);
+    pellet.body.setSize(5, 5, true);
     pellet.body.velocity.x = !this.isFlipped
       ? this.pelletVelocity
       : -this.pelletVelocity;
@@ -173,6 +174,7 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
   private shootMegaPellet() {
     const mega = this.scene.physics.add.sprite(this.x, this.y, "pellets", 2);
     mega.setScale(2);
+    mega.body.setSize(7, 7, true);
     mega.body.velocity.x = !this.isFlipped
       ? this.megaPelletVelocity
       : -this.megaPelletVelocity;

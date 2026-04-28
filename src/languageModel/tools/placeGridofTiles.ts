@@ -5,6 +5,7 @@ import {
   OverlapChecker,
   type PlacementType,
 } from "../../phaser/OverlapChecker.ts";
+import { getProcessingBox } from "../chatBox";
 
 export class PlaceGridofTiles {
   sceneGetter: () => EditorScene;
@@ -86,8 +87,9 @@ export class PlaceGridofTiles {
           for (let x = xMin; x <= xMax; x++) {
             for (let y = yMin; y <= yMax; y++) {
               map.putTileAt(tileIndex, x, y, true, layer);
-              if (scene.activeBox) {
-                scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
+              const targetBox = getProcessingBox() ?? scene.activeBox;
+              if (targetBox) {
+                targetBox.addPlacedTile(tileIndex, x, y, layerName);
               }
             }
           }
@@ -115,12 +117,13 @@ export class PlaceGridofTiles {
 
       // All tiles are clear - proceed with placement
       try {
+        const targetBox = getProcessingBox() ?? scene.activeBox;
         for (let x = xMin; x <= xMax; x++) {
           for (let y = yMin; y <= yMax; y++) {
             map.putTileAt(tileIndex, x, y, true, layer);
 
-            if (scene.activeBox) {
-              scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
+            if (targetBox) {
+              targetBox.addPlacedTile(tileIndex, x, y, layerName);
             }
           }
         }

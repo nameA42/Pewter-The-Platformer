@@ -34,6 +34,12 @@ const welcomePrompt = new SystemMessage(
 let currentChatHistory: BaseMessage[] = [welcomePrompt];
 
 let currentActiveBox: any = null; // Store reference to active selection box
+let processingBox: any = null; // Box captured at send time; held until response finishes
+
+/** Returns the box that is currently being processed by the AI (captured at send time). */
+export function getProcessingBox(): any {
+  return processingBox;
+}
 
 // Set the active selection box context for chat
 export function setActiveSelectionBox(
@@ -42,6 +48,7 @@ export function setActiveSelectionBox(
   if (!box) {
     // Clear active context
     currentChatHistory = [];
+    currentActiveBox = null;
     if (
       typeof window !== "undefined" &&
       typeof window.dispatchEvent === "function"
@@ -52,9 +59,10 @@ export function setActiveSelectionBox(
   }
 
   currentChatHistory = box.localContext.chatHistory;
+  currentActiveBox = box; // track the box so it can be finalized on tool calls even if deselected
   // Keep the original SelectionBox object reference if present so
   // we can finalize it when tools are invoked.
-  // (no local object stored here; editor listens for tool events)
+  // (editor listens for tool events and uses getProcessingBox() as a fallback)
   // Ensure system message is always first
   const sysPrompt =
     "You are 'Pewter', an expert tile-based map designer by day and an incredible video game player by night. " +
@@ -95,6 +103,27 @@ export function setActiveSelectionBox(
 
 // Track bot typing state to prevent overlapping responses
 let botResponding = false;
+
+// Tool names that only read state — snapshot should NOT be saved for these
+const READ_ONLY_TOOLS = new Set(["getPlacedTiles", "getWorldFacts", "relativeGeneration"]);
+
+/**
+ * Dispatch a world-snapshot save event if the AI used any write tools.
+ * Must be called AFTER the AI message has been pushed to chat history so
+ * that the snapshot captures the complete post-AI state (tiles + text).
+ */
+function maybeSaveSnapshot(
+  toolCalls: { name: string; args: Record<string, any>; result: string }[],
+) {
+  const usedWriteTool = toolCalls.some((tc) => !READ_ONLY_TOOLS.has(tc.name));
+  if (
+    usedWriteTool &&
+    typeof window !== "undefined" &&
+    typeof window.dispatchEvent === "function"
+  ) {
+    window.dispatchEvent(new CustomEvent("saveWorldSnapshot"));
+  }
+}
 
 // Initialize system prompt on load
 
@@ -137,9 +166,10 @@ export function isBotResponding(): boolean {
  * Handles error formatting and message history updates.
  */
 export async function sendUserPrompt(message: string): Promise<string> {
-  // Capture the current history reference at send time so replies go to the
+  // Capture the current history and box at send time so replies go to the
   // same selection box even if the active box changes while the request is in-flight.
   const historyRef = currentChatHistory;
+  processingBox = currentActiveBox;
 
   const userMessage = new HumanMessage(message);
   historyRef.push(userMessage);
@@ -153,6 +183,7 @@ export async function sendUserPrompt(message: string): Promise<string> {
       : String(reply.text);
     const aiMessage = new AIMessage(replyText);
     historyRef.push(aiMessage);
+    maybeSaveSnapshot(reply.toolCalls);
 
     // Let UI know new content is available for the active selection
     if (
@@ -176,6 +207,7 @@ export async function sendUserPrompt(message: string): Promise<string> {
     return fallback.content as string;
   } finally {
     setBotResponding(false);
+    processingBox = null;
   }
 }
 
@@ -191,6 +223,7 @@ export async function sendUserPromptWithContext(
   hiddenContext?: string,
 ): Promise<string> {
   const historyRef = currentChatHistory;
+  processingBox = currentActiveBox;
 
   // Push the user's visible message into the active history
   const userMessage = new HumanMessage(userMessageText);
@@ -211,6 +244,7 @@ export async function sendUserPromptWithContext(
       : String(reply.text);
     const aiMessage = new AIMessage(replyText);
     historyRef.push(aiMessage);
+    maybeSaveSnapshot(reply.toolCalls);
 
     if (
       typeof window !== "undefined" &&
@@ -233,6 +267,7 @@ export async function sendUserPromptWithContext(
     return fallback.content as string;
   } finally {
     setBotResponding(false);
+    processingBox = null;
     // Fire a second event now that botResponding is false so the UI can update
     // the input placeholder and clear any lingering typing indicator.
     if (
@@ -282,40 +317,35 @@ export async function sendUserPromptHidden(
  */
 export async function sendSystemMessage(message: string): Promise<string> {
   const historyRef = currentChatHistory;
-  const systemMessage = new HumanMessage(message);
-  historyRef.push(systemMessage);
+
+  // Pass the prompt to the model via a temp copy so it is never pushed into
+  // the visible history — avoids "HUMAN: Introduce yourself..." appearing in the log.
+  const tempHistory = [...historyRef, new HumanMessage(message)];
 
   setBotResponding(true);
 
   try {
-    const reply = await getChatResponse(historyRef);
+    const reply = await getChatResponse(tempHistory);
     const replyText = Array.isArray(reply.text)
       ? reply.text.join("\n")
       : String(reply.text);
     const aiMessage = new AIMessage(replyText);
     historyRef.push(aiMessage);
 
-    if (
-      typeof window !== "undefined" &&
-      typeof window.dispatchEvent === "function"
-    ) {
-      window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
-    }
-
     return replyText;
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
     const fallback = new AIMessage("Error: " + errorMessage);
     historyRef.push(fallback);
-    if (
-      typeof window !== "undefined" &&
-      typeof window.dispatchEvent === "function"
-    ) {
-      window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
-    }
     return fallback.content as string;
   } finally {
     setBotResponding(false);
+    // Fire after botResponding is false so the UI clears the typing indicator
+    // and resets the placeholder. Without this second event the indicator from
+    // ensureTypingIndicator() stays stuck on screen.
+    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+      window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
+    }
   }
 }
 
@@ -337,6 +367,7 @@ export async function sendUserPromptWithCollaborativeContext(
   userMessageText: string,
 ): Promise<string> {
   const historyRef = currentChatHistory;
+  processingBox = currentActiveBox;
 
   // Get the current active selection box (if any)
   let collaborativeContext = "";
@@ -381,6 +412,7 @@ export async function sendUserPromptWithCollaborativeContext(
       : String(reply.text);
     const aiMessage = new AIMessage(replyText);
     historyRef.push(aiMessage);
+    maybeSaveSnapshot(reply.toolCalls);
 
     if (
       typeof window !== "undefined" &&
@@ -403,6 +435,7 @@ export async function sendUserPromptWithCollaborativeContext(
     return fallback.content as string;
   } finally {
     setBotResponding(false);
+    processingBox = null;
   }
 }
 
@@ -459,6 +492,7 @@ export async function sendUserPromptWithFullContext(
       : String(reply.text);
     const aiMessage = new AIMessage(replyText);
     historyRef.push(aiMessage);
+    maybeSaveSnapshot(reply.toolCalls);
 
     if (
       typeof window !== "undefined" &&

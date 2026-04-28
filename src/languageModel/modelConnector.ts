@@ -290,16 +290,6 @@ export async function getChatResponse(
       }
     }
 
-    const READ_ONLY_TOOLS = new Set(["getPlacedTiles", "getWorldFacts", "relativeGeneration"]);
-    const usedWriteTool = output.toolCalls.some(tc => !READ_ONLY_TOOLS.has(tc.name));
-    if (usedWriteTool) {
-      try {
-        if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
-          window.dispatchEvent(new CustomEvent("saveWorldSnapshot"));
-        }
-      } catch (_) { /* ignore */ }
-    }
-
     return output;
   } catch (error) {
     const errorMsg = `Error communicating with model: ${error}`;

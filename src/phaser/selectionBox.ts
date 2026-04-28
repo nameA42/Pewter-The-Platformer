@@ -629,8 +629,8 @@ export class SelectionBox {
         const boxHeight =
           Math.max(newEnd.y, newStart.y) - Math.min(newStart.y, newEnd.y) + 1;
 
-        let newStartX = newStart.x;
-        let newStartY = newStart.y;
+        let newStartX = Math.min(newStart.x, newEnd.x);
+        let newStartY = Math.min(newStart.y, newEnd.y);
 
         const worldMinX = 0;
         const worldMinY = 0;
@@ -656,8 +656,7 @@ export class SelectionBox {
 
         // Prevent intersection with other boxes on same z-level
         try {
-          const editor = this.scene as any as any;
-          const boxes: any[] = editor.selectionBoxes || [];
+          const boxes: SelectionBox[] = allSelectionBoxes;
           let intersects = false;
           const candRect = new Phaser.Geom.Rectangle(
             candidateStart.x,
@@ -1802,6 +1801,12 @@ export class SelectionBox {
     this.dragOriginStart = undefined;
 
     this.redraw();
+
+    // Save a snapshot so the move is a discrete undo step,
+    // but only if the box actually moved (dx/dy both 0 = just a click to select).
+    if (dx !== 0 || dy !== 0) {
+      editorScene.saveSnapshot();
+    }
   }
 
   // private targetAreaIsClear(newSX: number, newSY: number): boolean {

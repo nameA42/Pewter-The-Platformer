@@ -2,6 +2,7 @@ import { tool } from "@langchain/core/tools";
 import type { EditorScene } from "../../phaser/editorScene.ts";
 import { invokeTool } from "../modelConnector";
 import { z } from "zod";
+import { getProcessingBox } from "../chatBox";
 
 export class ClearTile {
   sceneGetter: () => EditorScene;
@@ -58,8 +59,9 @@ export class ClearTile {
         for (let x = xMin; x <= xMax; x++) {
           for (let y = yMin; y <= yMax; y++) {
             map.removeTileAt(x, y, false, false, layer);
-            if (scene.activeBox) {
-              scene.activeBox.addPlacedTile(-1, x, y, layerName);
+            const targetBox = getProcessingBox() ?? scene.activeBox;
+            if (targetBox) {
+              targetBox.addPlacedTile(-1, x, y, layerName);
             }
           }
         }

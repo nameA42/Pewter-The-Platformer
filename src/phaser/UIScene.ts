@@ -362,9 +362,38 @@ export class UIScene extends Phaser.Scene {
       });
     }
 
+    // Block browser text-undo/redo at the editing-pipeline level.
+    // keydown's preventDefault() is NOT reliably respected by Chrome for <input>
+    // text-history operations — Chrome processes them through a separate editing
+    // pipeline. The beforeinput event fires inside that pipeline and its
+    // preventDefault() IS respected, making this the correct interception point.
+    input.addEventListener("beforeinput", (e: InputEvent) => {
+      if (e.inputType === "historyUndo" || e.inputType === "historyRedo") {
+        e.preventDefault();
+      }
+    });
+
     input.addEventListener("keydown", (e: KeyboardEvent) => {
       // Prevent Phaser from capturing WASD and other keys when typing in chat
       e.stopPropagation();
+
+      // Intercept Ctrl+Z/Y while input is focused: route to game undo/redo.
+      // stopPropagation() above keeps Phaser from seeing this event, so we
+      // manually delegate here. beforeinput (above) handles blocking the browser's
+      // text-history operation that would otherwise also fire.
+      if (e.ctrlKey && (e.key === "z" || e.key === "Z" || e.key === "y" || e.key === "Y")) {
+        e.preventDefault();
+        input.blur();
+        try {
+          const editorScene = this.scene.get("editorScene") as EditorScene;
+          if ((e.key === "z" || e.key === "Z") && !e.shiftKey) {
+            editorScene.undoLastAction();
+          } else {
+            editorScene.redoLastAction();
+          }
+        } catch (_) {}
+        return;
+      }
 
       // Warn when typing a printable character with no selection box active
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {

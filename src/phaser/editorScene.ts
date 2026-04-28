@@ -5,7 +5,7 @@ type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
   isFalling?: boolean;
 };
 import { regenerateSelection as regenerateSelectionModule } from "./regenerator";
-import { sendUserPrompt } from "../languageModel/chatBox";
+import { sendUserPrompt, getProcessingBox } from "../languageModel/chatBox";
 import { setActiveSelectionBox } from "../languageModel/chatBox";
 import {
   HumanMessage,
@@ -305,12 +305,14 @@ export class EditorScene extends Phaser.Scene {
     // Add Q key handler to quit play mode
     if (this.input.keyboard) {
       const keyQ = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+      keyQ.removeAllListeners("down");
       keyQ.on("down", () => {
         this.startEditor();
       });
 
-      // Add G key handler to toggle debug overlay
+      // Add G key handler to toggle debug overlay (removeAllListeners prevents stacking on re-entry)
       const keyG = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.G);
+      keyG.removeAllListeners("down");
       keyG.on("down", () => {
         this.toggleDebugOverlay();
       });
@@ -351,14 +353,18 @@ export class EditorScene extends Phaser.Scene {
       .setDepth(1000);
   }
 
-  // Toggle debug overlay for all enemies
+  // Toggle Phaser arcade physics hitbox overlay
   private toggleDebugOverlay() {
-    const newDebugState = !DynamicEnemy.debugMode;
+    const newDebugState = !this.physics.world.drawDebug;
 
-    // Set debug mode for all enemy types
-    DynamicEnemy.debugMode = newDebugState;
-    Slime.debugMode = newDebugState;
-    UltraSlime.debugMode = newDebugState;
+    this.physics.world.drawDebug = newDebugState;
+    if (newDebugState) {
+      if (!this.physics.world.debugGraphic) {
+        this.physics.world.createDebugGraphic();
+      }
+    } else {
+      this.physics.world.debugGraphic?.clear();
+    }
 
     console.log(`Debug overlay: ${newDebugState ? "ON" : "OFF"}`);
 
@@ -644,18 +650,19 @@ export class EditorScene extends Phaser.Scene {
         console.log(
           "toolCalled event received; finalizing active box if present",
         );
-        if (this.activeBox) {
+        const boxToFinalize = getProcessingBox() ?? this.activeBox;
+        if (boxToFinalize) {
           // Mark the box as finalized (permanent)
-          this.activeBox.finalize?.();
+          boxToFinalize.finalize?.();
 
           // Ensure it's in the permanent list
-          if (!allSelectionBoxes.includes(this.activeBox)) {
-            allSelectionBoxes.push(this.activeBox);
+          if (!allSelectionBoxes.includes(boxToFinalize)) {
+            allSelectionBoxes.push(boxToFinalize);
           }
 
           // Keep the box active/selected so the UI and chat context remain tied to it.
           // Do NOT clear this.activeBox or call setActiveSelectionBox(null) here.
-          this.activeBox.setActive?.(true);
+          boxToFinalize.setActive?.(true);
 
           // ! idk how things work so I am going to rerender here, someone find where this should actually go if there is a better spot
           replaceAllBoxes();
@@ -1397,6 +1404,7 @@ export class EditorScene extends Phaser.Scene {
     if (this.currentMapIteration > 0) {
       this.currentMapIteration--;
       this.restoreSnapshot(this.mapHistory[this.currentMapIteration]);
+      (document.getElementById("chat-input") as HTMLElement | null)?.blur();
       console.log("Undid last action");
       return true;
     }
@@ -1408,6 +1416,7 @@ export class EditorScene extends Phaser.Scene {
     if (this.currentMapIteration < this.mapHistory.length - 1) {
       this.currentMapIteration++;
       this.restoreSnapshot(this.mapHistory[this.currentMapIteration]);
+      (document.getElementById("chat-input") as HTMLElement | null)?.blur();
       console.log("Redid last action");
       return true;
     }
@@ -1946,6 +1955,7 @@ export class EditorScene extends Phaser.Scene {
     DynamicEnemy.debugMode = false;
     Slime.debugMode = false;
     UltraSlime.debugMode = false;
+
 
     this.scene.launch("UIScene");
     this.scene.bringToTop("UIScene");

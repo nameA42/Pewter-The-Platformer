@@ -202,13 +202,7 @@ export class GameScene extends Phaser.Scene {
     });
     */
 
-    //Debug Key bound to D
-    //this.cursors = this.input.keyboard!.createCursorKeys();
-    //this.input.keyboard!.on("keydown-D", () => {
-    //  this.physics.world.drawDebug = !this.physics.world.drawDebug;
-    //  this.physics.world.debugGraphic.clear();
-    //});
-    this.physics.world.drawDebug = true;
+    //Debug Key bound to G (handled in EditorScene.toggleDebugOverlay)
 
     //Gravity switch
     //this.input.keyboard!.on("keydown-G", () => this.toggleGravity(), this);

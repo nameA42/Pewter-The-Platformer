@@ -5,6 +5,7 @@ import {
   OverlapChecker,
   type PlacementType,
 } from "../../phaser/OverlapChecker.ts";
+import { getProcessingBox } from "../chatBox";
 
 export class PlaceSingleTile {
   sceneGetter: () => EditorScene;
@@ -71,8 +72,9 @@ export class PlaceSingleTile {
       } else {
         // Unknown layer - skip overlap check
         map.putTileAt(tileIndex, x, y, true, layer);
-        if (scene.activeBox) {
-          scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
+        const targetBox = getProcessingBox() ?? scene.activeBox;
+        if (targetBox) {
+          targetBox.addPlacedTile(tileIndex, x, y, layerName);
         }
         return `✅ Placed tile ${tileIndex} at (${x}, ${y}) on layer '${layerName}'.`;
       }
@@ -91,8 +93,9 @@ export class PlaceSingleTile {
       map.putTileAt(tileIndex, x, y, true, layer);
 
       //Record the placement
-      if (scene.activeBox) {
-        scene.activeBox.addPlacedTile(tileIndex, x, y, layerName);
+      const targetBox = getProcessingBox() ?? scene.activeBox;
+      if (targetBox) {
+        targetBox.addPlacedTile(tileIndex, x, y, layerName);
       }
 
       if (layerName == "Ground_Layer") {

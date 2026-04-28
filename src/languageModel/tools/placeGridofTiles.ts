@@ -1,10 +1,10 @@
 import { tool } from "@langchain/core/tools";
 import type { EditorScene } from "../../phaser/editorScene.ts";
 import { z } from "zod";
-import {
-  OverlapChecker,
-  type PlacementType,
-} from "../../phaser/OverlapChecker.ts";
+// import {
+//   OverlapChecker,
+//   type PlacementType,
+// } from "../../phaser/OverlapChecker.ts";
 import { getProcessingBox } from "../chatBox";
 
 export class PlaceGridofTiles {
@@ -75,14 +75,8 @@ export class PlaceGridofTiles {
         return `❌ Tool Failed: layer '${layerName}' not found.`;
       }
 
-      // Determine placement type
-      let placementType: PlacementType;
-      if (layerName === "Ground_Layer") {
-        placementType = "ground";
-      } else if (layerName === "Collectables_Layer") {
-        placementType = "collectable";
-      } else {
-        // Unknown layer - skip overlap check
+      // Unknown layer - skip overlap check
+      if (layerName !== "Ground_Layer" && layerName !== "Collectables_Layer") {
         try {
           for (let x = xMin; x <= xMax; x++) {
             for (let y = yMin; y <= yMax; y++) {
@@ -101,19 +95,19 @@ export class PlaceGridofTiles {
       }
 
       // Check ALL tiles in grid for overlaps BEFORE placing any
-      for (let x = xMin; x <= xMax; x++) {
-        for (let y = yMin; y <= yMax; y++) {
-          const overlapCheck = OverlapChecker.checkTileOverlap(
-            scene,
-            x,
-            y,
-            placementType,
-          );
-          if (!overlapCheck.canPlace && tileIndex < 7) {
-            return `❌ Cannot place grid: ${overlapCheck.reason} at position (${x}, ${y})`;
-          }
-        }
-      }
+      // for (let x = xMin; x <= xMax; x++) {
+      //   for (let y = yMin; y <= yMax; y++) {
+      //     const overlapCheck = OverlapChecker.checkTileOverlap(
+      //       scene,
+      //       x,
+      //       y,
+      //       placementType,
+      //     );
+      //     if (!overlapCheck.canPlace && tileIndex < 7) {
+      //       return `❌ Cannot place grid: ${overlapCheck.reason} at position (${x}, ${y})`;
+      //     }
+      //   }
+      // }
 
       // All tiles are clear - proceed with placement
       try {

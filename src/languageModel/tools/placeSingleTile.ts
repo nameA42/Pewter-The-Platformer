@@ -1,10 +1,10 @@
 import { tool } from "@langchain/core/tools";
 import type { EditorScene } from "../../phaser/editorScene.ts";
 import { z } from "zod";
-import {
-  OverlapChecker,
-  type PlacementType,
-} from "../../phaser/OverlapChecker.ts";
+// import {
+//   OverlapChecker,
+//   type PlacementType,
+// } from "../../phaser/OverlapChecker.ts";
 import { getProcessingBox } from "../chatBox";
 
 export class PlaceSingleTile {
@@ -63,14 +63,8 @@ export class PlaceSingleTile {
         return `Tool Failed: layer '${layerName}' not found.`;
       }
 
-      // Determine placement type for overlap checking
-      let placementType: PlacementType;
-      if (layerName === "Ground_Layer") {
-        placementType = "ground";
-      } else if (layerName === "Collectables_Layer") {
-        placementType = "collectable";
-      } else {
-        // Unknown layer - skip overlap check
+      // Unknown layer - skip overlap check
+      if (layerName !== "Ground_Layer" && layerName !== "Collectables_Layer") {
         map.putTileAt(tileIndex, x, y, true, layer);
         const targetBox = getProcessingBox() ?? scene.activeBox;
         if (targetBox) {
@@ -79,16 +73,11 @@ export class PlaceSingleTile {
         return `✅ Placed tile ${tileIndex} at (${x}, ${y}) on layer '${layerName}'.`;
       }
 
-      // Check for overlaps before placing
-      const overlapCheck = OverlapChecker.checkTileOverlap(
-        scene,
-        x,
-        y,
-        placementType,
-      );
-      if (!overlapCheck.canPlace && tileIndex < 7) {
-        return `❌ Cannot place tile at (${x}, ${y}): ${overlapCheck.reason}`;
-      }
+      // Check for overlaps before placing (disabled)
+      // const overlapCheck = OverlapChecker.checkTileOverlap(scene, x, y, placementType);
+      // if (!overlapCheck.canPlace && tileIndex < 7) {
+      //   return `❌ Cannot place tile at (${x}, ${y}): ${overlapCheck.reason}`;
+      // }
 
       map.putTileAt(tileIndex, x, y, true, layer);
 

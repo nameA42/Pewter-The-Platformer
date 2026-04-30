@@ -125,6 +125,8 @@ export class EditorScene extends Phaser.Scene {
   private keyB!: Phaser.Input.Keyboard.Key;
   private keyCtrl!: Phaser.Input.Keyboard.Key;
   private keyDelete!: Phaser.Input.Keyboard.Key;
+  private keyBackspace!: Phaser.Input.Keyboard.Key;
+  private keyR!: Phaser.Input.Keyboard.Key;
   private keyQ!: Phaser.Input.Keyboard.Key;
 
   private setPointerOverUI = (v: boolean) =>
@@ -689,6 +691,10 @@ export class EditorScene extends Phaser.Scene {
       this.keyDelete = this.input.keyboard!.addKey(
         Phaser.Input.Keyboard.KeyCodes.DELETE,
       );
+      this.keyBackspace = this.input.keyboard.addKey(
+        Phaser.Input.Keyboard.KeyCodes.BACKSPACE,
+      );
+      this.keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
       this.keyCtrl = this.input.keyboard.addKey(
         Phaser.Input.Keyboard.KeyCodes.CTRL,
       );
@@ -862,6 +868,35 @@ export class EditorScene extends Phaser.Scene {
       }
       this.saveSnapshot();
       console.log("Active selection box deleted");
+    });
+
+    this.keyBackspace.on("down", () => {
+      const el = document.activeElement;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
+      if (!this.activeBox) return;
+      this.activeBox.destroy?.();
+      this.activeBox = null;
+      try {
+        (window as any).setActiveSelectionBox?.(null);
+      } catch (e) {
+        // ignore
+      }
+      this.saveSnapshot();
+      console.log("Active selection box deleted");
+    });
+
+    this.keyR.on("down", () => {
+      const el = document.activeElement;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
+      if (!this.activeBox) return;
+      this.activeBox.setActive?.(false);
+      this.activeBox = null;
+      try {
+        (window as any).setActiveSelectionBox?.(null);
+      } catch (e) {
+        // ignore
+      }
+      console.log("Deselected active selection box");
     });
     //TODO: handle UI -> Editor communication
   }
@@ -1585,61 +1620,42 @@ export class EditorScene extends Phaser.Scene {
       this.activeBox.updateEnd(this.selectionEnd);
     }
     */
-    // Checking Overlapping
     const candidate = new Phaser.Geom.Rectangle(x, y, 1, 1);
-    let overlap = false;
-    for (const box of allSelectionBoxes) {
-      if (box === this.activeBox) continue; // skip the box currently being edited
 
-      if (box.getZLevel() === this.currentZLevel) {
-        // only check boxes on same level
-        const bound = box.getBounds(); // MUST be tile-space rectangle
-        if (SelectionBox.rectanglesOverlap(candidate, bound)) {
-          console.log("Cannot create box here — overlap detected");
-          overlap = true;
-          break;
-        }
-      }
-    }
-    // If overlap does occur, do not make a box
-    if (overlap) {
-      // If the click lands inside an existing finalized box, select it instead
-      for (const box of allSelectionBoxes) {
-        const bound = box.getBounds();
-        if (SelectionBox.rectanglesOverlap(candidate, bound)) {
-          // Select this box
-          console.log("Clicked existing selection — activating it.");
-          this.selectBox(box);
-          return;
-        }
-      }
-      console.log("Cannot create box there!! Overlap detected!!");
-      this.isSelecting = false;
-      return;
-    } else {
-      if (!this.activeBox) {
-        // If overlap does not occur, do make a new box
-        console.log("Made a new box!");
-        this.currentZLevel = 1;
-        this.activeBox = new SelectionBox(
-          this,
-          this.selectionStart,
-          this.selectionEnd,
-          this.currentZLevel,
-          // this.groundLayer,
-          (box) => {
-            this.selectBox(box);
-          },
+    if (!this.activeBox) {
+      // Find the lowest z-level with no overlap at this point
+      const MAX_Z = Z_LEVEL_COLORS.length;
+      let zLevel = 1;
+      while (zLevel < MAX_Z) {
+        const occupied = allSelectionBoxes.some(
+          (box) =>
+            box.getZLevel() === zLevel &&
+            SelectionBox.rectanglesOverlap(candidate, box.getBounds()),
         );
-        // Immediately make this new box active (visual + chat)
-        this.selectBox(this.activeBox);
-      } else {
-        // If overlap does not occur, continue working with the existing active box
-        this.selectionStart.set(x, y);
-        this.selectionEnd.set(x, y);
-        this.activeBox.updateStart(this.selectionStart);
-        this.activeBox.updateEnd(this.selectionEnd);
+        if (!occupied) break;
+        zLevel++;
       }
+      this.currentZLevel = zLevel;
+
+      console.log("Made a new box at z-level:", this.currentZLevel);
+      this.activeBox = new SelectionBox(
+        this,
+        this.selectionStart,
+        this.selectionEnd,
+        this.currentZLevel,
+        // this.groundLayer,
+        (box) => {
+          this.selectBox(box);
+        },
+      );
+      // Immediately make this new box active (visual + chat)
+      this.selectBox(this.activeBox);
+    } else {
+      // Continue working with the existing active box
+      this.selectionStart.set(x, y);
+      this.selectionEnd.set(x, y);
+      this.activeBox.updateStart(this.selectionStart);
+      this.activeBox.updateEnd(this.selectionEnd);
     }
   }
 

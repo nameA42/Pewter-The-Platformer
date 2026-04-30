@@ -200,8 +200,12 @@ export class UIScene extends Phaser.Scene {
               <span class="control-desc">Redo last action</span>
             </div>
             <div class="control-item">
-              <span class="control-key">Del</span>
+              <span class="control-key">Del / Backspace</span>
               <span class="control-desc">Delete selected box</span>
+            </div>
+            <div class="control-item">
+              <span class="control-key">R</span>
+              <span class="control-desc">Deselect active box</span>
             </div>
             <div class="control-item">
               <span class="control-key">N</span>

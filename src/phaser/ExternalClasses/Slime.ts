@@ -25,6 +25,8 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
 
   private patrolLength: number = 3;
 
+  private headHitbox: Phaser.GameObjects.Zone | null = null;
+
   // Debug overlay
   private debugText: Phaser.GameObjects.Text | null = null;
 
@@ -41,6 +43,12 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
     scene.physics.add.existing(this);
     //this.setCollideWorldBounds(true);
     scene.physics.add.collider(this, groundLayer);
+
+    this.headHitbox = scene.add.zone(x, y, 1, 1);
+    scene.physics.add.existing(this.headHitbox);
+    const headBody = this.headHitbox.body as Phaser.Physics.Arcade.Body;
+    headBody.setAllowGravity(false);
+    headBody.immovable = true;
 
     this.pathfinder = new Pathfinding(
       scene,
@@ -95,20 +103,21 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
       return true;
     });
 
-    // Stomp check - head hitbox only (won't trigger from side)
-    {
-      const playerBody = (player as any).body as Phaser.Physics.Arcade.Body;
+    // Sync head hitbox to top 40% of enemy body
+    if (this.headHitbox?.active && this.active) {
       const thisBody = this.body as Phaser.Physics.Arcade.Body;
-      if (playerBody && thisBody) {
-        const hOverlap = playerBody.right > thisBody.left && playerBody.left < thisBody.right;
-        const headBottom = thisBody.top + thisBody.height * 0.4;
-        const onHead = playerBody.bottom >= thisBody.top - 4 && playerBody.bottom <= headBottom;
-        if (hOverlap && onHead && playerBody.velocity.y > 100) {
-          playerBody.setVelocityY(-450);
-          this.causeDamage(this.health);
-          return playerHealth;
-        }
-      }
+      const headBody = this.headHitbox.body as Phaser.Physics.Arcade.Body;
+      headBody.x = thisBody.x;
+      headBody.y = thisBody.y;
+      headBody.setSize(thisBody.width, thisBody.height * 0.4, false);
+    }
+
+    // Handle stomp via head hitbox
+    if (this.headHitbox?.active && this.scene.physics.overlap(player, this.headHitbox)) {
+      const playerBody = (player as any).body as Phaser.Physics.Arcade.Body;
+      playerBody.setVelocityY(-450);
+      this.causeDamage(this.health);
+      return playerHealth;
     }
 
     // --- PATROL LOGIC ---
@@ -165,6 +174,7 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
     this.health -= healthDamage;
     if (this.health <= 0) {
       this.clearProjectiles();
+      if (this.headHitbox) { this.headHitbox.destroy(); this.headHitbox = null; }
       this.disableBody(true, true);
     }
   }
@@ -174,6 +184,13 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
     this.enableBody(true, x, y, true, true);
     this.body.velocity.x = 0;
     this.body.velocity.y = 0;
+    if (!this.headHitbox) {
+      this.headHitbox = this.scene.add.zone(x, y, 1, 1);
+      this.scene.physics.add.existing(this.headHitbox);
+      const headBody = this.headHitbox.body as Phaser.Physics.Arcade.Body;
+      headBody.setAllowGravity(false);
+      headBody.immovable = true;
+    }
   }
 
   clearProjectiles() {

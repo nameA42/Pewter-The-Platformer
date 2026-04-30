@@ -1,7 +1,7 @@
 import "./style.css";
 import { LoadingScene } from "./phaser/loadingScene.ts";
 import { EditorScene } from "./phaser/editorScene.ts";
-import { sendSystemMessage } from "./languageModel/chatBox.ts";
+import { sendSystemMessage, addStaticAIMessage } from "./languageModel/chatBox.ts";
 import { GameScene } from "./phaser/gameScene.ts";
 import { UIScene } from "./phaser/UIScene.ts";
 
@@ -43,8 +43,18 @@ Object.values(tools).forEach((generator) => {
 //Now that all tools are registered, we can send them to the LLM.
 initializeTools();
 
-// // Tell the system to introduce itself and explain what it can do
-sendSystemMessage("Introduce yourself and explain what you can do briefly.");
+// Set to true to have the AI generate the intro message, false to use the hardcoded one
+const USE_AI_INTRO = true;
+
+if (USE_AI_INTRO) {
+  sendSystemMessage("Introduce yourself and explain what you can do briefly.");
+} else {
+  addStaticAIMessage(
+    "Hello there! I'm Pewter, your friendly platformer level design assistant. " +
+    "I can help you create amazing levels by placing and clearing tiles, and even tell you about the world. " +
+    "To get started, please draw a selection box on the map!"
+  );
+}
 
 ////****Phaser Game Setup****////
 

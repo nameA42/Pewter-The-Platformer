@@ -20,7 +20,8 @@ export class PlaceGridofTiles {
       .number()
       .int()
       .min(0)
-      .describe("Numeric ID of the tile to place (e.g. 0, 5, 12)."),
+      .max(9)
+      .describe("Numeric ID of the tile to place (0–9 only)."),
 
     xMin: z
       .number()
@@ -62,6 +63,10 @@ export class PlaceGridofTiles {
 
       const { tileIndex, xMin, xMax, yMin, yMax } = args;
       let { layerName } = args;
+
+      if (tileIndex > 9) {
+        return `❌ Tool Failed: tile index ${tileIndex} is a background tile and cannot be placed.`;
+      }
 
       const ENEMY_TILE_INDICES = [8, 9];
       if (ENEMY_TILE_INDICES.includes(tileIndex)) {

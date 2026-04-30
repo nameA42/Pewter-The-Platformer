@@ -43,6 +43,8 @@ export class DynamicEnemy extends Phaser.Physics.Arcade.Sprite {
   private debugBackground: Phaser.GameObjects.Graphics | null = null;
   private lastContext: EnemyContext | null = null;
 
+  private headHitbox: Phaser.GameObjects.Zone | null = null;
+
   // Type property for WorldFacts compatibility
   public type: string;
 
@@ -84,6 +86,12 @@ export class DynamicEnemy extends Phaser.Physics.Arcade.Sprite {
     scene.add.existing(this);
     scene.physics.add.existing(this);
     scene.physics.add.collider(this, groundLayer);
+
+    this.headHitbox = scene.add.zone(x, y, 1, 1);
+    scene.physics.add.existing(this.headHitbox);
+    const headBody = this.headHitbox.body as Phaser.Physics.Arcade.Body;
+    headBody.setAllowGravity(false);
+    headBody.immovable = true;
 
     // Store references for terrain awareness
     this.map = map;
@@ -167,20 +175,21 @@ export class DynamicEnemy extends Phaser.Physics.Arcade.Sprite {
     }
     this.projectileManager.updateActiveProjectiles();
 
-    // Handle stomp - head hitbox only (won't trigger from side)
-    {
-      const playerBody = (player as Phaser.Physics.Arcade.Sprite).body as Phaser.Physics.Arcade.Body;
+    // Sync head hitbox to top 40% of enemy body
+    if (this.headHitbox?.active && this.active) {
       const thisBody = this.body as Phaser.Physics.Arcade.Body;
-      if (playerBody && thisBody) {
-        const hOverlap = playerBody.right > thisBody.left && playerBody.left < thisBody.right;
-        const headBottom = thisBody.top + thisBody.height * 0.4;
-        const onHead = playerBody.bottom >= thisBody.top - 4 && playerBody.bottom <= headBottom;
-        if (hOverlap && onHead && playerBody.velocity.y > 100) {
-          playerBody.setVelocityY(-450);
-          this.causeDamage(this.health);
-          return playerHealth;
-        }
-      }
+      const headBody = this.headHitbox.body as Phaser.Physics.Arcade.Body;
+      headBody.x = thisBody.x;
+      headBody.y = thisBody.y;
+      headBody.setSize(thisBody.width, thisBody.height * 0.4, false);
+    }
+
+    // Handle stomp via head hitbox
+    if (this.headHitbox?.active && this.scene.physics.overlap(player, this.headHitbox)) {
+      const playerBody = (player as Phaser.Physics.Arcade.Sprite).body as Phaser.Physics.Arcade.Body;
+      playerBody.setVelocityY(-450);
+      this.causeDamage(this.health);
+      return playerHealth;
     }
 
     // Handle contact damage
@@ -768,6 +777,7 @@ export class DynamicEnemy extends Phaser.Physics.Arcade.Sprite {
       this.projectileManager.clearAll();
       this.hideDebugOverlay();
       if (this.overlayGraphics) this.overlayGraphics.setVisible(false);
+      if (this.headHitbox) { this.headHitbox.destroy(); this.headHitbox = null; }
       this.disableBody(true, true);
     }
   }
@@ -778,6 +788,13 @@ export class DynamicEnemy extends Phaser.Physics.Arcade.Sprite {
     this.body.velocity.x = 0;
     this.body.velocity.y = 0;
     if (this.overlayGraphics) this.overlayGraphics.setVisible(true);
+    if (!this.headHitbox) {
+      this.headHitbox = this.scene.add.zone(x, y, 1, 1);
+      this.scene.physics.add.existing(this.headHitbox);
+      const headBody = this.headHitbox.body as Phaser.Physics.Arcade.Body;
+      headBody.setAllowGravity(false);
+      headBody.immovable = true;
+    }
   }
 
   clearProjectiles() {

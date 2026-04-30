@@ -25,6 +25,13 @@ interface BoxContext {
 export const allSelectionBoxes: SelectionBox[] = [];
 // if future people wonder "why didn't they just make a selection box that doesn't have shading"
 // I don't know how that code works or if we can disable it so I didn't touch it :thumbsup:
+export const baseStartingLayer: {
+  tileIndex: number,
+  x: number,
+  y: number,
+  layerName: string
+}[] = [];
+
 export const superDuperRealUserLayer: {
   tileIndex: number,
   x: number,
@@ -36,8 +43,54 @@ export const superDuperRealUserLayer: {
   ];
 
 
+const SOLID_BLOCK_INDICES = [4, 5, 6, 7];
+
+export function findHighestSolidBlockZLevel(tileX: number, tileY: number): number | null {
+  const userTile = superDuperRealUserLayer.find(
+    t => t.x === tileX && t.y === tileY && t.layerName === "Ground_Layer" && SOLID_BLOCK_INDICES.includes(t.tileIndex)
+  );
+  if (userTile) return Infinity;
+
+  let highestZ: number | null = null;
+  for (const box of allSelectionBoxes) {
+    const hasSolid = box.placedTiles.some(
+      t => t.x === tileX && t.y === tileY && t.layerName === "Ground_Layer" && SOLID_BLOCK_INDICES.includes(t.tileIndex)
+    );
+    if (hasSolid) {
+      const z = box.getZLevel();
+      if (highestZ === null || z > highestZ) highestZ = z;
+    }
+  }
+  return highestZ;
+}
+
 export function replaceAllBoxes() {
-  // ! because I am lazy will just be regeneing all of everything ever place, not efficient but computer are fast
+  // Clear both layers so moved boxes restore the base underneath
+  const w = GROUND_LAYER.layer.width;
+  const h = GROUND_LAYER.layer.height;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      GROUND_LAYER.putTileAt(-1, x, y);
+      COLLECTABLES_LAYER.putTileAt(-1, x, y);
+    }
+
+  // Places a tile and clears the opposing layer so solid blocks and collectables never coexist.
+  // Tiles are applied in Z-order so the highest-Z tile wins naturally.
+  function applyTile(tileIndex: number, x: number, y: number, layerName: string) {
+    const layer = layerName == "Ground_Layer" ? GROUND_LAYER : COLLECTABLES_LAYER;
+    layer.putTileAt(tileIndex, x, y);
+    if (tileIndex > 1) {
+      if (layerName == "Ground_Layer") COLLECTABLES_LAYER.putTileAt(-1, x, y);
+      else GROUND_LAYER.putTileAt(-1, x, y);
+    }
+  }
+
+  // Base starting layer (lowest priority)
+  for (let tile of baseStartingLayer) {
+    if (tile.tileIndex > 1)
+      applyTile(tile.tileIndex, tile.x, tile.y, tile.layerName);
+  }
+
   allSelectionBoxes.sort((a: SelectionBox, b: SelectionBox) => {
     if (a.getZLevel() < b.getZLevel()) {
       return -1;
@@ -49,13 +102,13 @@ export function replaceAllBoxes() {
   })
   for (let sb of allSelectionBoxes) {
     for (let tile of sb.placedTiles) {
-      if (tile.tileIndex > 1)
-        (tile.layerName == "Ground_Layer" ? GROUND_LAYER : COLLECTABLES_LAYER).putTileAt(tile.tileIndex, tile.x, tile.y);
+      if (tile.tileIndex > 1 || tile.tileIndex === -1)
+        applyTile(tile.tileIndex, tile.x, tile.y, tile.layerName);
     }
   }
   for (let tile of superDuperRealUserLayer) {
     if (tile.tileIndex > 1)
-      (tile.layerName == "Ground_Layer" ? GROUND_LAYER : COLLECTABLES_LAYER).putTileAt(tile.tileIndex, tile.x, tile.y);
+      applyTile(tile.tileIndex, tile.x, tile.y, tile.layerName);
   }
   editorScene.worldFacts.clearEnemies();
   GROUND_LAYER.forEachTile((tile) => {
@@ -584,7 +637,7 @@ export class SelectionBox {
       .text(6, 0, `Box`, { fontSize: "10px", color: "#ffffff", resolution: 2 })
       .setOrigin(0, 0.5);
 
-    const container = this.scene.add.container(worldX, worldY - 10, [bg, txt]);
+    const container = this.scene.add.container(worldX, worldY - 12, [bg, txt]);
     container.setDepth(1001);
     container.setSize(w, h);
 
@@ -894,6 +947,7 @@ export class SelectionBox {
               event.stopPropagation();
           } catch (e) { }
           if (this.onSelect) this.onSelect(this);
+          if (editorScene?.isGameActive()) return;
           if (!this.isFinalized) return;
           // prepare drag
           this._dragInitialStart = this.start.clone();
@@ -966,6 +1020,7 @@ export class SelectionBox {
     });
 
     this.tabContainer = container;
+    this.updateTabPosition();
   }
 
   public updateTabPosition() {
@@ -974,7 +1029,15 @@ export class SelectionBox {
     const startY = Math.min(this.start.y, this.end.y);
     const worldX = startX * 16;
     const worldY = startY * 16;
-    this.tabContainer.setPosition(worldX, worldY - 12);
+
+    const tabH = 14;
+    const defaultTabY = worldY - 12;
+    const cam = this.scene.cameras?.main;
+    const viewTop = cam ? cam.worldView.top : 0;
+    // If the top edge of the tab would go above the camera view, place it inside the box instead
+    const tabY = defaultTabY - tabH / 2 < viewTop ? worldY + tabH / 2 + 2 : defaultTabY;
+
+    this.tabContainer.setPosition(worldX, tabY);
   }
 
   // Toggle active visual state on the tab
@@ -1592,6 +1655,11 @@ export class SelectionBox {
 
   public getActive(): boolean {
     return this.isActive;
+  }
+
+  public setVisible(visible: boolean): void {
+    this.graphics.setVisible(visible);
+    this.tabContainer?.setVisible(visible);
   }
 
   // //Drag and Drop support - Jason Cho

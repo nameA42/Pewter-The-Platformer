@@ -3,6 +3,7 @@ import type { EditorScene } from "../../phaser/editorScene.ts";
 import { invokeTool } from "../modelConnector";
 import { z } from "zod";
 import { getProcessingBox } from "../chatBox";
+import { superDuperRealUserLayer, baseStartingLayer, allSelectionBoxes } from "../../phaser/selectionBox.ts";
 
 export class ClearTile {
   sceneGetter: () => EditorScene;
@@ -56,9 +57,11 @@ export class ClearTile {
       }
 
       try {
+        let clearedCount = 0;
         for (let x = xMin; x <= xMax; x++) {
           for (let y = yMin; y <= yMax; y++) {
-            map.removeTileAt(x, y, false, false, layer);
+            const removed = map.removeTileAt(x, y, false, false, layer);
+            if (removed) clearedCount++;
             const targetBox = getProcessingBox() ?? scene.activeBox;
             if (targetBox) {
               targetBox.addPlacedTile(-1, x, y, layerName);
@@ -137,7 +140,100 @@ export class ClearTile {
           scene.activeBox = _savedActiveBox;
         }
 
-        return `✅ Cleared tiles from (${xMin}, ${yMin}) up to (${xMax}, ${yMax}) on layer '${layerName}'.`;
+        // Scan all layers for tiles remaining in the cleared area
+        // Layer order: higher index = higher priority (rendered on top)
+        const layerOrder: Record<string, number> = {
+          "Ground_Layer": 1,
+          "Collectables_Layer": 2,
+        };
+        const clearedLayerRank = layerOrder[layerName] ?? 0;
+
+        const currentBox = getProcessingBox() ?? scene.activeBox;
+        const remaining: Array<{ x: number; y: number; tileIndex: number; layer: string; source: string; canClear: boolean; reason: string }> = [];
+
+        for (const layerData of map.layers) {
+          if (!layerData.tilemapLayer) continue;
+          if (layerData.name === "Background_Layer") continue;
+          for (let x = xMin; x <= xMax; x++) {
+            for (let y = yMin; y <= yMax; y++) {
+              const tile = map.getTileAt(x, y, false, layerData.tilemapLayer);
+              if (!tile || tile.index < 0) continue;
+
+              const lName = layerData.name;
+              let source = "unknown origin";
+
+              if (superDuperRealUserLayer.some(t => t.x === x && t.y === y && t.layerName === lName)) {
+                source = "placed by user";
+              } else if (baseStartingLayer.some(t => t.x === x && t.y === y && t.layerName === lName)) {
+                source = "pre-existing base tile";
+              } else if (currentBox?.placedTiles?.some((t: any) => t.x === x && t.y === y && t.layerName === lName)) {
+                source = "placed by this agent";
+              } else {
+                for (const box of allSelectionBoxes) {
+                  if (box === currentBox) continue;
+                  if (box.placedTiles?.some(t => t.x === x && t.y === y && t.layerName === lName)) {
+                    source = "placed by another agent";
+                    break;
+                  }
+                }
+              }
+
+              const tileLayerRank = layerOrder[lName] ?? 0;
+              const isHigherLayer = tileLayerRank > clearedLayerRank;
+              let canClear = false;
+              let reason = "";
+
+              if (source === "placed by user") {
+                canClear = false;
+                reason = "no authority — user-placed tile";
+              } else if (source === "placed by this agent") {
+                canClear = true;
+                reason = "can clear — own tile";
+              } else if (source === "pre-existing base tile") {
+                canClear = true;
+                reason = "can clear — base tile";
+              } else if (isHigherLayer) {
+                canClear = false;
+                reason = `no authority — tile is on a higher layer ('${lName}' is above '${layerName}')`;
+              } else {
+                canClear = true;
+                reason = "can clear — lower layer tile";
+              }
+
+              remaining.push({ x, y, tileIndex: tile.index, layer: lName, source, canClear, reason });
+            }
+          }
+        }
+
+        let result = `✅ Cleared ${clearedCount} tile(s) from (${xMin}, ${yMin}) to (${xMax}, ${yMax}) on layer '${layerName}'.`;
+        if (clearedCount === 0) {
+          result = `✅ No tiles were present to clear from (${xMin}, ${yMin}) to (${xMax}, ${yMax}) on layer '${layerName}'.`;
+        }
+
+        if (remaining.length > 0) {
+          const onTargetLayer = remaining.filter(t => t.layer === layerName);
+          const onOtherLayers = remaining.filter(t => t.layer !== layerName);
+
+          if (onTargetLayer.length > 0) {
+            result += `\n⚠️ ${onTargetLayer.length} tile(s) on '${layerName}' could NOT be cleared:`;
+            for (const t of onTargetLayer) {
+              result += `\n  - (${t.x}, ${t.y}) [tile #${t.tileIndex}] — ${t.source} — ${t.reason}`;
+            }
+          }
+
+          if (onOtherLayers.length > 0) {
+            result += `\n⚠️ ${onOtherLayers.length} tile(s) remain in this area on other layers (visually covering the cleared space):`;
+            for (const t of onOtherLayers) {
+              result += `\n  - (${t.x}, ${t.y}) on '${t.layer}' [tile #${t.tileIndex}] — ${t.source} — ${t.reason}`;
+            }
+            const clearable = onOtherLayers.filter(t => t.canClear);
+            if (clearable.length > 0) {
+              result += `\nYou have authority to clear ${clearable.length} of these — call clearTiles for their respective layers.`;
+            }
+          }
+        }
+
+        return result;
       } catch (e) {
         console.error("removeTileAt failed:", e);
         return "❌ Tool Failed: error while clearing tiles.";

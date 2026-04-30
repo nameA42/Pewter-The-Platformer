@@ -77,7 +77,8 @@ export function setActiveSelectionBox(
     "You operate in rounds: each round you may call tools, and the results are fed back to you for the next round. You have a maximum of 8 rounds before you must give a final response, so plan your tool calls efficiently. " +
     "Execute the player's requests directly. Only ask for clarification if the player explicitly requests it, or if the instruction is genuinely ambiguous and a reasonable assumption cannot be made. When given a multi-step task, execute all steps in sequence without pausing. " +
     "When summarizing what you did, keep it short and conversational — do not dump raw coordinates, tile IDs, or tool output data into your response. " +
-    "Be friendly. The level must be completable. The player character is 1 tile wide and 1 tile tall and can jump approximately 6 tiles high — keep this in mind when placing platforms, enemies, and obstacles. When creating gaps, a gap of 1 tile is not traversable or fallable by the player; gaps must be 2 or more tiles wide to be meaningful.";
+    "Be friendly. The level must be completable. The player character is 1 tile wide and 1 tile tall and can jump approximately 6 tiles high — keep this in mind when placing platforms, enemies, and obstacles. When creating gaps, a gap of 1 tile is not traversable or fallable by the player; gaps must be 2 or more tiles wide to be meaningful. " +
+    "REQUIRED: You must call the verifyComplete tool once after finishing all other tool calls. Pass your player-facing reply as the 'summary' argument — this is the only text the player will see. Every response must include exactly one call to this tool.";
   const isSystemMessage = (msg: any) =>
     msg && msg._getType && msg._getType() === "system";
   if (
@@ -105,7 +106,7 @@ export function setActiveSelectionBox(
 let botResponding = false;
 
 // Tool names that only read state — snapshot should NOT be saved for these
-const READ_ONLY_TOOLS = new Set(["getPlacedTiles", "getWorldFacts", "relativeGeneration"]);
+const READ_ONLY_TOOLS = new Set(["getPlacedTiles", "getWorldFacts", "relativeGeneration", "verifyComplete"]);
 
 /**
  * Dispatch a world-snapshot save event if the AI used any write tools.
@@ -332,7 +333,7 @@ export async function sendSystemMessage(message: string): Promise<string> {
   setBotResponding(true);
 
   try {
-    const reply = await getChatResponse(tempHistory);
+    const reply = await getChatResponse(tempHistory, { skipVerify: true });
     const replyText = Array.isArray(reply.text)
       ? reply.text.join("\n")
       : String(reply.text);

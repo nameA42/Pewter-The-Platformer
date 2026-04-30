@@ -1,8 +1,6 @@
 import Phaser from "phaser";
-import { Pathfinding } from "./Pathfinding";
 
 export class Slime extends Phaser.Physics.Arcade.Sprite {
-  // Static flag to enable/disable debug overlay (shared with DynamicEnemy)
   public static debugMode: boolean = false;
 
   public type: string = "Slime";
@@ -10,24 +8,21 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
   private maxHealth: number = 10;
   private frameCounter: number = 0;
 
-  // pellet info
   private fireRate: number = 100;
   private pellets: Phaser.Physics.Arcade.Sprite[] = [];
   private pelletVelocity: number = 100;
 
   private isFlipped = false;
-  private pathfinder: Pathfinding;
-  private reachedPoint: boolean = true; // whether patrol point is reached
-  private patrolPoints: { x: number; y: number }[] = [];
-  private currentPatrolIndex: number = 0;
 
   private speed: number = 20;
+  private direction: number = 1; // 1 = right, -1 = left
+  private spawnTileX: number;
+  private readonly PATROL_TILES = 2;
 
-  private patrolLength: number = 3;
+  private tileSize: number;
+  private groundLayer: Phaser.Tilemaps.TilemapLayer;
 
   private headHitbox: Phaser.GameObjects.Zone | null = null;
-
-  // Debug overlay
   private debugText: Phaser.GameObjects.Text | null = null;
 
   constructor(
@@ -41,39 +36,18 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
 
     scene.add.existing(this);
     scene.physics.add.existing(this);
-    //this.setCollideWorldBounds(true);
     scene.physics.add.collider(this, groundLayer);
+
+    this.tileSize = map.tileWidth;
+    this.groundLayer = groundLayer;
+    this.spawnTileX = Math.floor(x / this.tileSize);
 
     this.headHitbox = scene.add.zone(x, y, 1, 1);
     scene.physics.add.existing(this.headHitbox);
     const headBody = this.headHitbox.body as Phaser.Physics.Arcade.Body;
     headBody.setAllowGravity(false);
     headBody.immovable = true;
-
-    this.pathfinder = new Pathfinding(
-      scene,
-      map,
-      this,
-      "Ground_Layer",
-      this.speed,
-    );
-
-    this.generatePos(x, y, map);
   }
-
-  generatePos(x: number, y: number, map: Phaser.Tilemaps.Tilemap) {
-    // define two patrol points: 3 tiles left, back to original position
-    const tileSize = map.tileWidth;
-    const startTile = {
-      x: Math.floor(x / tileSize),
-      y: Math.floor(y / tileSize),
-    };
-    this.patrolPoints = [
-      { x: startTile.x - this.patrolLength, y: startTile.y }, // left
-      { x: startTile.x, y: startTile.y }, // back to start
-    ];
-  }
-
 
   update(
     player: Phaser.GameObjects.Sprite,
@@ -87,12 +61,10 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
 
     this.frameCounter++;
 
-    // shooting logic
     if (this.frameCounter % this.fireRate === 0) {
       this.shootPellet();
     }
 
-    // pellet collisions with player
     this.pellets = this.pellets.filter((pellet) => {
       if (!pellet || !pellet.active || !pellet.body) return false;
       if (this.scene.physics.overlap(player, pellet)) {
@@ -103,7 +75,6 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
       return true;
     });
 
-    // Sync head hitbox to top 40% of enemy body
     if (this.headHitbox?.active && this.active) {
       const thisBody = this.body as Phaser.Physics.Arcade.Body;
       const headBody = this.headHitbox.body as Phaser.Physics.Arcade.Body;
@@ -112,7 +83,6 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
       headBody.setSize(thisBody.width, thisBody.height * 0.4, false);
     }
 
-    // Handle stomp via head hitbox
     if (this.headHitbox?.active && this.scene.physics.overlap(player, this.headHitbox)) {
       const playerBody = (player as any).body as Phaser.Physics.Arcade.Body;
       playerBody.setVelocityY(-450);
@@ -120,30 +90,20 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
       return playerHealth;
     }
 
-    // --- PATROL LOGIC ---
-    if (this.reachedPoint) {
-      // reached a patrol point → set up next path
-      const start = this.patrolPoints[this.currentPatrolIndex == 1 ? 0 : 1];
-      const target = this.patrolPoints[this.currentPatrolIndex];
+    // --- PATROL AI ---
+    const body = this.body as Phaser.Physics.Arcade.Body;
+    const enemyTileX = Math.floor(this.x / this.tileSize);
 
-      this.pathfinder.findPath(start.x, start.y, target.x, target.y);
-      this.reachedPoint = false;
+    const atRightBound = this.direction > 0 && enemyTileX >= this.spawnTileX + this.PATROL_TILES;
+    const atLeftBound = this.direction < 0 && enemyTileX <= this.spawnTileX - this.PATROL_TILES;
 
-      // next target in sequence
-      this.currentPatrolIndex++;
-      this.currentPatrolIndex = this.currentPatrolIndex % 2;
-    } else {
-      // continue pathfinding
-      this.reachedPoint = this.pathfinder.pathfind();
+    if (atRightBound || atLeftBound || this.isLedgeAhead(this.direction)) {
+      this.direction *= -1;
     }
 
-    if (this.currentPatrolIndex == 0) {
-      this.flip(false);
-    } else if (this.currentPatrolIndex == 1) {
-      this.flip(true);
-    }
+    body.setVelocityX(this.speed * this.direction);
+    this.flip(this.direction < 0);
 
-    // Update debug overlay if enabled
     if (Slime.debugMode) {
       this.updateDebugOverlay(player);
     } else {
@@ -151,6 +111,19 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
     }
 
     return playerHealth;
+  }
+
+  private isSolidTile(tileX: number, tileY: number): boolean {
+    const tile = this.groundLayer.getTileAt(tileX, tileY);
+    return tile !== null && tile.index !== -1;
+  }
+
+  private isLedgeAhead(direction: number): boolean {
+    const body = this.body as Phaser.Physics.Arcade.Body;
+    const enemyTileX = Math.floor(this.x / this.tileSize);
+    const footTileY = Math.floor(body.bottom / this.tileSize);
+    const nextTileX = direction > 0 ? enemyTileX + 1 : enemyTileX - 1;
+    return !this.isSolidTile(nextTileX, footTileY);
   }
 
   private shootPellet() {
@@ -164,7 +137,6 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
     pellet.body.setGravityY(0);
     this.pellets.push(pellet);
 
-    // auto-destroy after 2s
     this.scene.time.delayedCall(2000, () => {
       if (pellet.active) pellet.destroy();
     });
@@ -184,6 +156,8 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
     this.enableBody(true, x, y, true, true);
     this.body.velocity.x = 0;
     this.body.velocity.y = 0;
+    this.spawnTileX = Math.floor(x / this.tileSize);
+    this.direction = 1;
     if (!this.headHitbox) {
       this.headHitbox = this.scene.add.zone(x, y, 1, 1);
       this.scene.physics.add.existing(this.headHitbox);
@@ -209,7 +183,6 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
     this.setFlipX(flip);
   }
 
-  // Debug overlay methods
   private updateDebugOverlay(player: Phaser.GameObjects.Sprite) {
     if (!this.debugText) {
       this.debugText = this.scene.add.text(this.x, this.y - 40, "", {
@@ -225,24 +198,19 @@ export class Slime extends Phaser.Physics.Arcade.Sprite {
     }
 
     const distance = Math.floor(
-      Math.sqrt(
-        Math.pow(player.x - this.x, 2) + Math.pow(player.y - this.y, 2),
-      ),
+      Math.sqrt(Math.pow(player.x - this.x, 2) + Math.pow(player.y - this.y, 2)),
     );
-    const state = this.reachedPoint ? "PATROL_WAIT" : "PATROL_MOVE";
-    const direction = this.currentPatrolIndex === 0 ? "→" : "←";
+    const dir = this.direction > 0 ? "→" : "←";
+    const ledge = this.isLedgeAhead(this.direction) ? " LEDGE" : "";
 
-    const lines = [
+    this.debugText.setText([
       `[Slime]`,
-      `State: ${state} ${direction}`,
+      `Dir: ${dir}${ledge}`,
       `HP: ${this.health}/${this.maxHealth}`,
       `Dist: ${distance}px`,
-    ];
-
-    this.debugText.setText(lines.join("\n"));
+    ].join("\n"));
     this.debugText.setPosition(this.x, this.y - 20);
 
-    // Update color based on health
     const healthPercent = this.health / this.maxHealth;
     if (healthPercent <= 0.25) {
       this.debugText.setStyle({ backgroundColor: "#aa0000cc" });

@@ -17,7 +17,7 @@ import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
 import { DynamicEnemy } from "../enemySystem/runtime/DynamicEnemy.ts";
 import { UIScene } from "./UIScene.ts";
 import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
-import { replaceAllBoxes, SelectionBox, allSelectionBoxes, addPlacedTile, superDuperRealUserLayer } from "./selectionBox.ts";
+import { replaceAllBoxes, SelectionBox, allSelectionBoxes, addPlacedTile, superDuperRealUserLayer, baseStartingLayer } from "./selectionBox.ts";
 import { regenerate } from "./ExternalClasses/RegenerationTools.ts";
 import { Z_LEVEL_COLORS } from "./colors";
 
@@ -61,6 +61,8 @@ export class EditorScene extends Phaser.Scene {
   private mapHistory: WorldSnapshot[] = [];
   private currentMapIteration: number = -1;
   private static readonly MAX_HISTORY = 50;
+  private isDirty: boolean = false;
+  private sceneReady: boolean = false;
 
   private minZoomLevel = 2.25;
   private maxZoomLevel = 10;
@@ -79,6 +81,7 @@ export class EditorScene extends Phaser.Scene {
 
   /// Game Variables.
   private gameActive = false;
+  public isGameActive(): boolean { return this.gameActive; }
   private player!: PlayerSprite;
   // Play mode controls
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -154,6 +157,8 @@ export class EditorScene extends Phaser.Scene {
   private optionsButton!: Phaser.GameObjects.Container;
   private optionsPanel!: Phaser.GameObjects.Container;
   private optionsPanelVisible: boolean = false;
+  private boxVisibilityToggleBtn!: Phaser.GameObjects.Container;
+  private boxesVisible: boolean = true;
 
   private currentZLevel: number = 1;
   private useEventQueueRegen: boolean = false; // Toggle between linear and event queue regen
@@ -296,8 +301,7 @@ export class EditorScene extends Phaser.Scene {
 
     // Camera follows player in play mode
     this.cameras.main
-      .startFollow(this.player, true, 0.25, 0.25)
-      .setDeadzone(50, 50)
+      .startFollow(this.player, false, 0, 0)
       .setZoom(this.zoomLevel);
 
     // Setup player movement controls
@@ -447,6 +451,20 @@ export class EditorScene extends Phaser.Scene {
     )!;
     COLLECTABLES_LAYER = this.collectablesLayer;
 
+    // Capture starting map into the base layer so it's restored when boxes move
+    this.groundLayer.layer.data.forEach((row, y) =>
+      row.forEach((tile, x) => {
+        if (tile.index > 1)
+          baseStartingLayer.push({ tileIndex: tile.index, x, y, layerName: "Ground_Layer" });
+      })
+    );
+    this.collectablesLayer.layer.data.forEach((row, y) =>
+      row.forEach((tile, x) => {
+        if (tile.index > 1)
+          baseStartingLayer.push({ tileIndex: tile.index, x, y, layerName: "Collectables_Layer" });
+      })
+    );
+
     this.cameras.main.setBounds(
       0,
       0,
@@ -469,6 +487,7 @@ export class EditorScene extends Phaser.Scene {
 
     // Save initial map state so undo has a baseline
     this.saveSnapshot();
+    this.sceneReady = true;
 
     // Listen for requests to save a snapshot (e.g. before AI sends a message)
     window.addEventListener("saveWorldSnapshot", () => this.saveSnapshot());
@@ -1011,18 +1030,28 @@ export class EditorScene extends Phaser.Scene {
     );
     tileIndex = tileIndex === 0 ? -1 : tileIndex; // Allow -1 for erasing tiles
     console.log(`Placing tile at (${x}, ${y}) with index ${tileIndex}`);
-    if (this.activeBox) {
-      if (this.activeBox.containsPoint(x, y)) {
-        this.activeBox.addPlacedTile(tileIndex, x, y, layer.layer.name);
-        layer.putTileAt(tileIndex, x, y);
-        replaceAllBoxes();
+    let target: SelectionBox | null = null;
+
+    if (this.activeBox && this.activeBox.containsPoint(x, y)) {
+      target = this.activeBox;
+    } else {
+      let bestZ = -Infinity;
+      for (const box of allSelectionBoxes) {
+        if (box.containsPoint(x, y) && box.getZLevel() > bestZ) {
+          bestZ = box.getZLevel();
+          target = box;
+        }
       }
     }
-    else {
+
+    if (target) {
+      target.addPlacedTile(tileIndex, x, y, layer.layer.name);
+    } else {
       addPlacedTile(superDuperRealUserLayer, tileIndex, x, y, layer.layer.name);
-      layer.putTileAt(tileIndex, x, y);
-      replaceAllBoxes();
     }
+
+    layer.putTileAt(tileIndex, x, y);
+    replaceAllBoxes();
 
   }
 
@@ -1424,6 +1453,7 @@ export class EditorScene extends Phaser.Scene {
     }
 
     this.worldFacts.refresh();
+    replaceAllBoxes();
   }
 
   public saveSnapshot(): void {
@@ -1433,6 +1463,10 @@ export class EditorScene extends Phaser.Scene {
       this.mapHistory.splice(0, this.mapHistory.length - EditorScene.MAX_HISTORY);
     }
     this.currentMapIteration = this.mapHistory.length - 1;
+    if (this.sceneReady && !this.isDirty) {
+      this.isDirty = true;
+      this.game.events.emit("editor:dirtyChanged", true);
+    }
   }
 
   undoLastAction(): boolean {
@@ -1473,6 +1507,8 @@ export class EditorScene extends Phaser.Scene {
     a.download = `pewter-map_${timestamp}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    this.isDirty = false;
+    this.game.events.emit("editor:dirtyChanged", false);
   }
 
   public loadFromFile(): void {
@@ -1513,6 +1549,8 @@ export class EditorScene extends Phaser.Scene {
           });
 
           this.saveSnapshot();
+          this.isDirty = false;
+          this.game.events.emit("editor:dirtyChanged", false);
         } catch (err) {
           console.error("Failed to load save file:", err);
         }
@@ -1874,10 +1912,10 @@ export class EditorScene extends Phaser.Scene {
       hoverStroke = 0xb3b3b3,
     ): Phaser.GameObjects.Container => {
       const txt = this.add
-        .text(0, 0, label, { fontSize: "13px", color: "#ffffff" })
+        .text(0, 0, label, { fontSize: "11px", color: "#ffffff" })
         .setOrigin(0.5);
-      const w = Math.max(txt.width + 24, 90);
-      const h = 36;
+      const w = Math.max(txt.width + 16, 80);
+      const h = 24;
       const bg = this.add
         .rectangle(0, 0, w, h, fill)
         .setOrigin(0.5)
@@ -1895,6 +1933,16 @@ export class EditorScene extends Phaser.Scene {
     };
 
     this.optionsButton = makeBtn("⚙ Options", toggleFn);
+
+    this.boxesVisible = true;
+    this.boxVisibilityToggleBtn = makeBtn("👁 Boxes: ON", () => {
+      this.boxesVisible = !this.boxesVisible;
+      for (const box of allSelectionBoxes) {
+        box.setVisible(this.boxesVisible);
+      }
+      const txt = this.boxVisibilityToggleBtn.list[1] as Phaser.GameObjects.Text;
+      txt.setText(this.boxesVisible ? "👁 Boxes: ON" : "👁 Boxes: OFF");
+    });
 
     const panelW = 290;
     const panelBg = this.add
@@ -1948,12 +1996,20 @@ export class EditorScene extends Phaser.Scene {
     const screenX = 120; // pixels from left edge — change to move button
     const screenY = 135; // pixels from top edge — change to move button
 
+    const btnH = 24;
+    const gap = 4;
+
     const btnPos = cam.getWorldPoint(screenX, screenY);
     this.optionsButton.setPosition(btnPos.x, btnPos.y);
 
     if (this.optionsPanel) {
-      const panelPos = cam.getWorldPoint(screenX, screenY + 22);
+      const panelPos = cam.getWorldPoint(screenX, screenY + btnH * 2 + gap + 4);
       this.optionsPanel.setPosition(panelPos.x, panelPos.y);
+    }
+
+    if (this.boxVisibilityToggleBtn) {
+      const togglePos = cam.getWorldPoint(screenX, screenY + (btnH + gap) * 2);
+      this.boxVisibilityToggleBtn.setPosition(togglePos.x, togglePos.y);
     }
   }
 
@@ -2011,6 +2067,15 @@ export class EditorScene extends Phaser.Scene {
       this.optionsPanel = undefined as any;
     }
     this.optionsPanelVisible = false;
+
+    if (this.boxVisibilityToggleBtn) {
+      this.boxVisibilityToggleBtn.destroy();
+      this.boxVisibilityToggleBtn = undefined as any;
+    }
+    for (const box of allSelectionBoxes) {
+      box.setVisible(true);
+    }
+    this.boxesVisible = true;
 
     // Destroy all enemies — tiles are restored by replaceAllBoxes() below
     this.enemies.forEach((enemy) => {

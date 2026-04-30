@@ -41,6 +41,7 @@ export class UIScene extends Phaser.Scene {
   private regenerateButton!: Phaser.GameObjects.Container;
   private deselectBoxBtn!: Phaser.GameObjects.Container;
   private apiSpriteToggle!: Phaser.GameObjects.Container;
+  private hasDirtyChanges = false;
 
   //Inputs
   private keyR!: Phaser.Input.Keyboard.Key;
@@ -676,6 +677,31 @@ export class UIScene extends Phaser.Scene {
     );
     loadButton.setDepth(1001);
 
+    const saveReloadButton = this.createButton(
+      this,
+      0,
+      toolbarY,
+      "Save & Reload",
+      () => {
+        this.game.events.emit("ui:save");
+        setTimeout(() => window.location.reload(), 150);
+      },
+      {
+        fill: 0x2a1a00,
+        hoverFill: 0x2a1a00,
+        downFill: 0x1a1000,
+        stroke: 0xcc8800,
+        hoverStroke: 0xeeaa44,
+        downStroke: 0xffcc66,
+        textColor: "#eeaa44",
+        fontSize: toolbarButtonFontSize,
+        paddingX: toolbarButtonPaddingX,
+        paddingY: toolbarButtonPaddingY,
+        minHeight: toolbarButtonHeight,
+      },
+    );
+    saveReloadButton.setDepth(1001);
+
     // Layout toolbar buttons based on measured text width with consistent spacing.
     const toolbarButtons = [
       this.playButton,
@@ -683,6 +709,7 @@ export class UIScene extends Phaser.Scene {
       this.regenerateButton,
       saveButton,
       loadButton,
+      saveReloadButton,
     ];
     let toolbarX = 20;
     for (const btn of toolbarButtons) {
@@ -695,6 +722,17 @@ export class UIScene extends Phaser.Scene {
     // Linear Regen is coming soon — lifecycle handlers are no-ops until feature ships
     this.game.events.on("regenerate:started", () => {});
     this.game.events.on("regenerate:finished", () => {});
+
+    this.game.events.on("editor:dirtyChanged", (dirty: boolean) => {
+      this.hasDirtyChanges = dirty;
+    });
+
+    window.addEventListener("beforeunload", (e) => {
+      if (this.hasDirtyChanges) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    });
 
     this.input.keyboard!.on("keydown-H", () => {
       const editorScene = this.scene.get("editorScene") as EditorScene;

@@ -3,6 +3,7 @@ import {
   BaseMessage,
   ToolMessage,
   SystemMessage,
+  HumanMessage,
 } from "@langchain/core/messages";
 
 const apiKey: string | undefined = import.meta.env.VITE_LLM_API_KEY;
@@ -185,6 +186,7 @@ export async function initializeLLM(
 
 export async function getChatResponse(
   chatMessageHistory: BaseMessage[],
+  options?: { skipVerify?: boolean },
 ): Promise<{
   text: string[];
   toolCalls: {
@@ -211,13 +213,63 @@ export async function getChatResponse(
   };
 
   try {
+    // Simple single-shot path for messages that don't need tool use (e.g. intro)
+    if (options?.skipVerify) {
+      const response = await llm.invoke(chatMessageHistory);
+      console.log("Raw LLM response (single-shot):", response);
+      if (typeof response.content === "string") {
+        output.text.push(response.content);
+      } else if (Array.isArray(response.content)) {
+        for (const part of response.content) {
+          if (part.type === "text" && typeof part.text === "string") {
+            output.text.push(part.text);
+          }
+        }
+      }
+      return output;
+    }
+
     const MAX_ITERATIONS = 8;
     let iterations = 0;
+    let calledVerify = false;
+    let verifyNudgeSent = false;
+
+    const collectText = (r: any) => {
+      if (typeof r.content === "string") {
+        if (r.content) output.text.push(r.content);
+      } else if (Array.isArray(r.content)) {
+        for (const part of r.content) {
+          if (part.type === "text" && typeof part.text === "string" && part.text) {
+            output.text.push(part.text);
+          }
+        }
+      }
+    };
 
     let response = await llmWithTools.invoke(chatMessageHistory);
     console.log("Raw LLM response (round 1):", response);
 
-    while ((response.tool_calls?.length ?? 0) > 0 && iterations < MAX_ITERATIONS) {
+    while (iterations < MAX_ITERATIONS) {
+      const hasCalls = (response.tool_calls?.length ?? 0) > 0;
+
+      if (!hasCalls) {
+        collectText(response);
+        // No tool calls — check that verifyComplete was called
+        if (!calledVerify && !verifyNudgeSent && !options?.skipVerify) {
+          verifyNudgeSent = true;
+          iterations++;
+          console.warn("Pewter responded without calling verifyComplete — resending request.");
+          chatMessageHistory.push(response);
+          chatMessageHistory.push(new HumanMessage(
+            "[SYSTEM]: You forgot to call the verifyComplete tool. Call it now."
+          ));
+          response = await llmWithTools.invoke(chatMessageHistory);
+          console.log(`Raw LLM response (verify nudge round):`, response);
+          continue;
+        }
+        break;
+      }
+
       iterations++;
 
       // Push AI message so the model can see its own tool-call requests
@@ -225,6 +277,13 @@ export async function getChatResponse(
 
       // Run all tool calls from this round
       for await (const toolCall of response.tool_calls ?? []) {
+        if (toolCall.name === "verifyComplete") {
+          calledVerify = true;
+          if (typeof toolCall.args?.summary === "string" && toolCall.args.summary) {
+            output.text.push(toolCall.args.summary);
+          }
+        }
+
         const tool = toolsByName[toolCall.name];
         if (!tool) {
           const errorMsg = `Error: Unknown tool "${toolCall.name}".`;
@@ -270,6 +329,9 @@ export async function getChatResponse(
         }
       }
 
+      // verifyComplete signals the model is done — no extra round needed
+      if (calledVerify) break;
+
       // Re-invoke for the next round
       response = await llmWithTools.invoke(chatMessageHistory);
       console.log(`Raw LLM response (round ${iterations + 1}):`, response);
@@ -277,17 +339,6 @@ export async function getChatResponse(
 
     if (iterations >= MAX_ITERATIONS) {
       console.warn("Pewter hit the iteration limit — stopping tool loop.");
-    }
-
-    // Only collect text from the final response (no tool calls)
-    if (typeof response.content === "string") {
-      output.text.push(response.content);
-    } else if (Array.isArray(response.content)) {
-      for (const part of response.content) {
-        if (part.type === "text" && typeof part.text === "string") {
-          output.text.push(part.text);
-        }
-      }
     }
 
     return output;

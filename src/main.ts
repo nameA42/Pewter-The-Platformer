@@ -16,6 +16,7 @@ import { ClearTile } from "./languageModel/tools/clearTile.ts";
 import { WorldFactsTool } from "./languageModel/tools/worldFactsTool.ts";
 import { GetPlacedTiles } from "./languageModel/tools/getPlacedTiles.ts";
 import { RelativeRegeneration } from "./languageModel/tools/relativeGeneration.ts";
+import { VerifyComplete } from "./languageModel/tools/verifyComplete.ts";
 // import { GenerateEnemy } from "./languageModel/tools/generateEnemy.ts";
 // import { ModifyEnemy } from "./languageModel/tools/modifyEnemy.ts";
 
@@ -29,6 +30,7 @@ const tools = {
   WorldFactsTool: new WorldFactsTool(getScene),
   getPlacedTiles: new GetPlacedTiles(getScene),
   relativeGeneration: new RelativeRegeneration(getScene),
+  verifyComplete: new VerifyComplete(),
   // generateEnemy: new GenerateEnemy(getScene),
   // modifyEnemy: new ModifyEnemy(getScene)
 };

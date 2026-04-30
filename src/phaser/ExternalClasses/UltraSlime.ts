@@ -1,39 +1,27 @@
 import Phaser from "phaser";
-import { Pathfinding } from "./Pathfinding";
 
 export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
-  // Static flag to enable/disable debug overlay (shared with DynamicEnemy)
   public static debugMode: boolean = false;
 
   public type: string = "UltraSlime";
-  // health
   private health: number = 20;
   private maxHealth: number = 20;
 
-  // essentials
   private frameCounter: number = 0;
 
-  // pellet information
   private fireRate: number = 50;
   private pellets: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody[] = [];
   private pelletVelocity: number = 125;
   private megaPelletVelocity: number = 138;
   private isRapidFiring = false;
 
-  // flipped left or right
   private isFlipped = false;
-  private pathfinder: Pathfinding;
-  private reachedPoint: boolean = true; // whether patrol point is reached
-  private patrolPoints: { x: number; y: number }[] = [];
-  private currentPatrolIndex: number = 0;
-
   private speed: number = 35;
 
-  private patrolLength: number = 5;
+  private tileSize: number;
+  private groundLayer: Phaser.Tilemaps.TilemapLayer;
 
   private headHitbox: Phaser.GameObjects.Zone | null = null;
-
-  // Debug overlay
   private debugText: Phaser.GameObjects.Text | null = null;
 
   constructor(
@@ -47,33 +35,16 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
 
     scene.add.existing(this);
     scene.physics.add.existing(this);
-    //this.setCollideWorldBounds(true);
     scene.physics.add.collider(this, groundLayer);
+
+    this.tileSize = map.tileWidth;
+    this.groundLayer = groundLayer;
 
     this.headHitbox = scene.add.zone(x, y, 1, 1);
     scene.physics.add.existing(this.headHitbox);
     const headBody = this.headHitbox.body as Phaser.Physics.Arcade.Body;
     headBody.setAllowGravity(false);
     headBody.immovable = true;
-
-    this.pathfinder = new Pathfinding(
-      scene,
-      map,
-      this,
-      "Ground_Layer",
-      this.speed,
-    );
-
-    // define two patrol points: 3 tiles left, back to original position
-    const tileSize = map.tileWidth;
-    const startTile = {
-      x: Math.floor(x / tileSize),
-      y: Math.floor(y / tileSize),
-    };
-    this.patrolPoints = [
-      { x: startTile.x - this.patrolLength, y: startTile.y }, // left
-      { x: startTile.x, y: startTile.y }, // back to start
-    ];
   }
 
   update(
@@ -97,7 +68,7 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
       this.isRapidFiring = false;
     }
 
-    if (this.isRapidFiring == false) {
+    if (!this.isRapidFiring) {
       if (this.frameCounter % this.fireRate === 0) {
         this.shootPellet();
       }
@@ -118,7 +89,6 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
       return true;
     });
 
-    // Sync head hitbox to top 40% of enemy body
     if (this.headHitbox?.active && this.active) {
       const thisBody = this.body as Phaser.Physics.Arcade.Body;
       const headBody = this.headHitbox.body as Phaser.Physics.Arcade.Body;
@@ -127,7 +97,6 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
       headBody.setSize(thisBody.width, thisBody.height * 0.4, false);
     }
 
-    // Handle stomp via head hitbox
     if (this.headHitbox?.active && this.scene.physics.overlap(player, this.headHitbox)) {
       const playerBody = (player as any).body as Phaser.Physics.Arcade.Body;
       playerBody.setVelocityY(-450);
@@ -135,30 +104,22 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
       return playerHealth;
     }
 
-    // --- PATROL LOGIC ---
-    if (this.reachedPoint) {
-      // reached a patrol point → set up next path
-      const start = this.patrolPoints[this.currentPatrolIndex == 1 ? 0 : 1];
-      const target = this.patrolPoints[this.currentPatrolIndex];
+    // --- CHASE AI ---
+    const body = this.body as Phaser.Physics.Arcade.Body;
+    const dx = player.x - this.x;
+    const wantedDirection = dx > 0 ? 1 : -1;
 
-      this.pathfinder.findPath(start.x, start.y, target.x, target.y);
-      this.reachedPoint = false;
+    // Always face the player
+    this.isFlipped = dx < 0;
+    this.setFlipX(this.isFlipped);
 
-      // next target in sequence
-      this.currentPatrolIndex++;
-      this.currentPatrolIndex = this.currentPatrolIndex % 2;
+    // Only move toward player if there's ground ahead
+    if (!this.isLedgeAhead(wantedDirection)) {
+      body.setVelocityX(this.speed * wantedDirection);
     } else {
-      // continue pathfinding
-      this.reachedPoint = this.pathfinder.pathfind();
+      body.setVelocityX(0);
     }
 
-    if (this.currentPatrolIndex == 0) {
-      this.flip(false);
-    } else if (this.currentPatrolIndex == 1) {
-      this.flip(true);
-    }
-
-    // Update debug overlay if enabled
     if (UltraSlime.debugMode) {
       this.updateDebugOverlay(player);
     } else {
@@ -166,6 +127,19 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
     }
 
     return playerHealth;
+  }
+
+  private isSolidTile(tileX: number, tileY: number): boolean {
+    const tile = this.groundLayer.getTileAt(tileX, tileY);
+    return tile !== null && tile.index !== -1;
+  }
+
+  private isLedgeAhead(direction: number): boolean {
+    const body = this.body as Phaser.Physics.Arcade.Body;
+    const enemyTileX = Math.floor(this.x / this.tileSize);
+    const footTileY = Math.floor(body.bottom / this.tileSize);
+    const nextTileX = direction > 0 ? enemyTileX + 1 : enemyTileX - 1;
+    return !this.isSolidTile(nextTileX, footTileY);
   }
 
   private shootPellet() {
@@ -231,15 +205,9 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
 
   flip(flip: boolean) {
     this.isFlipped = flip;
-
-    if (this.isFlipped == true) {
-      this.flipX = true;
-    } else {
-      this.flipX = false;
-    }
+    this.setFlipX(flip);
   }
 
-  // Debug overlay methods
   private updateDebugOverlay(player: Phaser.GameObjects.Sprite) {
     if (!this.debugText) {
       this.debugText = this.scene.add.text(this.x, this.y - 40, "", {
@@ -255,26 +223,22 @@ export class UltraSlime extends Phaser.Physics.Arcade.Sprite {
     }
 
     const distance = Math.floor(
-      Math.sqrt(
-        Math.pow(player.x - this.x, 2) + Math.pow(player.y - this.y, 2),
-      ),
+      Math.sqrt(Math.pow(player.x - this.x, 2) + Math.pow(player.y - this.y, 2)),
     );
-    const patrolState = this.reachedPoint ? "PATROL_WAIT" : "PATROL_MOVE";
-    const fireState = this.isRapidFiring ? "RAPID_FIRE 🔥" : "NORMAL_FIRE";
-    const direction = this.currentPatrolIndex === 0 ? "→" : "←";
+    const dx = player.x - this.x;
+    const dir = dx > 0 ? "→" : "←";
+    const fireState = this.isRapidFiring ? "RAPID" : "NORMAL";
+    const ledge = this.isLedgeAhead(dx > 0 ? 1 : -1) ? " LEDGE" : "";
 
-    const lines = [
+    this.debugText.setText([
       `[UltraSlime]`,
-      `Move: ${patrolState} ${direction}`,
-      `Attack: ${fireState}`,
+      `Chase: ${dir}${ledge}`,
+      `Fire: ${fireState}`,
       `HP: ${this.health}/${this.maxHealth}`,
       `Dist: ${distance}px`,
-    ];
-
-    this.debugText.setText(lines.join("\n"));
+    ].join("\n"));
     this.debugText.setPosition(this.x, this.y - 20);
 
-    // Update color based on health
     const healthPercent = this.health / this.maxHealth;
     if (healthPercent <= 0.25) {
       this.debugText.setStyle({ backgroundColor: "#aa0000cc" });

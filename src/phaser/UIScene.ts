@@ -37,10 +37,7 @@ export class UIScene extends Phaser.Scene {
     this.registry.set("uiPointerOver", v);
 
   //UI
-  private playButton!: Phaser.GameObjects.Container;
-  private regenerateButton!: Phaser.GameObjects.Container;
-  private deselectBoxBtn!: Phaser.GameObjects.Container;
-  private apiSpriteToggle!: Phaser.GameObjects.Container;
+  private toolbarDom!: Phaser.GameObjects.DOMElement;
   private hasDirtyChanges = false;
 
   //Inputs
@@ -132,17 +129,22 @@ export class UIScene extends Phaser.Scene {
     //Working Code - Manvir
 
     // Create hidden chatbox
-    this.chatBox = this.add.dom(1090, 350).createFromHTML(`
+    this.chatBox = this.add.dom(1095, 360).createFromHTML(`
       <div id="chatbox" class="pt-chatbox">
-        <div id="tabs" class="pt-tabs">
-          <button id="tab-chat" class="pt-tab active">💬 Chat</button>
-          <button id="tab-blocks" class="pt-tab">🧱 Manual Edit</button>
-          <button id="tab-controls" class="pt-tab">🎮 Controls</button>
+        <div class="pt-chatbox-header">
+          <span class="pt-brand">✦ pewter</span>
+          <div class="pt-tabs-inline">
+            <button id="tab-chat" class="pt-tab active">Chat</button>
+            <button id="tab-blocks" class="pt-tab">Blocks</button>
+            <button id="tab-controls" class="pt-tab">Controls</button>
+          </div>
         </div>
         <div id="tab-contents" class="pt-tab-contents">
           <div id="chat-content" class="pt-chat-content">
             <div id="chat-log" class="pt-chat-log"></div>
-            <input id="chat-input" class="pt-chat-input" type="text" placeholder="Type a command..." autocomplete="off" />
+            <div class="pt-chat-input-area">
+              <input id="chat-input" class="pt-chat-input" type="text" placeholder="Type a command..." autocomplete="off" />
+            </div>
           </div>
           <div id="blocks-content" class="pt-blocks-content">
             <div class="pt-blocks-group">
@@ -179,7 +181,7 @@ export class UIScene extends Phaser.Scene {
               <span class="control-key">U</span>
               <span class="control-desc">Toggle UI</span>
             </div>
-            <h3 style="margin-top: 16px;">Selection Controls</h3>
+            <h3>Selection Controls</h3>
             <div class="control-item">
               <span class="control-key">Ctrl + C</span>
               <span class="control-desc">Copy selection</span>
@@ -240,10 +242,7 @@ export class UIScene extends Phaser.Scene {
         if ((e as KeyboardEvent).ctrlKey) return; // ignore Ctrl+U
         isChatVisible = !isChatVisible;
         this.chatBox.setVisible(isChatVisible);
-        this.playButton.setVisible(isChatVisible);
-        this.deselectBoxBtn.setVisible(isChatVisible);
-        this.regenerateButton.setVisible(isChatVisible);
-        this.apiSpriteToggle.setVisible(isChatVisible);
+        this.toolbarDom.setVisible(isChatVisible);
         try {
           this.game.events.emit("ui:toggleMinimap", isChatVisible);
         } catch (err) {
@@ -265,10 +264,7 @@ export class UIScene extends Phaser.Scene {
         if (e.key.toLowerCase() === "u" && !e.ctrlKey) {
           isChatVisible = !isChatVisible;
           this.chatBox.setVisible(isChatVisible);
-          this.playButton.setVisible(isChatVisible);
-          this.deselectBoxBtn.setVisible(isChatVisible);
-          this.regenerateButton.setVisible(isChatVisible);
-            this.apiSpriteToggle.setVisible(isChatVisible);
+          this.toolbarDom.setVisible(isChatVisible);
           try {
             this.game.events.emit("ui:toggleMinimap", isChatVisible);
           } catch (err) {}
@@ -313,7 +309,6 @@ export class UIScene extends Phaser.Scene {
       const msg = document.createElement("p");
       msg.className = "pt-temp-message";
       msg.innerHTML = html;
-      msg.style.cssText = "color:#f59e0b;font-style:italic;margin:4px 0;";
       log.appendChild(msg);
       log.scrollTop = log.scrollHeight;
       setTimeout(() => {
@@ -339,10 +334,10 @@ export class UIScene extends Phaser.Scene {
     // (called after log innerHTML is replaced, e.g. on tab/box switch).
     const ensureTypingIndicator = () => {
       if (isBotResponding() && !log.querySelector("#pt-typing-indicator")) {
-        const typingEl = document.createElement("p");
+        const typingEl = document.createElement("div");
         typingEl.id = "pt-typing-indicator";
-        typingEl.innerHTML =
-          '<strong>AI:</strong> <span class="pt-typing-dots"></span>';
+        typingEl.className = "pt-msg-ai";
+        typingEl.innerHTML = '<span class="pt-typing-dots"></span>';
         log.appendChild(typingEl);
         log.scrollTop = log.scrollHeight;
       }
@@ -386,7 +381,10 @@ export class UIScene extends Phaser.Scene {
       // stopPropagation() above keeps Phaser from seeing this event, so we
       // manually delegate here. beforeinput (above) handles blocking the browser's
       // text-history operation that would otherwise also fire.
-      if (e.ctrlKey && (e.key === "z" || e.key === "Z" || e.key === "y" || e.key === "Y")) {
+      if (
+        e.ctrlKey &&
+        (e.key === "z" || e.key === "Z" || e.key === "y" || e.key === "Y")
+      ) {
         e.preventDefault();
         input.blur();
         try {
@@ -406,7 +404,9 @@ export class UIScene extends Phaser.Scene {
         const now = Date.now();
         if (!activeBox && now - lastNoBoxWarningTime > 2000) {
           lastNoBoxWarningTime = now;
-          showTempMessage("⚠️ Select a region on the map first (right-click and drag).");
+          showTempMessage(
+            "⚠️ Select a region on the map first (right-click and drag).",
+          );
         }
       }
     });
@@ -417,7 +417,9 @@ export class UIScene extends Phaser.Scene {
         const activeBox = (window as any).getActiveSelectionBox?.();
         if (!activeBox) {
           input.value = "";
-          showTempMessage("⚠️ Select a region on the map first (right-click and drag).");
+          showTempMessage(
+            "⚠️ Select a region on the map first (right-click and drag).",
+          );
           return;
         }
         if (isBotResponding()) return;
@@ -426,12 +428,20 @@ export class UIScene extends Phaser.Scene {
         if (!userMsg) return;
 
         input.value = "";
-        console.log("[UIScene] activeBox at send time:", activeBox, "pendingMove:", activeBox?._pendingMoveNotify);
-        const moveContext: string | null = activeBox?.consumePendingMoveContext?.() ?? null;
+        console.log(
+          "[UIScene] activeBox at send time:",
+          activeBox,
+          "pendingMove:",
+          activeBox?._pendingMoveNotify,
+        );
+        const moveContext: string | null =
+          activeBox?.consumePendingMoveContext?.() ?? null;
         if (moveContext) {
           console.log("[MoveContext] Sending move info to AI:", moveContext);
         } else {
-          console.log("[MoveContext] No move context (moveContext is null/undefined)");
+          console.log(
+            "[MoveContext] No move context (moveContext is null/undefined)",
+          );
         }
         // Refresh and gather world facts localized to the active selection box
         let worldFactsContext: string | null = null;
@@ -446,7 +456,13 @@ export class UIScene extends Phaser.Scene {
             const yMax = bounds.y + bounds.height - 1;
             const factLines: string[] = [];
             for (const cat of ["Structure", "Collectable", "Enemy"] as const) {
-              const facts = editorScene.worldFacts.getFact(cat, xMin, xMax, yMin, yMax);
+              const facts = editorScene.worldFacts.getFact(
+                cat,
+                xMin,
+                xMax,
+                yMin,
+                yMax,
+              );
               if (facts.length > 0) {
                 factLines.push(...facts.map((f) => f.toString()));
               }
@@ -459,7 +475,11 @@ export class UIScene extends Phaser.Scene {
           }
         }
 
-        const hiddenContext = [this.latestSelectionContext, moveContext, worldFactsContext]
+        const hiddenContext = [
+          this.latestSelectionContext,
+          moveContext,
+          worldFactsContext,
+        ]
           .filter(Boolean)
           .join("\n");
         const sendPromise = sendUserPromptWithContext(
@@ -470,10 +490,10 @@ export class UIScene extends Phaser.Scene {
         log.innerHTML = getDisplayChatHistory();
 
         // Show animated typing indicator while waiting for AI
-        const typingEl = document.createElement("p");
+        const typingEl = document.createElement("div");
         typingEl.id = "pt-typing-indicator";
-        typingEl.innerHTML =
-          '<strong>AI:</strong> <span class="pt-typing-dots"></span>';
+        typingEl.className = "pt-msg-ai";
+        typingEl.innerHTML = '<span class="pt-typing-dots"></span>';
         log.appendChild(typingEl);
         log.scrollTop = log.scrollHeight;
 
@@ -483,241 +503,52 @@ export class UIScene extends Phaser.Scene {
       }
     });
 
-    const toolbarButtonHeight = 52;
-    const toolbarButtonFontSize = 17;
-    const toolbarButtonPaddingX = 16;
-    const toolbarButtonPaddingY = 11;
-    const toolbarButtonGap = 14;
-    const toolbarY = this.cameras.main.height - 50;
-
-    // Play mode button - Shawn
-    this.createPlayButton();
-
-    // Add a small helper button to select the current temporary selection box
-    this.deselectBoxBtn = this.createButton(
-      this,
-      220,
-      toolbarY,
-      "🧹 Deselect Box",
-      () => {
-        // Emit an event the EditorScene can listen to; per request this will deselect all boxes
-        this.game.events.emit("ui:deselectAllBoxes");
-      },
-      {
-        fill: 0x222222,
-        hoverFill: 0x222222,
-        downFill: 0x1a1a1a,
-        stroke: 0x444444,
-        hoverStroke: 0xb3b3b3,
-        downStroke: 0xd9d9d9,
-        textColor: "#ffffff",
-        fontSize: toolbarButtonFontSize,
-        paddingX: toolbarButtonPaddingX,
-        paddingY: toolbarButtonPaddingY,
-        minHeight: toolbarButtonHeight,
-      },
-    );
-    this.deselectBoxBtn.setDepth(1001);
-
-    // Linear Regen button - coming soon, disabled
-    this.regenerateButton = this.createButton(
-      this,
-      380,
-      toolbarY,
-      "♻️ Linear Regen\n(Coming Soon)",
-      () => {},
-      {
-        fill: 0x1a1a1a,
-        hoverFill: 0x1a1a1a,
-        downFill: 0x1a1a1a,
-        stroke: 0x333333,
-        hoverStroke: 0x333333,
-        downStroke: 0x333333,
-        textColor: "#555555",
-        fontSize: toolbarButtonFontSize,
-        paddingX: toolbarButtonPaddingX,
-        paddingY: toolbarButtonPaddingY,
-        minHeight: toolbarButtonHeight,
-      },
-    );
-    this.regenerateButton.setDepth(1001);
-    // Disable interaction — button is a placeholder until feature ships
-    try {
-      (this.regenerateButton.list[0] as Phaser.GameObjects.Graphics).disableInteractive();
-    } catch (e) {}
-
-    // API Sprite Generation toggle button
-    // Starts OFF to prevent accidental API credit usage
-    this.apiSpriteToggle = this.createButton(
-      this,
-      740,
-      toolbarY,
-      "👾 API Sprites: OFF",
-      () => {
-        // Toggle the API sprite generation
-        SpriteGenerator.useExternalApi = !SpriteGenerator.useExternalApi;
-        const isEnabled = SpriteGenerator.useExternalApi;
-
-        // Update button text and color
-        const txt = this.apiSpriteToggle.list[1] as Phaser.GameObjects.Text;
-        const statusTxt = this.apiSpriteToggle
-          .list[2] as Phaser.GameObjects.Text;
-        const bg = this.apiSpriteToggle
-          .list[0] as Phaser.GameObjects.GameObject;
-
-        const stateLabel = isEnabled ? "ON" : "OFF";
-        const fullLabel = `👾 API Sprites: ${stateLabel}`;
-
-        txt.setText(fullLabel);
-        txt.setColor("#ffffff");
-
-        // Place the colored ON/OFF token at the end of the white prefix.
-        txt.setText("👾 API Sprites: ");
-        const prefixWidth = txt.width;
-        txt.setText(fullLabel);
-
-        const fullWidth = txt.width;
-        statusTxt.setText(stateLabel);
-        statusTxt.setColor(isEnabled ? "#22c55e" : "#ef4444");
-        statusTxt.setPosition(-fullWidth / 2 + prefixWidth, 0);
-
-        if (isEnabled) {
-          this.updateRoundedButtonColors(bg, 0x222222, 0xffffff);
-        } else {
-          this.updateRoundedButtonColors(bg, 0x222222, 0x444444);
-        }
-
-        console.log(
-          `🎨 API Sprite Generation: ${isEnabled ? "ENABLED" : "DISABLED"}`,
-        );
-      },
-      {
-        fill: 0x222222,
-        hoverFill: 0x222222,
-        downFill: 0x1a1a1a,
-        stroke: 0x444444,
-        hoverStroke: 0xb3b3b3,
-        downStroke: 0xd9d9d9,
-        textColor: "#ffffff",
-        fontSize: toolbarButtonFontSize,
-        paddingX: toolbarButtonPaddingX,
-        paddingY: toolbarButtonPaddingY,
-        minHeight: toolbarButtonHeight,
-      },
-    );
-
-    // Overlay just the ON/OFF token in color while keeping the base label white.
-    const apiLabel = this.apiSpriteToggle.list[1] as Phaser.GameObjects.Text;
-    const apiStatus = this.add
-      .text(0, 0, "OFF", {
-        fontFamily: "sans-serif",
-        fontSize: `${toolbarButtonFontSize}px`,
-        color: "#ef4444",
-      })
-      .setOrigin(0, 0.5);
-
-    apiLabel.setText("👾 API Sprites: OFF");
-    apiLabel.setColor("#ffffff");
-    apiLabel.setText("👾 API Sprites: ");
-    const initialPrefixWidth = apiLabel.width;
-    apiLabel.setText("👾 API Sprites: OFF");
-    const initialFullWidth = apiLabel.width;
-    apiStatus.setPosition(-initialFullWidth / 2 + initialPrefixWidth, 0);
-    this.apiSpriteToggle.add(apiStatus);
-
-    this.apiSpriteToggle.setDepth(1001);
-    this.apiSpriteToggle.setVisible(false);
+    // DOM toolbar — replaces the old Phaser canvas buttons
     SpriteGenerator.useExternalApi = false;
 
-    const saveButton = this.createButton(
-      this,
-      0,
-      toolbarY,
-      "Save",
-      () => {
-        this.game.events.emit("ui:save");
-      },
-      {
-        fill: 0x1a3a1a,
-        hoverFill: 0x1a3a1a,
-        downFill: 0x112611,
-        stroke: 0x44aa44,
-        hoverStroke: 0x88dd88,
-        downStroke: 0xaaffaa,
-        textColor: "#88dd88",
-        fontSize: toolbarButtonFontSize,
-        paddingX: toolbarButtonPaddingX,
-        paddingY: toolbarButtonPaddingY,
-        minHeight: toolbarButtonHeight,
-      },
+    this.toolbarDom = this.add.dom(460, 692).createFromHTML(`
+      <div class="pt-toolbar">
+        <button class="pt-tbtn pt-tbtn-play" id="tbtn-play">▶ Play</button>
+        <div class="pt-toolbar-spacer"></div>
+        <button class="pt-tbtn" id="tbtn-deselect">✕ Deselect</button>
+        <button class="pt-tbtn pt-tbtn-save" id="tbtn-save">💾 Save</button>
+        <button class="pt-tbtn pt-tbtn-load" id="tbtn-load">📂 Load</button>
+        <button class="pt-tbtn pt-tbtn-reload" id="tbtn-reload">↺ Reload</button>
+      </div>
+    `);
+    this.toolbarDom.setDepth(1001);
+
+    const toolbarNode = this.toolbarDom.node as HTMLElement;
+
+    toolbarNode
+      .querySelector("#tbtn-play")
+      ?.addEventListener("click", () => this.startGame());
+
+    toolbarNode
+      .querySelector("#tbtn-deselect")
+      ?.addEventListener("click", () => {
+        this.game.events.emit("ui:deselectAllBoxes");
+      });
+
+    toolbarNode.querySelector("#tbtn-save")?.addEventListener("click", () => {
+      this.game.events.emit("ui:save");
+    });
+
+    toolbarNode.querySelector("#tbtn-load")?.addEventListener("click", () => {
+      this.game.events.emit("ui:load");
+    });
+
+    toolbarNode.querySelector("#tbtn-reload")?.addEventListener("click", () => {
+      this.game.events.emit("ui:save");
+      setTimeout(() => window.location.reload(), 150);
+    });
+
+    toolbarNode.addEventListener("mouseenter", () =>
+      this.setPointerOverUI(true),
     );
-    saveButton.setDepth(1001);
-
-    const loadButton = this.createButton(
-      this,
-      0,
-      toolbarY,
-      "Load",
-      () => {
-        this.game.events.emit("ui:load");
-      },
-      {
-        fill: 0x1a2a3a,
-        hoverFill: 0x1a2a3a,
-        downFill: 0x111a26,
-        stroke: 0x4488cc,
-        hoverStroke: 0x88bbee,
-        downStroke: 0xaaddff,
-        textColor: "#88bbee",
-        fontSize: toolbarButtonFontSize,
-        paddingX: toolbarButtonPaddingX,
-        paddingY: toolbarButtonPaddingY,
-        minHeight: toolbarButtonHeight,
-      },
+    toolbarNode.addEventListener("mouseleave", () =>
+      this.setPointerOverUI(false),
     );
-    loadButton.setDepth(1001);
-
-    const saveReloadButton = this.createButton(
-      this,
-      0,
-      toolbarY,
-      "Save & Reload",
-      () => {
-        this.game.events.emit("ui:save");
-        setTimeout(() => window.location.reload(), 150);
-      },
-      {
-        fill: 0x2a1a00,
-        hoverFill: 0x2a1a00,
-        downFill: 0x1a1000,
-        stroke: 0xcc8800,
-        hoverStroke: 0xeeaa44,
-        downStroke: 0xffcc66,
-        textColor: "#eeaa44",
-        fontSize: toolbarButtonFontSize,
-        paddingX: toolbarButtonPaddingX,
-        paddingY: toolbarButtonPaddingY,
-        minHeight: toolbarButtonHeight,
-      },
-    );
-    saveReloadButton.setDepth(1001);
-
-    // Layout toolbar buttons based on measured text width with consistent spacing.
-    const toolbarButtons = [
-      this.playButton,
-      this.deselectBoxBtn,
-      this.regenerateButton,
-      saveButton,
-      loadButton,
-      saveReloadButton,
-    ];
-    let toolbarX = 20;
-    for (const btn of toolbarButtons) {
-      const w = btn.width || 0;
-      btn.setPosition(toolbarX + w / 2, toolbarY);
-      toolbarX += w + toolbarButtonGap;
-    }
-
 
     // Linear Regen is coming soon — lifecycle handlers are no-ops until feature ships
     this.game.events.on("regenerate:started", () => {});
@@ -872,11 +703,16 @@ export class UIScene extends Phaser.Scene {
         this.updateLog();
         // If the bot is still responding, restore the typing indicator so the
         // user can see that a request is still in flight after switching tabs.
-        if (log && isBotResponding() && !log.querySelector("#pt-typing-indicator")) {
+        if (
+          log &&
+          isBotResponding() &&
+          !log.querySelector("#pt-typing-indicator")
+        ) {
           const typingEl = document.createElement("p");
           typingEl.id = "pt-typing-indicator";
+          typingEl.className = "pt-msg-ai";
           typingEl.innerHTML =
-            '<strong>AI:</strong> <span class="pt-typing-dots"></span>';
+            '<strong>Pewter:</strong> <span class="pt-typing-dots"></span>';
           log.appendChild(typingEl);
           log.scrollTop = log.scrollHeight;
         }
@@ -1128,34 +964,5 @@ export class UIScene extends Phaser.Scene {
     console.log("Play button clicked!");
     (this.scene.get("editorScene") as EditorScene).startGame();
     this.scene.stop("UIScene");
-  }
-
-  // Create the play button - Shawn K
-  private createPlayButton() {
-    this.playButton = this.createButton(
-      this,
-      100,
-      this.cameras.main.height - 50, // 100 pixels from bottom of screen
-      "▶️ Play",
-      () => {
-        this.startGame();
-      },
-      {
-        fill: 0x222222,
-        hoverFill: 0x222222,
-        downFill: 0x1a1a1a,
-        stroke: 0x444444,
-        hoverStroke: 0xb3b3b3,
-        downStroke: 0xd9d9d9,
-        textColor: "#ffffff", // White text
-        fontSize: 17,
-        paddingX: 16,
-        paddingY: 11,
-        minHeight: 52,
-      },
-    );
-
-    // Set high depth so it appears above other UI elements
-    this.playButton.setDepth(1001);
   }
 }

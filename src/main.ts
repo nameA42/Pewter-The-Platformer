@@ -46,7 +46,7 @@ Object.values(tools).forEach((generator) => {
 initializeTools();
 
 // Set to true to have the AI generate the intro message, false to use the hardcoded one
-const USE_AI_INTRO = true;
+const USE_AI_INTRO = false;
 
 if (USE_AI_INTRO) {
   sendSystemMessage("Introduce yourself and explain what you can do briefly.");

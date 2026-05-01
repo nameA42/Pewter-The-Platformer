@@ -163,6 +163,7 @@ export class EditorScene extends Phaser.Scene {
   private healthText: Phaser.GameObjects.Text | null = null;
   private coinText: Phaser.GameObjects.Text | null = null;
   private playHudEl: HTMLElement | null = null;
+  private playBoxesBtnEl: HTMLElement | null = null;
   private collectablesSnapshot: { x: number; y: number; index: number }[] = [];
   private isDead = false;
   private optionsButton!: Phaser.GameObjects.Container;
@@ -331,6 +332,20 @@ export class EditorScene extends Phaser.Scene {
       keyG.on("down", () => {
         this.toggleDebugOverlay();
       });
+
+      // Add B key handler to toggle selection box visibility in play mode
+      const keyB = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B);
+      keyB.removeAllListeners("down");
+      keyB.on("down", () => {
+        this.boxesVisible = !this.boxesVisible;
+        for (const box of allSelectionBoxes) {
+          box.setVisible(this.boxesVisible);
+        }
+        if (this.playBoxesBtnEl) {
+          const lbl = this.playBoxesBtnEl.querySelector("span");
+          if (lbl) lbl.textContent = this.boxesVisible ? "👁️ ON" : "👁️ OFF";
+        }
+      });
     }
 
     // Hide selection boxes in play mode
@@ -338,6 +353,22 @@ export class EditorScene extends Phaser.Scene {
     for (const box of allSelectionBoxes) {
       box.setVisible(false);
     }
+
+    // Boxes toggle button in play HUD — same style as the Q hint
+    const boxesBtnEl = document.createElement("div");
+    boxesBtnEl.className = "pt-play-hint-q";
+    boxesBtnEl.style.right = "140px";
+    boxesBtnEl.innerHTML = `<kbd>B</kbd><span>👁️ OFF</span>`;
+    boxesBtnEl.addEventListener("click", () => {
+      this.boxesVisible = !this.boxesVisible;
+      for (const box of allSelectionBoxes) {
+        box.setVisible(this.boxesVisible);
+      }
+      const lbl = boxesBtnEl.querySelector("span")!;
+      lbl.textContent = this.boxesVisible ? "👁️ ON" : "👁️ OFF";
+    });
+    this.game.domContainer?.appendChild(boxesBtnEl);
+    this.playBoxesBtnEl = boxesBtnEl;
 
     // Phaser canvas HUD — original style, repositioned each frame via getWorldPoint
     const cam = this.cameras.main;
@@ -376,7 +407,8 @@ export class EditorScene extends Phaser.Scene {
     // "Q — exit" key hint in the overlay
     const hintEl = document.createElement("div");
     hintEl.className = "pt-play-hint-q";
-    hintEl.innerHTML = `<kbd>Q</kbd><span>exit</span>`;
+    hintEl.innerHTML = `<kbd>Q</kbd><span>Exit</span>`;
+    hintEl.addEventListener("click", () => this.startEditor());
     this.game.domContainer?.appendChild(hintEl);
     this.playHudEl = hintEl;
   }
@@ -2154,6 +2186,10 @@ export class EditorScene extends Phaser.Scene {
     if (this.playHudEl) {
       this.playHudEl.remove();
       this.playHudEl = null;
+    }
+    if (this.playBoxesBtnEl) {
+      this.playBoxesBtnEl.remove();
+      this.playBoxesBtnEl = null;
     }
 
     // Restore collected tiles so the editor shows the original map

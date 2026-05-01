@@ -513,7 +513,7 @@ export class UIScene extends Phaser.Scene {
         <button class="pt-tbtn" id="tbtn-deselect">✕ Deselect</button>
         <button class="pt-tbtn pt-tbtn-save" id="tbtn-save">💾 Save</button>
         <button class="pt-tbtn pt-tbtn-load" id="tbtn-load">📂 Load</button>
-        <button class="pt-tbtn pt-tbtn-reload" id="tbtn-reload">↺ Reload</button>
+        <button class="pt-tbtn pt-tbtn-reload" id="tbtn-reload">↺ Save & Reload</button>
       </div>
     `);
     this.toolbarDom.setDepth(1001);

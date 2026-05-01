@@ -63,6 +63,7 @@ const llm = new ChatGoogleGenerativeAI({
   temperature: llmTemp,
   maxRetries: 2,
   apiKey: apiKey,
+  thinkingConfig: { thinkingBudget: 0 },
 });
 
 let llmWithTools: ReturnType<typeof llm.bindTools> | null = null;
@@ -275,12 +276,20 @@ export async function getChatResponse(
       // Push AI message so the model can see its own tool-call requests
       chatMessageHistory.push(response);
 
+      const roundCalls = response.tool_calls ?? [];
+      const mixedWithOthers = roundCalls.length > 1 && roundCalls.some(c => c.name === "verifyComplete");
+
       // Run all tool calls from this round
-      for await (const toolCall of response.tool_calls ?? []) {
+      for await (const toolCall of roundCalls) {
         if (toolCall.name === "verifyComplete") {
-          calledVerify = true;
-          if (typeof toolCall.args?.summary === "string" && toolCall.args.summary) {
-            output.text.push(toolCall.args.summary);
+          // Only accept verifyComplete if it's the sole call in this round.
+          // If mixed with other tools, skip collecting the summary — the loop
+          // will re-invoke so the model sees the other tools' results first.
+          if (!mixedWithOthers) {
+            calledVerify = true;
+            if (typeof toolCall.args?.summary === "string" && toolCall.args.summary) {
+              output.text.push(toolCall.args.summary);
+            }
           }
         }
 

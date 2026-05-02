@@ -162,6 +162,7 @@ export class EditorScene extends Phaser.Scene {
   private coinCount = 0;
   private healthText: Phaser.GameObjects.Text | null = null;
   private coinText: Phaser.GameObjects.Text | null = null;
+  private playStatsEl: HTMLElement | null = null;
   private playHudEl: HTMLElement | null = null;
   private playBoxesBtnEl: HTMLElement | null = null;
   private collectablesSnapshot: { x: number; y: number; index: number }[] = [];
@@ -370,39 +371,20 @@ export class EditorScene extends Phaser.Scene {
     this.game.domContainer?.appendChild(boxesBtnEl);
     this.playBoxesBtnEl = boxesBtnEl;
 
-    // Phaser canvas HUD — original style, repositioned each frame via getWorldPoint
-    const cam = this.cameras.main;
-    const scaledFontSize = Math.max(8, 18 / cam.zoom);
-    const hudTopLeft = cam.getWorldPoint(16, 16);
-
+    // Floating DOM stats pill — matches the new UI style
     const initHearts =
       "♥".repeat(this.playerHealth) +
       "♡".repeat(this.maxPlayerHealth - this.playerHealth);
 
-    this.healthText = this.add
-      .text(hudTopLeft.x, hudTopLeft.y, `HP: ${initHearts}`, {
-        fontSize: `${scaledFontSize}px`,
-        color: "#ff4444",
-        stroke: "#000000",
-        strokeThickness: 4,
-      })
-      .setScrollFactor(1)
-      .setDepth(1000);
-
-    this.coinText = this.add
-      .text(
-        hudTopLeft.x,
-        hudTopLeft.y + scaledFontSize + 4,
-        `Coins: ${this.coinCount}`,
-        {
-          fontSize: `${scaledFontSize}px`,
-          color: "#FFD700",
-          stroke: "#000000",
-          strokeThickness: 4,
-        },
-      )
-      .setScrollFactor(1)
-      .setDepth(1000);
+    const statsEl = document.createElement("div");
+    statsEl.className = "pt-play-stats";
+    statsEl.innerHTML = `
+      <span class="pt-stat-hearts" id="play-stat-hearts">${initHearts}</span>
+      <span class="pt-stat-sep"></span>
+      <span class="pt-stat-coins">⬡ <span id="play-stat-coins">0</span></span>
+    `;
+    this.game.domContainer?.appendChild(statsEl);
+    this.playStatsEl = statsEl;
 
     // "Q — exit" key hint in the overlay
     const hintEl = document.createElement("div");
@@ -1139,28 +1121,15 @@ export class EditorScene extends Phaser.Scene {
         }
       }
 
-      // Reposition HUD to stay fixed to camera top-left
-      if (this.healthText || this.coinText) {
-        const cam = this.cameras.main;
-        const scaledFontSize = Math.max(8, 18 / cam.zoom);
-        const hudTopLeft = cam.getWorldPoint(16, 16);
-
-        if (this.healthText) {
-          const hearts =
-            "♥".repeat(Math.max(0, this.playerHealth)) +
-            "♡".repeat(Math.max(0, this.maxPlayerHealth - this.playerHealth));
-          this.healthText.setText(`HP: ${hearts}`);
-          this.healthText.setFontSize(scaledFontSize);
-          this.healthText.setPosition(hudTopLeft.x, hudTopLeft.y);
-        }
-        if (this.coinText) {
-          this.coinText.setText(`Coins: ${this.coinCount}`);
-          this.coinText.setFontSize(scaledFontSize);
-          this.coinText.setPosition(
-            hudTopLeft.x,
-            hudTopLeft.y + scaledFontSize + 4,
-          );
-        }
+      // Update floating DOM stats pill
+      if (this.playStatsEl) {
+        const hearts =
+          "♥".repeat(Math.max(0, this.playerHealth)) +
+          "♡".repeat(Math.max(0, this.maxPlayerHealth - this.playerHealth));
+        const heartsEl = this.playStatsEl.querySelector("#play-stat-hearts");
+        const coinsEl = this.playStatsEl.querySelector("#play-stat-coins");
+        if (heartsEl) heartsEl.textContent = hearts;
+        if (coinsEl) coinsEl.textContent = String(this.coinCount);
       }
 
       // Death checks — health depleted or fell off the map
@@ -2175,6 +2144,14 @@ export class EditorScene extends Phaser.Scene {
     this.wasd = undefined as any;
     this.isJumpPressed = false;
 
+    if (this.playStatsEl) {
+      this.playStatsEl.remove();
+      this.playStatsEl = null;
+    }
+    if (this.playHudEl) {
+      this.playHudEl.remove();
+      this.playHudEl = null;
+    }
     if (this.healthText) {
       this.healthText.destroy();
       this.healthText = null;
@@ -2182,10 +2159,6 @@ export class EditorScene extends Phaser.Scene {
     if (this.coinText) {
       this.coinText.destroy();
       this.coinText = null;
-    }
-    if (this.playHudEl) {
-      this.playHudEl.remove();
-      this.playHudEl = null;
     }
     if (this.playBoxesBtnEl) {
       this.playBoxesBtnEl.remove();

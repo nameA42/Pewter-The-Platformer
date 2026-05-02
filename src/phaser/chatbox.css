@@ -669,6 +669,44 @@
   user-select: none;
 }
 
+/* ===== Floating stats pill (hearts + coins) ===== */
+.pt-play-stats {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(10, 10, 20, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 7px 14px;
+  pointer-events: none;
+  user-select: none;
+  font-family: "Space Grotesk", system-ui, sans-serif;
+}
+
+.pt-stat-hearts {
+  font-size: 15px;
+  letter-spacing: 2px;
+  color: #ff6060;
+}
+
+.pt-stat-sep {
+  width: 1px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.15);
+  flex-shrink: 0;
+}
+
+.pt-stat-coins {
+  font-size: 13px;
+  font-weight: 500;
+  color: #fcd34d;
+}
+
 .pt-play-hint-q {
   position: absolute;
   top: 14px;

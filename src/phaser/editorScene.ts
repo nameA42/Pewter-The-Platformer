@@ -1,5 +1,6 @@
 // Pewter Platformer EditorScene - Cleaned and consolidated after merge
 import Phaser from "phaser";
+import "./chatbox.css";
 
 type PlayerSprite = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
   isFalling?: boolean;
@@ -17,7 +18,14 @@ import { UltraSlime } from "./ExternalClasses/UltraSlime.ts";
 import { DynamicEnemy } from "../enemySystem/runtime/DynamicEnemy.ts";
 import { UIScene } from "./UIScene.ts";
 import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
-import { replaceAllBoxes, SelectionBox, allSelectionBoxes, addPlacedTile, superDuperRealUserLayer, baseStartingLayer } from "./selectionBox.ts";
+import {
+  replaceAllBoxes,
+  SelectionBox,
+  allSelectionBoxes,
+  addPlacedTile,
+  superDuperRealUserLayer,
+  baseStartingLayer,
+} from "./selectionBox.ts";
 import { regenerate } from "./ExternalClasses/RegenerationTools.ts";
 import { Z_LEVEL_COLORS } from "./colors";
 
@@ -81,7 +89,9 @@ export class EditorScene extends Phaser.Scene {
 
   /// Game Variables.
   private gameActive = false;
-  public isGameActive(): boolean { return this.gameActive; }
+  public isGameActive(): boolean {
+    return this.gameActive;
+  }
   private player!: PlayerSprite;
   // Play mode controls
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -152,6 +162,9 @@ export class EditorScene extends Phaser.Scene {
   private coinCount = 0;
   private healthText: Phaser.GameObjects.Text | null = null;
   private coinText: Phaser.GameObjects.Text | null = null;
+  private playStatsEl: HTMLElement | null = null;
+  private playHudEl: HTMLElement | null = null;
+  private playBoxesBtnEl: HTMLElement | null = null;
   private collectablesSnapshot: { x: number; y: number; index: number }[] = [];
   private isDead = false;
   private optionsButton!: Phaser.GameObjects.Container;
@@ -205,7 +218,6 @@ export class EditorScene extends Phaser.Scene {
     this.coinCount = 0;
     this.removeMinimap();
     this.setupPlayer();
-    this.createOptionsButton();
 
     // Snapshot all collectable tiles so we can restore them on death/exit
     this.collectablesSnapshot = [];
@@ -259,9 +271,7 @@ export class EditorScene extends Phaser.Scene {
         // this.worldFacts.setFact("Enemy", x, y, "UltraSlime"); // TODO: think I need to learn worldfacts and edit this later
         tile.index = -1;
       }
-
-    })
-
+    });
 
     // Enable physics and gravity for play mode
     this.physics.world.gravity.y = 1500;
@@ -299,9 +309,10 @@ export class EditorScene extends Phaser.Scene {
       },
     );
 
-    // Camera follows player in play mode
+    // Camera follows player in play mode (lerp 0.1 = smooth follow; 0 = broken/no follow)
     this.cameras.main
-      .startFollow(this.player, false, 0, 0)
+      .setBounds(0, 0, this.map.widthInPixels, this.map.heightInPixels)
+      .startFollow(this.player, false, 0.1, 0.1)
       .setZoom(this.zoomLevel);
 
     // Setup player movement controls
@@ -322,41 +333,66 @@ export class EditorScene extends Phaser.Scene {
       keyG.on("down", () => {
         this.toggleDebugOverlay();
       });
+
+      // Add B key handler to toggle selection box visibility in play mode
+      const keyB = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B);
+      keyB.removeAllListeners("down");
+      keyB.on("down", () => {
+        this.boxesVisible = !this.boxesVisible;
+        for (const box of allSelectionBoxes) {
+          box.setVisible(this.boxesVisible);
+        }
+        if (this.playBoxesBtnEl) {
+          const lbl = this.playBoxesBtnEl.querySelector("span");
+          if (lbl) lbl.textContent = this.boxesVisible ? "👁️ ON" : "👁️ OFF";
+        }
+      });
     }
 
-    // Create play-mode HUD (world-space, manually repositioned each frame)
-    const cam = this.cameras.main;
-    const baseFontSize = 18;
-    const scaledFontSize = Math.max(8, baseFontSize / cam.zoom);
-    const hudTopLeft = cam.getWorldPoint(16, 16);
+    // Hide selection boxes in play mode
+    this.boxesVisible = false;
+    for (const box of allSelectionBoxes) {
+      box.setVisible(false);
+    }
 
+    // Boxes toggle button in play HUD — same style as the Q hint
+    const boxesBtnEl = document.createElement("div");
+    boxesBtnEl.className = "pt-play-hint-q";
+    boxesBtnEl.style.right = "140px";
+    boxesBtnEl.innerHTML = `<kbd>B</kbd><span>👁️ OFF</span>`;
+    boxesBtnEl.addEventListener("click", () => {
+      this.boxesVisible = !this.boxesVisible;
+      for (const box of allSelectionBoxes) {
+        box.setVisible(this.boxesVisible);
+      }
+      const lbl = boxesBtnEl.querySelector("span")!;
+      lbl.textContent = this.boxesVisible ? "👁️ ON" : "👁️ OFF";
+    });
+    this.game.domContainer?.appendChild(boxesBtnEl);
+    this.playBoxesBtnEl = boxesBtnEl;
+
+    // Floating DOM stats pill — matches the new UI style
     const initHearts =
       "♥".repeat(this.playerHealth) +
       "♡".repeat(this.maxPlayerHealth - this.playerHealth);
-    this.healthText = this.add
-      .text(hudTopLeft.x, hudTopLeft.y, `HP: ${initHearts}`, {
-        fontSize: `${scaledFontSize}px`,
-        color: "#ff4444",
-        stroke: "#000000",
-        strokeThickness: 4,
-      })
-      .setScrollFactor(1)
-      .setDepth(1000);
 
-    this.coinText = this.add
-      .text(
-        hudTopLeft.x,
-        hudTopLeft.y + scaledFontSize + 4,
-        `Coins: ${this.coinCount}`,
-        {
-          fontSize: `${scaledFontSize}px`,
-          color: "#FFD700",
-          stroke: "#000000",
-          strokeThickness: 4,
-        },
-      )
-      .setScrollFactor(1)
-      .setDepth(1000);
+    const statsEl = document.createElement("div");
+    statsEl.className = "pt-play-stats";
+    statsEl.innerHTML = `
+      <span class="pt-stat-hearts" id="play-stat-hearts">${initHearts}</span>
+      <span class="pt-stat-sep"></span>
+      <span class="pt-stat-coins">⬡ <span id="play-stat-coins">0</span></span>
+    `;
+    this.game.domContainer?.appendChild(statsEl);
+    this.playStatsEl = statsEl;
+
+    // "Q — exit" key hint in the overlay
+    const hintEl = document.createElement("div");
+    hintEl.className = "pt-play-hint-q";
+    hintEl.innerHTML = `<kbd>Q</kbd><span>Exit</span>`;
+    hintEl.addEventListener("click", () => this.startEditor());
+    this.game.domContainer?.appendChild(hintEl);
+    this.playHudEl = hintEl;
   }
 
   // Toggle Phaser arcade physics hitbox overlay
@@ -455,14 +491,24 @@ export class EditorScene extends Phaser.Scene {
     this.groundLayer.layer.data.forEach((row, y) =>
       row.forEach((tile, x) => {
         if (tile.index > 1)
-          baseStartingLayer.push({ tileIndex: tile.index, x, y, layerName: "Ground_Layer" });
-      })
+          baseStartingLayer.push({
+            tileIndex: tile.index,
+            x,
+            y,
+            layerName: "Ground_Layer",
+          });
+      }),
     );
     this.collectablesLayer.layer.data.forEach((row, y) =>
       row.forEach((tile, x) => {
         if (tile.index > 1)
-          baseStartingLayer.push({ tileIndex: tile.index, x, y, layerName: "Collectables_Layer" });
-      })
+          baseStartingLayer.push({
+            tileIndex: tile.index,
+            x,
+            y,
+            layerName: "Collectables_Layer",
+          });
+      }),
     );
 
     this.cameras.main.setBounds(
@@ -773,7 +819,10 @@ export class EditorScene extends Phaser.Scene {
           //   ultraSlime.setData("spawnX", spawnX);
           //   ultraSlime.setData("spawnY", spawnY);
           //   this.enemies.push(ultraSlime);
-        } else if (this.selectedBlockName === "Coin" || this.selectedBlockName === "Fruit") {
+        } else if (
+          this.selectedBlockName === "Coin" ||
+          this.selectedBlockName === "Fruit"
+        ) {
           // Place collectable in the dedicated collectables layer
           this.placeTile(
             this.collectablesLayer,
@@ -1052,7 +1101,6 @@ export class EditorScene extends Phaser.Scene {
 
     layer.putTileAt(tileIndex, x, y);
     replaceAllBoxes();
-
   }
 
   update() {
@@ -1073,29 +1121,15 @@ export class EditorScene extends Phaser.Scene {
         }
       }
 
-      // Update HUD (reposition and resize to stay fixed to camera top-left)
-      if (this.healthText || this.coinText) {
-        const hudCam = this.cameras.main;
-        const baseFontSize = 18;
-        const scaledFontSize = Math.max(8, baseFontSize / hudCam.zoom);
-        const hudTopLeft = hudCam.getWorldPoint(16, 16);
-
-        if (this.healthText) {
-          const hearts =
-            "♥".repeat(Math.max(0, this.playerHealth)) +
-            "♡".repeat(Math.max(0, this.maxPlayerHealth - this.playerHealth));
-          this.healthText.setText(`HP: ${hearts}`);
-          this.healthText.setFontSize(scaledFontSize);
-          this.healthText.setPosition(hudTopLeft.x, hudTopLeft.y);
-        }
-        if (this.coinText) {
-          this.coinText.setText(`Coins: ${this.coinCount}`);
-          this.coinText.setFontSize(scaledFontSize);
-          this.coinText.setPosition(
-            hudTopLeft.x,
-            hudTopLeft.y + scaledFontSize + 4,
-          );
-        }
+      // Update floating DOM stats pill
+      if (this.playStatsEl) {
+        const hearts =
+          "♥".repeat(Math.max(0, this.playerHealth)) +
+          "♡".repeat(Math.max(0, this.maxPlayerHealth - this.playerHealth));
+        const heartsEl = this.playStatsEl.querySelector("#play-stat-hearts");
+        const coinsEl = this.playStatsEl.querySelector("#play-stat-coins");
+        if (heartsEl) heartsEl.textContent = hearts;
+        if (coinsEl) coinsEl.textContent = String(this.coinCount);
       }
 
       // Death checks — health depleted or fell off the map
@@ -1250,7 +1284,10 @@ export class EditorScene extends Phaser.Scene {
     }
 
     const activeEl = document.activeElement;
-    if (activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA")) {
+    if (
+      activeEl &&
+      (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA")
+    ) {
       return;
     }
 
@@ -1351,7 +1388,13 @@ export class EditorScene extends Phaser.Scene {
 
     const userTiles = superDuperRealUserLayer.slice();
 
-    return { groundTiles, collectablesTiles, enemies, selectionBoxes, userTiles };
+    return {
+      groundTiles,
+      collectablesTiles,
+      enemies,
+      selectionBoxes,
+      userTiles,
+    };
   }
 
   public restoreSnapshot(snapshot: WorldSnapshot): void {
@@ -1460,7 +1503,10 @@ export class EditorScene extends Phaser.Scene {
     this.mapHistory = this.mapHistory.slice(0, this.currentMapIteration + 1);
     this.mapHistory.push(this.captureSnapshot());
     if (this.mapHistory.length > EditorScene.MAX_HISTORY) {
-      this.mapHistory.splice(0, this.mapHistory.length - EditorScene.MAX_HISTORY);
+      this.mapHistory.splice(
+        0,
+        this.mapHistory.length - EditorScene.MAX_HISTORY,
+      );
     }
     this.currentMapIteration = this.mapHistory.length - 1;
     if (this.sceneReady && !this.isDirty) {
@@ -1533,7 +1579,8 @@ export class EditorScene extends Phaser.Scene {
                 const kind = m.id[m.id.length - 1] ?? "HumanMessage";
                 const content = m.kwargs?.content ?? "";
                 if (kind === "AIMessage") return { type: "ai", content };
-                if (kind === "SystemMessage") return { type: "system", content };
+                if (kind === "SystemMessage")
+                  return { type: "system", content };
                 return { type: "human", content };
               }
               return m; // already in new { type, content } format
@@ -1890,7 +1937,12 @@ export class EditorScene extends Phaser.Scene {
           if (tileIndex > 1)
             this.placeTile(this.groundLayer, pasteX, pasteY, tileIndex);
           if (tileIndex > 1)
-            this.placeTile(this.collectablesLayer, pasteX, pasteY, collectablesIndex);
+            this.placeTile(
+              this.collectablesLayer,
+              pasteX,
+              pasteY,
+              collectablesIndex,
+            );
         }
       }
     }
@@ -1940,7 +1992,8 @@ export class EditorScene extends Phaser.Scene {
       for (const box of allSelectionBoxes) {
         box.setVisible(this.boxesVisible);
       }
-      const txt = this.boxVisibilityToggleBtn.list[1] as Phaser.GameObjects.Text;
+      const txt = this.boxVisibilityToggleBtn
+        .list[1] as Phaser.GameObjects.Text;
       txt.setText(this.boxesVisible ? "👁 Boxes: ON" : "👁 Boxes: OFF");
     });
 
@@ -2028,7 +2081,6 @@ export class EditorScene extends Phaser.Scene {
     Slime.debugMode = false;
     UltraSlime.debugMode = false;
 
-
     this.scene.launch("UIScene");
     this.scene.bringToTop("UIScene");
     // Stop camera follow and reset zoom
@@ -2092,7 +2144,14 @@ export class EditorScene extends Phaser.Scene {
     this.wasd = undefined as any;
     this.isJumpPressed = false;
 
-    // Destroy play-mode HUD
+    if (this.playStatsEl) {
+      this.playStatsEl.remove();
+      this.playStatsEl = null;
+    }
+    if (this.playHudEl) {
+      this.playHudEl.remove();
+      this.playHudEl = null;
+    }
     if (this.healthText) {
       this.healthText.destroy();
       this.healthText = null;
@@ -2100,6 +2159,10 @@ export class EditorScene extends Phaser.Scene {
     if (this.coinText) {
       this.coinText.destroy();
       this.coinText = null;
+    }
+    if (this.playBoxesBtnEl) {
+      this.playBoxesBtnEl.remove();
+      this.playBoxesBtnEl = null;
     }
 
     // Restore collected tiles so the editor shows the original map
@@ -2123,7 +2186,6 @@ export class EditorScene extends Phaser.Scene {
     this.cameras.main.centerOn(0, 0);
 
     // also remove the editor button
-
 
     replaceAllBoxes();
   }
@@ -2161,8 +2223,6 @@ export class EditorScene extends Phaser.Scene {
         (enemy as any).clearProjectiles?.();
       });
 
-
-
       this.groundLayer.forEachTile((tile) => {
         if (tile.index == 8) {
           tile.index = -1;
@@ -2170,8 +2230,7 @@ export class EditorScene extends Phaser.Scene {
         if (tile.index == 9) {
           tile.index = -1;
         }
-
-      })
+      });
     });
   }
 

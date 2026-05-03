@@ -11,6 +11,29 @@ export function getCurrentChatHistory() {
 if (typeof window !== "undefined") {
   (window as any).getCurrentChatHistory = getCurrentChatHistory;
 }
+function renderMarkdown(text: string): string {
+  let s = String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  // Bold
+  s = s.replace(/\*\*(.+?)\*\*/gs, "<strong>$1</strong>");
+  // Inline code
+  s = s.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+  // List items
+  s = s.replace(/^[ \t]*[-*] (.+)/gm, "<li>$1</li>");
+  s = s.replace(
+    /(<li>[\s\S]*?<\/li>)(\n<li>|$)/g,
+    (_, item, next) => item + (next === "\n<li>" ? "\n<li>" : ""),
+  );
+  s = s.replace(/((?:<li>.*<\/li>\n?)+)/g, "<ul>$1</ul>");
+  // Paragraphs: double newline
+  s = s.replace(/\n\n+/g, "<br><br>");
+  // Single newlines
+  s = s.replace(/\n/g, "<br>");
+  return s;
+}
+
 // Returns formatted HTML for current chat history (excluding system message)
 export function getDisplayChatHistory(): string {
   return currentChatHistory
@@ -20,14 +43,22 @@ export function getDisplayChatHistory(): string {
       if (typeof displayContent === "object") {
         displayContent = JSON.stringify(displayContent);
       }
-      const sender = msg._getType().toUpperCase();
-      return `<p><strong>${sender}:</strong> ${displayContent}</p>`;
+      const type = msg._getType();
+      const cssClass = type === "human" ? "pt-msg-human" : "pt-msg-ai";
+      const body =
+        type === "ai"
+          ? renderMarkdown(String(displayContent))
+          : String(displayContent)
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;");
+      return `<div class="${cssClass}">${body}</div>`;
     })
     .join("");
 }
 const welcomePrompt = new SystemMessage(
   "You are Pewter, a friendly platformer level design assistant. " +
-  "Greet the player warmly and let them know they need to draw a selection box on the map to get started. Keep it short and encouraging."
+    "Greet the player warmly and let them know they need to draw a selection box on the map to get started. Keep it short and encouraging.",
 );
 
 // Swappable reference to the current chat history array
@@ -106,7 +137,12 @@ export function setActiveSelectionBox(
 let botResponding = false;
 
 // Tool names that only read state — snapshot should NOT be saved for these
-const READ_ONLY_TOOLS = new Set(["getPlacedTiles", "getWorldFacts", "relativeGeneration", "verifyComplete"]);
+const READ_ONLY_TOOLS = new Set([
+  "getPlacedTiles",
+  "getWorldFacts",
+  "relativeGeneration",
+  "verifyComplete",
+]);
 
 /**
  * Dispatch a world-snapshot save event if the AI used any write tools.
@@ -318,7 +354,10 @@ export async function sendUserPromptHidden(
  */
 export function addStaticAIMessage(text: string): void {
   currentChatHistory.push(new AIMessage(text));
-  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+  if (
+    typeof window !== "undefined" &&
+    typeof window.dispatchEvent === "function"
+  ) {
     window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
   }
 }
@@ -351,7 +390,10 @@ export async function sendSystemMessage(message: string): Promise<string> {
     // Fire after botResponding is false so the UI clears the typing indicator
     // and resets the placeholder. Without this second event the indicator from
     // ensureTypingIndicator() stays stuck on screen.
-    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.dispatchEvent === "function"
+    ) {
       window.dispatchEvent(new CustomEvent("activeSelectionChanged"));
     }
   }

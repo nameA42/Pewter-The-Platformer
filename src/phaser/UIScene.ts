@@ -29,7 +29,7 @@ export class UIScene extends Phaser.Scene {
     "Question Block",
   ];
   private enemies: string[] = ["Slime Enemy", "Ultra Slime"];
-  private eraserTools: string[] = ["Eraser"];
+  private eraserTools: string[] = ["Eraser", "Empty"];
   private blocks: string[] = [];
 
   //Registry (Global variables)

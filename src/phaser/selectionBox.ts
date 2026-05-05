@@ -107,7 +107,7 @@ export function replaceAllBoxes() {
     }
   }
   for (let tile of superDuperRealUserLayer) {
-    if (tile.tileIndex > 1)
+    if (tile.tileIndex > 1 || tile.tileIndex === -1)
       applyTile(tile.tileIndex, tile.x, tile.y, tile.layerName);
   }
   editorScene.worldFacts.clearEnemies();
@@ -116,6 +116,7 @@ export function replaceAllBoxes() {
       editorScene.worldFacts.setFact("Enemy", tile.x, tile.y, tile.index == 7 ? "UltraSlime" : "Slime");
     }
   })
+  editorScene.redrawEmptyTileOverlay();
 }
 
 export class SelectionBox {
@@ -687,12 +688,8 @@ export class SelectionBox {
 
         const worldMinX = 0;
         const worldMinY = 0;
-        const worldMaxX = cam
-          ? Math.floor((cam.worldView.width + cam.worldView.x) / 16)
-          : Number.MAX_SAFE_INTEGER;
-        const worldMaxY = cam
-          ? Math.floor((cam.worldView.height + cam.worldView.y) / 16)
-          : Number.MAX_SAFE_INTEGER;
+        const worldMaxX = GROUND_LAYER.layer.width - 1;
+        const worldMaxY = GROUND_LAYER.layer.height - 1;
 
         if (newStartX < worldMinX) newStartX = worldMinX;
         if (newStartY < worldMinY) newStartY = worldMinY;
@@ -1584,8 +1581,18 @@ export class SelectionBox {
     y: number,
     layerName: string,
   ) {
-    if (this.containsPoint(x, y))
-      addPlacedTile(this.placedTiles, tileIndex, x, y, layerName);
+    if (!this.containsPoint(x, y)) return;
+    const idx = this.placedTiles.findIndex(
+      (t) => t.x === x && t.y === y && t.layerName === layerName,
+    );
+    if (tileIndex === -1) {
+      // Eraser removes the entry entirely, including any existing -1 Empty marker
+      if (idx !== -1) this.placedTiles.splice(idx, 1);
+    } else if (idx !== -1) {
+      this.placedTiles[idx].tileIndex = tileIndex;
+    } else {
+      this.placedTiles.push({ tileIndex, x, y, layerName });
+    }
   }
 
   // // Register an enemy placed within this selection box (tile coords)
@@ -1598,6 +1605,18 @@ export class SelectionBox {
   // public getPlacedEnemies() {
   //   return this.placedEnemies;
   // }
+
+  public addEmptyMarker(x: number, y: number, layerName: string) {
+    if (!this.containsPoint(x, y)) return;
+    const idx = this.placedTiles.findIndex(
+      (t) => t.x === x && t.y === y && t.layerName === layerName,
+    );
+    if (idx !== -1) {
+      this.placedTiles[idx].tileIndex = -1;
+    } else {
+      this.placedTiles.push({ tileIndex: -1, x, y, layerName });
+    }
+  }
 
   public getPlacedTiles() {
     return this.placedTiles;

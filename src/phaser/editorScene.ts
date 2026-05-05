@@ -51,6 +51,7 @@ interface WorldSnapshot {
   enemies: EnemySnapshotEntry[];
   selectionBoxes: BoxSnapshot[];
   userTiles: { tileIndex: number; x: number; y: number; layerName: string }[];
+  baseTiles: { tileIndex: number; x: number; y: number; layerName: string }[];
 }
 
 export let GROUND_LAYER: Phaser.Tilemaps.TilemapLayer;
@@ -91,6 +92,38 @@ export class EditorScene extends Phaser.Scene {
   private gameActive = false;
   public isGameActive(): boolean {
     return this.gameActive;
+  }
+  private emptyTileGraphics: Phaser.GameObjects.Graphics | null = null;
+  redrawEmptyTileOverlay() {
+    if (!this.emptyTileGraphics) {
+      this.emptyTileGraphics = this.add.graphics();
+      this.emptyTileGraphics.setDepth(50);
+    }
+    this.emptyTileGraphics.clear();
+    this.emptyTileGraphics.setVisible(!this.gameActive);
+    if (this.gameActive) return;
+    const seen = new Set<string>();
+    const draw = (tileIndex: number, x: number, y: number) => {
+      if (tileIndex !== -1) return;
+      const key = `${x},${y}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const px = x * this.TILE_SIZE;
+      const py = y * this.TILE_SIZE;
+      const s = this.TILE_SIZE;
+      this.emptyTileGraphics!.lineStyle(1, 0xff0000, 1);
+      this.emptyTileGraphics!.lineBetween(px, py, px + s, py + s);
+      this.emptyTileGraphics!.lineStyle(1, 0xffffff, 1);
+      this.emptyTileGraphics!.lineBetween(px + s, py, px, py + s);
+    };
+    for (const tile of superDuperRealUserLayer) {
+      draw(tile.tileIndex, tile.x, tile.y);
+    }
+    for (const box of allSelectionBoxes) {
+      for (const tile of box.placedTiles) {
+        draw(tile.tileIndex, tile.x, tile.y);
+      }
+    }
   }
   private player!: PlayerSprite;
   // Play mode controls
@@ -212,6 +245,7 @@ export class EditorScene extends Phaser.Scene {
   }
 
   startGame() {
+    this.emptyTileGraphics?.setVisible(false);
     this.gameActive = true;
     this.isDead = false;
     this.playerHealth = this.maxPlayerHealth;
@@ -694,6 +728,7 @@ export class EditorScene extends Phaser.Scene {
         "Ultra Slime": 8,
         "Slime Enemy": 9,
         Eraser: -1,
+        Empty: -1,
       };
 
       const tileIndex = blockToTileMap[blockName];
@@ -799,7 +834,9 @@ export class EditorScene extends Phaser.Scene {
         const tileY = Math.floor(worldPoint.y / (16 * this.SCALE));
 
         // Place the currently selected brush tile
-        if (this.selectedBlockName === "Eraser") {
+        if (this.selectedBlockName === "Empty") {
+          this.placeEmptyMarker(tileX, tileY);
+        } else if (this.selectedBlockName === "Eraser") {
           // Eraser should clear from both layers
           this.placeTile(this.groundLayer, tileX, tileY, -1);
           this.placeTile(this.collectablesLayer, tileX, tileY, -1);
@@ -1066,6 +1103,33 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
+  placeEmptyMarker(x: number, y: number) {
+    let target: SelectionBox | null = null;
+    if (this.activeBox && this.activeBox.containsPoint(x, y)) {
+      target = this.activeBox;
+    } else {
+      let bestZ = -Infinity;
+      for (const box of allSelectionBoxes) {
+        if (box.containsPoint(x, y) && box.getZLevel() > bestZ) {
+          bestZ = box.getZLevel();
+          target = box;
+        }
+      }
+    }
+    if (target) {
+      for (const layerName of ["Ground_Layer", "Collectables_Layer"]) {
+        target.addEmptyMarker(x, y, layerName);
+      }
+    } else {
+      for (const layerName of ["Ground_Layer", "Collectables_Layer"]) {
+        const idx = superDuperRealUserLayer.findIndex(t => t.x === x && t.y === y && t.layerName === layerName);
+        if (idx !== -1) superDuperRealUserLayer[idx].tileIndex = -1;
+        else superDuperRealUserLayer.push({ tileIndex: -1, x, y, layerName });
+      }
+    }
+    replaceAllBoxes();
+  }
+
   placeTile(
     layer: Phaser.Tilemaps.TilemapLayer,
     x: number,
@@ -1097,6 +1161,10 @@ export class EditorScene extends Phaser.Scene {
       target.addPlacedTile(tileIndex, x, y, layer.layer.name);
     } else {
       addPlacedTile(superDuperRealUserLayer, tileIndex, x, y, layer.layer.name);
+    }
+    if (tileIndex === -1) {
+      addPlacedTile(superDuperRealUserLayer, -1, x, y, layer.layer.name);
+      addPlacedTile(baseStartingLayer, -1, x, y, layer.layer.name);
     }
 
     layer.putTileAt(tileIndex, x, y);
@@ -1243,7 +1311,9 @@ export class EditorScene extends Phaser.Scene {
       const pointer = this.input.activePointer;
       const tileX = Math.floor(pointer.worldX / this.TILE_SIZE);
       const tileY = Math.floor(pointer.worldY / this.TILE_SIZE);
-      if (this.selectedBlockName === "Eraser") {
+      if (this.selectedBlockName === "Empty") {
+        this.placeEmptyMarker(tileX, tileY);
+      } else if (this.selectedBlockName === "Eraser") {
         this.placeTile(this.groundLayer, tileX, tileY, -1);
         this.placeTile(this.collectablesLayer, tileX, tileY, -1);
       } else if (
@@ -1387,6 +1457,7 @@ export class EditorScene extends Phaser.Scene {
     }));
 
     const userTiles = superDuperRealUserLayer.slice();
+    const baseTiles = baseStartingLayer.slice();
 
     return {
       groundTiles,
@@ -1394,6 +1465,7 @@ export class EditorScene extends Phaser.Scene {
       enemies,
       selectionBoxes,
       userTiles,
+      baseTiles,
     };
   }
 
@@ -1452,9 +1524,11 @@ export class EditorScene extends Phaser.Scene {
       }
     }
 
-    // Restore superDuperRealUserLayer before destroying old boxes
+    // Restore superDuperRealUserLayer and baseStartingLayer before destroying old boxes
     superDuperRealUserLayer.length = 0;
     for (const t of snapshot.userTiles ?? []) superDuperRealUserLayer.push(t);
+    baseStartingLayer.length = 0;
+    for (const t of snapshot.baseTiles ?? []) baseStartingLayer.push(t);
 
     // Restore selection boxes — destroy old ones safely:
     // 1. Snapshot the array and clear references first so destroy()'s internal
@@ -1593,6 +1667,7 @@ export class EditorScene extends Phaser.Scene {
             enemies: data.enemies ?? [],
             selectionBoxes: normBoxes,
             userTiles: data.userTiles ?? [],
+            baseTiles: data.baseTiles ?? [],
           });
 
           this.saveSnapshot();
@@ -1654,8 +1729,8 @@ export class EditorScene extends Phaser.Scene {
 
   startSelection(pointer: Phaser.Input.Pointer) {
     const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const x = Math.floor(worldPoint.x / this.TILE_SIZE);
-    const y = Math.floor(worldPoint.y / this.TILE_SIZE);
+    const x = Math.max(0, Math.min(this.map.width - 1, Math.floor(worldPoint.x / this.TILE_SIZE)));
+    const y = Math.max(0, Math.min(this.map.height - 1, Math.floor(worldPoint.y / this.TILE_SIZE)));
     this.selectionStart = new Phaser.Math.Vector2(x, y);
     this.selectionEnd = new Phaser.Math.Vector2(x, y);
 
@@ -1748,8 +1823,8 @@ export class EditorScene extends Phaser.Scene {
     if (!this.isSelecting || !this.activeBox) return;
 
     const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const x = Math.floor(worldPoint.x / this.TILE_SIZE);
-    const y = Math.floor(worldPoint.y / this.TILE_SIZE);
+    const x = Math.max(0, Math.min(this.map.width - 1, Math.floor(worldPoint.x / this.TILE_SIZE)));
+    const y = Math.max(0, Math.min(this.map.height - 1, Math.floor(worldPoint.y / this.TILE_SIZE)));
 
     // Now checking whether if any finalized boxes overlap with current one
     const possibleEnd = new Phaser.Math.Vector2(x, y);
@@ -2075,6 +2150,7 @@ export class EditorScene extends Phaser.Scene {
   private startEditor() {
     // Undo play mode and restore editor mode
     this.gameActive = false;
+    this.redrawEmptyTileOverlay();
 
     // Disable debug overlay for all enemy types when exiting play mode
     DynamicEnemy.debugMode = false;

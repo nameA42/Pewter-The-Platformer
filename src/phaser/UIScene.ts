@@ -9,6 +9,14 @@ import { SpriteGenerator } from "../enemySystem/sprite/SpriteGenerator.ts";
 import "./chatbox.css";
 import { WorldFacts } from "./ExternalClasses/worldFacts.ts";
 
+// Set the CSS variable for the tileset background-image once at module load so
+// the correct absolute URL is used regardless of whether CSS is injected (dev)
+// or extracted to an assets sub-directory (production build).
+document.documentElement.style.setProperty(
+  "--pt-tileset-url",
+  `url("${import.meta.env.BASE_URL}phaserAssets/pewterPlatformerTilesetExtended.png")`,
+);
+
 export class UIScene extends Phaser.Scene {
   constructor() {
     super({ key: "UIScene" });

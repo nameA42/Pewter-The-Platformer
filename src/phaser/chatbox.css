@@ -315,7 +315,7 @@
   width: 16px;
   height: 16px;
   image-rendering: pixelated;
-  background-image: url("phaserAssets/pewterPlatformerTilesetExtended.png");
+  background-image: var(--pt-tileset-url);
   background-repeat: no-repeat;
   background-size: 240px 16px;
   vertical-align: middle;
@@ -723,7 +723,9 @@
   cursor: pointer;
   pointer-events: auto;
   user-select: none;
-  transition: background 0.12s, border-color 0.12s;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
 }
 
 .pt-play-hint-q:hover {

@@ -1161,6 +1161,13 @@ export class EditorScene extends Phaser.Scene {
       target.addPlacedTile(tileIndex, x, y, layer.layer.name);
     } else {
       addPlacedTile(superDuperRealUserLayer, tileIndex, x, y, layer.layer.name);
+      if (tileIndex !== -1) {
+        // Remove any leftover -1 empty markers at this position on other layers
+        for (let i = superDuperRealUserLayer.length - 1; i >= 0; i--) {
+          const t = superDuperRealUserLayer[i];
+          if (t.x === x && t.y === y && t.tileIndex === -1) superDuperRealUserLayer.splice(i, 1);
+        }
+      }
     }
     if (tileIndex === -1) {
       addPlacedTile(superDuperRealUserLayer, -1, x, y, layer.layer.name);
@@ -1443,7 +1450,7 @@ export class EditorScene extends Phaser.Scene {
       start: { x: b.getStart().x, y: b.getStart().y },
       end: { x: b.getEnd().x, y: b.getEnd().y },
       zLevel: b.getZLevel(),
-      placedTiles: b.placedTiles.slice(),
+      placedTiles: b.placedTiles.map((t) => ({ ...t })),
       // placedEnemies: b.placedEnemies.slice(),
       chatHistory: b.localContext.chatHistory
         .filter((m) => m._getType?.() !== "system") // don't snapshot the system prompt
@@ -1456,8 +1463,8 @@ export class EditorScene extends Phaser.Scene {
         })),
     }));
 
-    const userTiles = superDuperRealUserLayer.slice();
-    const baseTiles = baseStartingLayer.slice();
+    const userTiles = superDuperRealUserLayer.map((t) => ({ ...t }));
+    const baseTiles = baseStartingLayer.map((t) => ({ ...t }));
 
     return {
       groundTiles,
